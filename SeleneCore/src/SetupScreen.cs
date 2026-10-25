@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 
 namespace Selene
@@ -14,6 +15,9 @@ namespace Selene
     // goes on to the profile steps; from the menu, B or Continue goes back to the home.
     public class SetupScreen : Screen
     {
+        private DateTime bottomArrivedAt = DateTime.MinValue;   // the last move onto the bottom row of cards
+        private Dialog ask;            // Install all's question, then the restart question
+        private bool batchRunning;     // Install all is downloading
         private const int Columns = 6;
         private readonly bool firstRun;
         // where each card sits: its row and its x from the centre (rows are centred, so a short last row sits in the middle)
@@ -67,7 +71,6 @@ namespace Selene
             buttons.Children.Add(carryOn.Root);
             col.Children.Add(buttons);
             Root.Children.Add(col);
-            Root.Children.Add(Ui.Prompts(true, Ui.Prompt("A", "Select")));
             if (!firstRun) Root.Children.Add(Ui.Prompts(false, Ui.Prompt("B", "Back")));
             UpdateInstallAll();
             // the first card that needs something, else Continue
@@ -100,9 +103,6 @@ namespace Selene
 
         private static string Icon(string key)
         {
-            if (key == "library") return "\uE8F1";
-            if (key == "folders") return "\uE8B7";
-            if (key == "controller") return "\uE7FC";
             if (key == "ludusavi-program") return "\uE896";
             if (key.StartsWith("clash:")) return "\uE7BA";
             return "\uE74C";   // an add-on
@@ -135,14 +135,8 @@ namespace Selene
         // a card's state in a word or two ("392 games", "Installed", "Not installed"...)
         private static string Short(SetupItem item)
         {
-            if (item.Key == "library")
-            {
-                int games = System.Text.RegularExpressions.Regex.Matches(item.Detail ?? "", @"(\d+) games").Cast<System.Text.RegularExpressions.Match>().Sum(m => int.Parse(m.Groups[1].Value));
-                return item.State == SetupState.Ready ? games + " games" : "No games";
-            }
-            if (item.Key == "folders") return item.State == SetupState.Ready ? item.Detail : "Optional";
-            if (item.Key == "controller") return item.State == SetupState.Ready ? "Connected" : "Not connected";
             if (item.Key == "ludusavi-program") return item.State == SetupState.Ready ? "Ready" : "Not set up";
+            if (item.Detail == SetupCheck.PendingRestart) return "Restart to finish";
             if (item.Key.StartsWith("clash:")) return "Clashes";
             if (item.State == SetupState.Ready) return "Installed";
             return item.AddonId != null ? "Not installed" : "Turned off";
@@ -152,7 +146,7 @@ namespace Selene
         {
             for (int i = 0; i < cards.Count; i++) Ui.Rise(cards[i].Root, 140 + i * 45);
             ShowFocus();
-            // things change behind the screen (an add-on installed, a controller plugged in): check again every few seconds
+            // things change behind the screen (an add-on installed or turned on): check again every few seconds
             recheck = new DispatcherTimer { Interval = TimeSpan.FromSeconds(4) };
             recheck.Tick += (s, e) => Recheck();
             recheck.Start();
@@ -163,6 +157,7 @@ namespace Selene
         public override void Hidden()
         {
             if (recheck != null) recheck.Stop();
+            if (openingWait != null) { openingWait.Stop(); openingWait = null; }
             var w = Application.Current.MainWindow;
             if (w != null) w.Activated -= OnActivated;
         }
@@ -194,6 +189,7 @@ namespace Selene
                 if (fresh[i].Key != items[i].Key || (fresh[i].State == items[i].State && fresh[i].Detail == items[i].Detail)) continue;
                 bool nowReady = fresh[i].State == SetupState.Ready && items[i].State != SetupState.Ready;
                 items[i] = fresh[i];
+                if (i == openingAt) continue;   // OPENING... stays until Playnite's question is up
                 SetStatus(statuses[i], fresh[i]);
                 Ui.Pop(statuses[i]);
                 if (nowReady) Ui.Tick();
@@ -250,16 +246,15 @@ namespace Selene
                     info.Show(icon, Tone.Warning, item.Title, "Clashes", item.About, "Turn it off in Playnite's Add-ons so the two don't fight.");
                     return;
             }
+            if (item.Detail == SetupCheck.PendingRestart) { info.Show(icon, Tone.Success, item.Title, "Restart to finish", item.About, "Installed. It starts working after Playnite restarts; install the others first to restart only once."); return; }
             if (item.AddonId != null) { info.Show(icon, Tone.Accent, item.Title, "Not installed", item.About, "Playnite asks you to confirm. It works after a restart.", "A", "Install"); return; }
             if (item.Key == "ludusavi-program") { info.Show(icon, Tone.Accent, item.Title, "Not set up", item.About, "Downloads the free Ludusavi program and connects it.", "A", "Set up"); return; }
-            if (item.Key == "library") { info.Show(icon, Tone.Warning, item.Title, "No games", item.About, "Connect a store in Playnite's settings, under Libraries."); return; }
-            if (item.Key == "folders") { info.Show(icon, Tone.Muted, item.Title, "Optional", item.About, "Add folders in Selene Core's settings (desktop mode)."); return; }
-            if (item.Key == "controller") { info.Show(icon, Tone.Muted, item.Title, "Not connected", item.About, "Plug in or pair a controller; Selene picks it up by itself."); return; }
             info.Show(icon, Tone.Warning, item.Title, "Turned off", item.About, "Turn it on in Playnite's Add-ons.");
         }
 
         public override void Handle(string b)
         {
+            if (ask != null) { ask.Handle(b); return; }   // a question is up: the press is its own
             if (b == "B")
             {
                 if (firstRun) { Ui.Shake(Root.Children[0]); return; }
@@ -274,8 +269,13 @@ namespace Selene
             if (index < items.Count)
             {
                 next = CardMove(index, b);
-                // onto the buttons only with a fresh press: a held stick repeats and skipped the bottom row
-                if (next < 0 && b == "DPadDown" && !Ui.Repeated(b)) next = ButtonsStart + 1;
+                if (next < 0 && b == "DPadDown")
+                {
+                    // onto the buttons, the nearer one. Only a Down that comes right after landing on the bottom row waits (a held
+                    // stick went row, row, buttons in one go); resting there, any Down goes at once, however fast the taps
+                    if ((DateTime.Now - bottomArrivedAt).TotalMilliseconds > 300) next = cardX[index] < 0 ? ButtonsStart : ButtonsStart + 1;
+                }
+                else if (next >= 0 && cardRow[next] == cardRow[items.Count - 1] && cardRow[index] != cardRow[next]) bottomArrivedAt = DateTime.Now;
             }
             else
             {
@@ -320,15 +320,17 @@ namespace Selene
             if (index == ButtonsStart)
             {
                 var missing = Missing();
-                if (missing.Count == 0) { Ui.Shake(installAll.Root); return; }
+                if (missing.Count == 0 || batchRunning) { Ui.Shake(installAll.Root); return; }
                 Ui.Confirm();
-                installQueue.Clear();
-                foreach (var a in missing) installQueue.Enqueue(a.Id);
-                InstallNext();
+                // one question for all of them (Playnite's own link asked once per add-on, with a restart question each time)
+                ask = new Dialog("\uE896", "Install " + missing.Count + (missing.Count == 1 ? " add-on?" : " add-ons?"),
+                    string.Join(" \u00B7 ", missing.Select(m => m.Name)) + "\n\nSelene downloads them now. Playnite installs them all on its next restart.",
+                    "Install all", "Not now", () => { ask = null; StartBatch(missing); }, () => ask = null, false).StartOnYes();
+                ask.Open(Root);
                 return;
             }
             var item = items[index];
-            if (item.AddonId != null) { Ui.Confirm(); SetupCheck.Install(item.AddonId); return; }
+            if (item.AddonId != null) { Ui.Confirm(); ShowOpening(item.AddonId); SetupCheck.Install(item.AddonId); return; }
             if (item.Key == "ludusavi-program" && item.State != SetupState.Ready) { SetUpLudusavi(index); return; }
             if (item.State == SetupState.Ready) { Ui.Pop(cards[index].Root); Ui.Tick(); return; }
             Ui.Shake(cards[index].Root);   // nothing to do from here; the hint says where
@@ -340,8 +342,120 @@ namespace Selene
         private DateTime missingAt;
         private List<AddonInfo> Missing()
         {
-            if (missingCache == null || (DateTime.Now - missingAt).TotalSeconds > 4) { missingCache = SetupCheck.MissingIncluded(HomeNav.Api); missingAt = DateTime.Now; }
+            if (missingCache == null || (DateTime.Now - missingAt).TotalSeconds > 4) { missingCache = SetupCheck.LeftToInstall(HomeNav.Api); missingAt = DateTime.Now; }
             return missingCache;
+        }
+
+        // Playnite takes a moment (it fetches the add-on's details) before its install question comes up: meanwhile the card
+        // says OPENING... and breathes, and the panel says what's happening, so the press doesn't look like it did nothing
+        private DispatcherTimer openingWait;
+        private int openingAt = -1;
+        private DateTime openingSince;
+
+        private void ShowOpening(string addonId)
+        {
+            EndOpening();
+            openingAt = items.FindIndex(i => i.AddonId == addonId);
+            openingSince = DateTime.Now;
+            if (openingAt >= 0)
+            {
+                var chip = statuses[openingAt].Parent as UIElement ?? statuses[openingAt];
+                statuses[openingAt].Text = "OPENING…";
+                statuses[openingAt].Foreground = Ink.Brush("SeleneInkColor", 0.85);
+                chip.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(1, 0.4, TimeSpan.FromMilliseconds(600)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut } });
+                var item = items[openingAt];
+                info.Show(Icon(item.Key), Tone.Accent, item.Title, "Opening", item.About, "Playnite is getting the add-on. Its question comes up in a moment.");
+            }
+            openingWait = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+            openingWait.Tick += (s, e) =>
+            {
+                // the question is up (or Playnite never answered): back to normal
+                if (HomeNav.DialogUp() || (DateTime.Now - openingSince).TotalSeconds > 25) EndOpening();
+            };
+            openingWait.Start();
+        }
+
+        private void EndOpening()
+        {
+            if (openingWait != null) { openingWait.Stop(); openingWait = null; }
+            if (openingAt < 0 || openingAt >= statuses.Count) { openingAt = -1; return; }
+            var chip = statuses[openingAt].Parent as UIElement ?? statuses[openingAt];
+            chip.BeginAnimation(UIElement.OpacityProperty, null);
+            chip.Opacity = 1;
+            SetStatus(statuses[openingAt], items[openingAt]);
+            openingAt = -1;
+            ShowFocus();
+        }
+
+        // Install all: every package downloaded and queued for Playnite's next start. The button counts along and breathes, each
+        // card says DOWNLOADING... in turn and RESTART TO FINISH once it's queued, then one question: restart now?
+        private void StartBatch(List<AddonInfo> addons)
+        {
+            batchRunning = true;
+            installAll.Text = "Downloading\u2026";
+            Breathe(installAll.Root, true);
+            int busyCard = -1;
+            AddonBatch.Run(addons,
+                (i, count, id) =>
+                {
+                    installAll.Text = "Downloading " + (i + 1) + " of " + count + "\u2026";
+                    busyCard = items.FindIndex(it => it.Key == "addon:" + id);
+                    if (busyCard >= 0)
+                    {
+                        statuses[busyCard].Text = "DOWNLOADING\u2026";
+                        statuses[busyCard].Foreground = Ink.Brush("SeleneInkColor", 0.85);
+                        Breathe(statuses[busyCard].Parent as UIElement ?? statuses[busyCard], true);
+                    }
+                    var name = addons[i].Name;
+                    info.Show("\uE896", Tone.Accent, "Installing add-ons", (i + 1) + " of " + count, "Downloading " + name + "\u2026", "Playnite installs them all on its next restart.");
+                },
+                (id, ok) =>
+                {
+                    int at = items.FindIndex(it => it.Key == "addon:" + id);
+                    if (at < 0) return;
+                    Breathe(statuses[at].Parent as UIElement ?? statuses[at], false);
+                    if (ok)
+                    {
+                        SetupCheck.Accept(id);
+                        var was = items[at];
+                        items[at] = new SetupItem { Key = was.Key, Title = was.Title, About = was.About, State = SetupState.Optional, Detail = SetupCheck.PendingRestart };
+                        SetStatus(statuses[at], items[at]);
+                        Ui.Pop(statuses[at]);
+                        Ui.Tick();
+                    }
+                    else
+                    {
+                        statuses[at].Text = "COULDN'T DOWNLOAD";
+                        statuses[at].SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
+                        Ui.Shake(cards[at].Root);
+                    }
+                },
+                (queued, failed) =>
+                {
+                    batchRunning = false;
+                    Breathe(installAll.Root, false);
+                    missingCache = null;
+                    UpdateInstallAll();
+                    ShowFocus();
+                    if (queued == 0)
+                    {
+                        Ui.Notice("The add-ons couldn't be downloaded. Check the internet connection and try again.", 7000);
+                        return;
+                    }
+                    Ui.Chime();
+                    var text = queued + (queued == 1 ? " add-on is" : " add-ons are") + " ready" + (failed > 0 ? " (" + failed + " couldn't be downloaded)" : "") + ". They start working after a restart.";
+                    ask = new Dialog("\uE72C", "Restart Playnite?", text, "Restart now", "Later",
+                        () => { ask = null; if (!AddonBatch.RestartPlaynite()) Ui.Notice("Restart Playnite to finish installing.", 7000); },
+                        () => ask = null, false).StartOnYes();
+                    ask.Open(Root);
+                });
+        }
+
+        private static void Breathe(UIElement el, bool on)
+        {
+            if (el == null) return;
+            if (!on) { el.BeginAnimation(UIElement.OpacityProperty, null); el.Opacity = 1; return; }
+            el.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(1, 0.45, TimeSpan.FromMilliseconds(650)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut } });
         }
 
         // Playnite shows one install prompt at a time: the next add-on is asked for once Playnite is back in front
@@ -351,8 +465,9 @@ namespace Selene
             missingCache = null;
             var id = installQueue.Dequeue();
             HomeNav.Log("setup: installing " + id + " (" + installQueue.Count + " more)");
+            ShowOpening(id);
             try { SetupCheck.Install(id); }
-            catch (Exception ex) { HomeNav.Log("setup: install " + id + " failed: " + ex.Message); }
+            catch (Exception ex) { HomeNav.Log("setup: install " + id + " failed: " + ex.Message); EndOpening(); }
         }
 
         private DispatcherTimer installWait;

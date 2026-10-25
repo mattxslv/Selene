@@ -96,7 +96,8 @@ namespace Selene
         public static string[] BuiltInAvatars()
         {
             var folder = SelenePaths.ThemeFile("Avatars");
-            return Directory.Exists(folder) ? Directory.GetFiles(folder, "*.jpg").OrderBy(f => f).ToArray() : new string[0];
+            // pictures and GIFs (a GIF default moves, like one of your own)
+            return Directory.Exists(folder) ? Directory.GetFiles(folder).Where(f => f.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".png", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".gif", StringComparison.OrdinalIgnoreCase)).OrderBy(f => f).ToArray() : new string[0];
         }
 
         public static Profile Create(string name, string avatar, string theme, string wallpaper)
@@ -279,7 +280,8 @@ namespace Selene
             var wallpaper = p != null && !string.IsNullOrEmpty(p.Wallpaper) ? p.Wallpaper : ThemePalettes.DefaultWallpaper(theme);
             Wallpapers.Show(wallpaper);
             LoginScene.RefreshBackdrop();
-            ApplyHomeBackground(p != null ? p.HomeBackground : null);
+            // the Spotlight background setting: the picked game's art, or always the wallpaper
+            ApplyHomeBackground(Features.Value("homebackground") == "wallpaper" ? "wallpaper" : "art");
             TopProfile.Refresh();
         }
 
@@ -288,6 +290,7 @@ namespace Selene
         // anything but "wallpaper" (including the old "blend") is the game's art: theme\Constants.xaml's value
         public static void ApplyHomeBackground(string look)
         {
+            HomeNav.PreviewChanged();
             var res = Application.Current.Resources;
             HomeNav.FadeArt(look == "wallpaper" ? 0 : 1);   // a smooth change instead of a jump
             res.Remove("SeleneArtOpacity");

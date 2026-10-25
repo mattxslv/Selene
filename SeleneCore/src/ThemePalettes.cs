@@ -59,6 +59,32 @@ namespace Selene
             return SelenePaths.ThemeFile(theme.Wallpaper.Split('/'));
         }
 
+        // a theme's value for a key without applying it (the theme step's preview): its palette, else Selene's own constants
+        private static readonly Dictionary<string, ResourceDictionary> peeked = new Dictionary<string, ResourceDictionary>(StringComparer.OrdinalIgnoreCase);
+        public static object Peek(string id, string key)
+        {
+            if (!string.IsNullOrEmpty(id) && !string.Equals(id, DefaultId, StringComparison.OrdinalIgnoreCase))
+            {
+                ResourceDictionary colors;
+                if (!peeked.TryGetValue(id, out colors))
+                {
+                    var file = SelenePaths.ThemeFile("Palettes", id + ".xaml");
+                    try { if (File.Exists(file)) using (var stream = File.OpenRead(file)) colors = (ResourceDictionary)XamlReader.Load(stream); }
+                    catch (Exception ex) { HomeNav.Log("theme: can't read " + file + ": " + ex.Message); }
+                    peeked[id] = colors;
+                }
+                if (colors != null && colors.Contains(key)) return colors[key];
+            }
+            var merged = Application.Current.Resources.MergedDictionaries;
+            for (int i = merged.Count - 1; i >= 0; i--)
+            {
+                if (ReferenceEquals(merged[i], applied)) continue;
+                var v = merged[i][key];
+                if (v != null) return v;
+            }
+            return Application.Current.TryFindResource(key);
+        }
+
         // swaps the colors of the whole theme; DynamicResource users update at once.
         // Selene's own look is theme\Constants.xaml itself, so it just removes any override.
         public static void Apply(string id)
@@ -67,6 +93,7 @@ namespace Selene
             // the same theme again does nothing (re-adding its colors redrew every screen: a flicker)
             if (string.Equals(id, current, StringComparison.OrdinalIgnoreCase)) return;
             current = id;
+            HomeNav.PreviewChanged();
             var merged = Application.Current.Resources.MergedDictionaries;
             if (string.Equals(id, DefaultId, StringComparison.OrdinalIgnoreCase))
             {

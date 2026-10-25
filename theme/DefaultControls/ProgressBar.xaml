@@ -16,37 +16,23 @@
         <Setter Property="BorderBrush" Value="{DynamicResource SelectionLightBrush}" />
     </Style>
 
-    <!-- Playnite's progress window (installing an add-on, updating the library): no bar; Selene's mark with its halo breathing
-         under the words instead -->
+    <!-- Playnite's progress window (downloading logos, updating the library...): Selene's mark is already above the words, so
+         the progress is a slim rounded bar in the accent color that fills as the work goes (it was a second mark) -->
     <Style x:Key="ProgressWindowProgressBarStyle" TargetType="ProgressBar">
-        <Setter Property="Height" Value="150" />
-        <Setter Property="Margin" Value="0,16,0,0" />
-        <Setter Property="Background" Value="Transparent" />
-        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Height" Value="8" />
+        <Setter Property="Width" Value="420" />
+        <Setter Property="Margin" Value="0,26,0,0" />
+        <Setter Property="HorizontalAlignment" Value="Center" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ProgressBar">
-                    <Grid Width="150" Height="150" HorizontalAlignment="Center" VerticalAlignment="Center">
-                        <Ellipse x:Name="Halo" Width="140" Height="140" Opacity="0.45">
-                            <Ellipse.Fill>
-                                <RadialGradientBrush>
-                                    <GradientStop Color="{DynamicResource GlyphColor}" Offset="0" />
-                                    <GradientStop Color="#00000000" Offset="1" />
-                                </RadialGradientBrush>
-                            </Ellipse.Fill>
-                            <Ellipse.Triggers>
-                                <EventTrigger RoutedEvent="Loaded">
-                                    <BeginStoryboard>
-                                        <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0.4" To="1" Duration="0:0:2.2" AutoReverse="True" RepeatBehavior="Forever">
-                                                <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut" /></DoubleAnimation.EasingFunction>
-                                            </DoubleAnimation>
-                                        </Storyboard>
-                                    </BeginStoryboard>
-                                </EventTrigger>
-                            </Ellipse.Triggers>
-                        </Ellipse>
-                        <Image Source="{ThemeFile 'Images/applogo_clean.png'}" Width="76" Height="76" Stretch="Uniform" RenderOptions.BitmapScalingMode="Fant" />
+                    <Grid>
+                        <Border x:Name="PART_Track" CornerRadius="4" Background="{DynamicResource SeleneInk15Brush}" />
+                        <Border x:Name="PART_Indicator" CornerRadius="4" HorizontalAlignment="Left" Background="{DynamicResource GlyphBrush}">
+                            <Border.Effect>
+                                <DropShadowEffect ShadowDepth="0" BlurRadius="12" Opacity="0.6" Color="{DynamicResource GlyphColor}" />
+                            </Border.Effect>
+                        </Border>
                     </Grid>
                 </ControlTemplate>
             </Setter.Value>

@@ -91,7 +91,11 @@
 
     <!-- Selene's own backdrop: deep navy, a little lighter top-left where the light comes in (Selene Core adds the beam
          and the drifting particles over it) -->
-    <LinearGradientBrush x:Key="MainBackgourndBrush" StartPoint="0,0" EndPoint="1,1">
+    <!-- Playnite's progress window paints itself with "MainBackgourndBrush" (Playnite's spelling) for a frame before Selene
+         turns it into a notification card: see-through, so no dark frame flashes over the screen. Selene's own backdrop is
+         SeleneBaseBrush. -->
+    <SolidColorBrush x:Key="MainBackgourndBrush" Color="Transparent" />
+    <LinearGradientBrush x:Key="SeleneBaseBrush" StartPoint="0,0" EndPoint="1,1">
         <LinearGradientBrush.GradientStops>
             <GradientStop Color="#FF17244A" Offset="0" />
             <GradientStop Color="#FF0C142C" Offset="0.45" />

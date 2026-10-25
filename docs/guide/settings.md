@@ -9,7 +9,7 @@ under Playnite → Add-ons → Generic → **Selene Core**. Settings with a choi
 |---|---|---|
 | Start-up | Logo intro | The Selene logo when Playnite starts |
 | | Who's playing? | Pick a profile at start. Off: the last one signs in by itself |
-| | Start on Collection | Open on all your games instead of Spotlight (off by default) |
+| | Start on | The screen Playnite opens on: Spotlight, Collection, or where you left it |
 | | Library update at start | Playnite looks for new and removed games 20 s after it starts |
 | Navigation | View button | Switches Spotlight and Collection; hold it to search |
 | | Button hints | What each button does, along the bottom |

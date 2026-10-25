@@ -39,7 +39,7 @@
                                     <RowDefinition Height="104" />
                                     <RowDefinition Height="0" />
                                 </Grid.RowDefinitions>
-                                <Border x:Name="SeleneLibraryBase" Grid.RowSpan="5" Background="{DynamicResource MainBackgourndBrush}" Panel.ZIndex="-3"/>
+                                <Border x:Name="SeleneLibraryBase" Grid.RowSpan="5" Background="{DynamicResource SeleneBaseBrush}" Panel.ZIndex="-3"/>
                                 <Image Panel.ZIndex="-3" x:Name="SeleneLibraryWallpaper" Grid.RowSpan="5" Source="{DynamicResource SeleneWallpaper}" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="Fant" Opacity="0.6"/>
                                 <!-- (AnimationEnabled: the art crossfades from game to game instead of cutting; the small wait lets a held stick settle) -->
                                 <FadeImage x:Name="PART_ImageBackground" Grid.RowSpan="5" Panel.ZIndex="-3" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" SourceUpdateDelay="150" AnimationEnabled="True" Stretch="UniformToFill"/>
@@ -122,6 +122,16 @@
                                 </Grid>
                                 <!-- the game at a glance: playtime, last played, where it's from (the store's own logo), its year -->
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,28,0,0">
+                                    <StackPanel.Style>
+                                        <Style TargetType="StackPanel">
+                                            <Style.Triggers>
+                                                <!-- no games in Collection: nothing to tell about, nothing to do with one -->
+                                                <DataTrigger Binding="{Binding Items.Count, ElementName=PART_ListGameItems}" Value="0">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </StackPanel.Style>
                                     <StackPanel Margin="0,0,26,0">
                                         <TextBlock Text="PLAYTIME" Foreground="{DynamicResource SeleneInk60Brush}" FontSize="12" FontWeight="SemiBold" FontFamily="Segoe UI"/>
                                         <TextBlock Text="{Binding SelectedGame.Playtime, Mode=OneWay, Converter={StaticResource PlayTimeToStringConverter}}" Foreground="{DynamicResource SeleneInkBrush}" FontSize="21" FontFamily="{DynamicResource FontMain}" FontWeight="SemiBold" Margin="0,2,0,0"/>
@@ -280,7 +290,34 @@
                                             </StackPanel>
                                         </StackPanel>
                                     </StackPanel>
+                                    <!-- no games in Collection: just B, back to Spotlight (the game hints beside it are hidden) -->
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <StackPanel.Style>
+                                            <Style TargetType="StackPanel">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Items.Count, ElementName=PART_ListGameItems}" Value="0">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </StackPanel.Style>
+                                        <StackPanel Style="{StaticResource HintItem}">
+                                            <Border Style="{StaticResource HintBadge}"><TextBlock Text="{DynamicResource SelenePromptB}" Style="{StaticResource HintKey}"/></Border>
+                                            <TextBlock Text="Back" Style="{StaticResource HintLabel}" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <StackPanel.Style>
+                                            <Style TargetType="StackPanel">
+                                                <Style.Triggers>
+                                                    <!-- no games in Collection: nothing to tell about, nothing to do with one -->
+                                                    <DataTrigger Binding="{Binding Items.Count, ElementName=PART_ListGameItems}" Value="0">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </StackPanel.Style>
                                         <StackPanel Style="{StaticResource HintItem}">
                                             <Border Style="{StaticResource HintBadge}"><TextBlock Text="{DynamicResource SelenePromptA}" Style="{StaticResource HintKey}"/></Border>
                                             <TextBlock Text="Play" Style="{StaticResource HintLabel}" VerticalAlignment="Center"/>
@@ -303,11 +340,11 @@
                                 </Border>
 
                                 <!-- the whole library: one row of big covers, close together -->
-                                <ListBoxEx x:Name="PART_ListGameItems" Grid.Row="2" Height="400" Margin="0,0,0,0" Background="Transparent" BorderThickness="0"
+                                <ListBoxEx x:Name="PART_ListGameItems" Grid.Row="2" Height="400" Margin="0,0,0,0" Background="Transparent" BorderThickness="0" FocusVisualStyle="{x:Null}"
                                            ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.CanContentScroll="True" VirtualizingPanel.ScrollUnit="Item"
                                            KeyboardNavigation.DirectionalNavigation="Once" />
-                                <!-- nothing to show: Selene's mark (drawn by Selene Core, slowly glowing) over Playnite's message -->
-                                <StackPanel Grid.Row="2" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <!-- nothing to show: Playnite's message in the middle of the screen (Selene Core sets its readable glow) -->
+                                <StackPanel x:Name="SeleneLibraryEmpty" Grid.Row="0" Grid.RowSpan="4" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,40">
                                     <StackPanel.Style>
                                         <Style TargetType="StackPanel">
                                             <Setter Property="Visibility" Value="Collapsed" />
@@ -318,8 +355,7 @@
                                             </Style.Triggers>
                                         </Style>
                                     </StackPanel.Style>
-                                    <Grid x:Name="SeleneEmptyMarkLibrary" Width="96" Height="96" Margin="0,0,0,20" HorizontalAlignment="Center" Visibility="Collapsed"/>
-                                    <TextBlock FontSize="34" Text="{DynamicResource LOCNoGamesFound}" TextAlignment="Center" Style="{StaticResource TextBlockBaseStyle}"/>
+                                    <TextBlock FontSize="34" Text="{DynamicResource LOCNoGamesFound}" TextAlignment="Center" Margin="48,26,48,28" Style="{StaticResource TextBlockBaseStyle}" Foreground="{DynamicResource SeleneInkBrush}" FontFamily="{StaticResource FontMain}"/>
                                 </StackPanel>
 
                                 <!-- Playnite's filter panels open over the left side -->
@@ -364,7 +400,7 @@
                                 <!-- selected game's art: Selene's hero art (media folder) over Playnite's background -->
                                 <Grid x:Name="SeleneHubGameBackground" IsHitTestVisible="False">
                                     <!-- fallback for when no game is selected (empty library): the theme's gradient and the profile's wallpaper -->
-                                    <Border Background="{DynamicResource MainBackgourndBrush}"/>
+                                    <Border Background="{DynamicResource SeleneBaseBrush}"/>
                                     <Image Source="{DynamicResource SeleneWallpaper}" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="Fant"/>
                                     <!-- the game's art; the wallpaper shows where there is none (or always, for a profile that wants that) -->
                                     <Grid x:Name="SeleneHubArt" Opacity="{DynamicResource SeleneArtOpacity}">
@@ -409,11 +445,12 @@
                                         </Border.OpacityMask>
                                     </Border>
                                     <!-- behind the top bar, only over bright pictures (Selene Core deepens these three shades as the picture needs) -->
-                                    <Border x:Name="SeleneHubShadeTop" Background="{DynamicResource SeleneScrimBrush}" Opacity="0">
+                                    <Border x:Name="SeleneHubShadeTop" Background="{DynamicResource SeleneScrimBrush}" Opacity="0.3">
                                         <Border.OpacityMask>
                                             <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                                <GradientStop Color="#D0000000" Offset="0"/>
-                                                <GradientStop Color="#00000000" Offset="0.2"/>
+                                                <GradientStop Color="#E6000000" Offset="0"/>
+                                                <GradientStop Color="#70000000" Offset="0.1"/>
+                                                <GradientStop Color="#00000000" Offset="0.26"/>
                                             </LinearGradientBrush>
                                         </Border.OpacityMask>
                                     </Border>
@@ -482,7 +519,8 @@
                                                                             </Border>
                                                                             <!-- Selene Core plays the selected tile's trailer here -->
                                                                             <Grid x:Name="TileVideoHost" IsHitTestVisible="False"/>
-                                                                            <Border x:Name="Shine" CornerRadius="12" Opacity="0" IsHitTestVisible="False" Background="{DynamicResource SeleneFocusBrush}">
+                                                                            <!-- the glint sweeping over the focused tile: always light (in the focus color it was invisible in themes with a dark or colored focus) -->
+                                                                            <Border x:Name="Shine" CornerRadius="12" Opacity="0" IsHitTestVisible="False" Background="White">
                                                                                 <Border.OpacityMask>
                                                                                     <LinearGradientBrush StartPoint="0,0" EndPoint="1,0.6">
                                                                                         <LinearGradientBrush.RelativeTransform><TranslateTransform x:Name="ShineShift" X="-1.5"/></LinearGradientBrush.RelativeTransform>
@@ -687,10 +725,10 @@
                                                 </TextBlock>
                                             </Canvas>
                                             <!-- the tab has no games: what it is and how it fills up (Selene Core sets the text and shows it) -->
-                                            <StackPanel x:Name="SeleneRowEmpty" Orientation="Horizontal" Margin="440,46,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed" IsHitTestVisible="False">
+                                            <StackPanel x:Name="SeleneRowEmpty" Orientation="Horizontal" Margin="560,46,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed" IsHitTestVisible="False">
                                                 <StackPanel>
                                                     <TextBlock x:Name="SeleneRowEmptyTitle" Foreground="{DynamicResource SeleneInkBrush}" FontSize="30" FontFamily="{DynamicResource FontMain}" FontWeight="SemiBold"/>
-                                                    <TextBlock x:Name="SeleneRowEmptyHint" Foreground="{DynamicResource SeleneInk60Brush}" FontSize="19" FontFamily="{DynamicResource FontMain}" Margin="0,8,0,0" MaxWidth="760" TextWrapping="Wrap"/>
+                                                    <TextBlock x:Name="SeleneRowEmptyHint" Foreground="{DynamicResource SeleneInk60Brush}" FontSize="19" FontFamily="{DynamicResource FontMain}" Margin="0,8,0,0" MaxWidth="520" TextWrapping="Wrap"/>
                                                 </StackPanel>
                                             </StackPanel>
                                         </Grid>
@@ -1176,6 +1214,32 @@
                             <!-- ================= LOGIN ================= -->
                             <Grid x:Name="AcceuilSettings" Background="{DynamicResource SeleneScrimBrush}">
                                 <Grid x:Name="LoginCenterShell"/>
+                                <!-- Selene Core builds the login into LoginCenterShell and takes this layer down. Without Core (not
+                                     installed, disabled) the layer would stay dark for ever, so this note fades in after a few seconds;
+                                     Core collapses it as it starts. -->
+                                <StackPanel x:Name="SeleneCoreNotice" Opacity="0" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="980" Margin="40">
+                                    <StackPanel.Triggers>
+                                        <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+                                            <BeginStoryboard>
+                                                <Storyboard>
+                                                    <DoubleAnimation Storyboard.TargetProperty="Opacity" To="1" BeginTime="0:0:8" Duration="0:0:0.6">
+                                                        <DoubleAnimation.EasingFunction>
+                                                            <CubicEase EasingMode="EaseOut"/>
+                                                        </DoubleAnimation.EasingFunction>
+                                                    </DoubleAnimation>
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </EventTrigger>
+                                    </StackPanel.Triggers>
+                                    <TextBlock Text="Selene Core isn't running" FontFamily="{StaticResource FontMain}" FontSize="42" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource SeleneInkBrush}" TextAlignment="Center" TextWrapping="Wrap"/>
+                                    <TextBlock FontFamily="{StaticResource FontMain}" FontSize="23" Foreground="{DynamicResource SeleneInkBrush}" Opacity="0.85"
+                                               TextAlignment="Center" TextWrapping="Wrap" Margin="0,22,0,0" LineHeight="34"
+                                               Text="Selene is this theme plus its add-on, Selene Core. Install SeleneCore.pext from github.com/mattxslv/Selene/releases (open the file, or drag it onto Playnite's window), then restart Playnite. If it is installed already, make sure it is enabled under Add-ons."/>
+                                    <TextBlock FontFamily="{StaticResource FontMain}" FontSize="19" Foreground="{DynamicResource SeleneInkBrush}" Opacity="0.6"
+                                               TextAlignment="Center" TextWrapping="Wrap" Margin="0,22,0,0"
+                                               Text="Playnite's menu still opens from here (the Start / Menu button on a controller) to pick another theme meanwhile."/>
+                                </StackPanel>
                             </Grid>
                         </Grid>
 

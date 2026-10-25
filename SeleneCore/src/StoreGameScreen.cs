@@ -67,7 +67,7 @@ namespace Selene
             peekBlur.BeginAnimation(System.Windows.Media.Effects.BlurEffect.RadiusProperty, new DoubleAnimation(on ? 5 : 0, ms));
         }
 
-        private readonly Func<Screen> back;   // where B goes: the game page this one was opened from (its "More from" row), else the Store
+        private readonly Func<Screen> back;   // where B goes: the Store (also from a game opened in another's "More from" row)
 
         public StoreGameScreen(StoreItem item, Func<Screen> back = null, int startZone = 0, int startMore = 0)
         {
@@ -323,7 +323,7 @@ namespace Selene
             if (dot != null && dot.Children.Count >= 2)
             {
                 ((System.Windows.Shapes.Ellipse)dot.Children[0]).Fill = on ? Ink.Brush("SeleneOnFocusColor") : Ink.Brush("SeleneInkColor", 0.9);
-                ((TextBlock)dot.Children[1]).Foreground = on ? Ink.Brush("SeleneFocusColor") : Ink.Brush("SeleneScrimColor");
+                Ui.LetterBrush(dot.Children[1], on ? Ink.Brush("SeleneFocusColor") : Ink.Brush("SeleneScrimColor"));
             }
             ((TextBlock)row.Children[1]).Foreground = on ? Ink.Brush("SeleneOnFocusColor") : Ink.Brush("SeleneInkColor");
             Ui.ScaleTo(p, on ? 1.06 : 1, 160);
@@ -497,9 +497,8 @@ namespace Selene
                     if (zone == 1)
                     {
                         Ui.Confirm();
-                        // B on that game comes back here, on this one in the row
-                        var me = item; var myBack = back; int at = moreIndex;
-                        LoginScene.Show(new StoreGameScreen(more[moreIndex], () => new StoreGameScreen(me, myBack, 1, at)), 0);
+                        // B on that game goes where B goes from here (the Store), not back to this game
+                        LoginScene.Show(new StoreGameScreen(more[moreIndex], back), 0);
                         return;
                     }
                     // a screenshot: big, on the whole screen (buying is the button's, up top)

@@ -48,12 +48,14 @@ namespace Selene
         private readonly DispatcherTimer hideControls = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
         private readonly DispatcherTimer playerClock = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
         private MediaElement video;
-        private WebTrailer clip;   // the browser playing a clip Playnite's own player couldn't (AV1, VP9)
+        private WebTrailer clip;
+        private ClipAudio clipSound;   // its sound, played alongside (the browser can't decode a clip's AAC sound)   // the browser playing a clip Playnite's own player couldn't (AV1, VP9)
         private int index, firstRow;
         private bool viewing, closed, paused, controlsShown;
         private double clipAt, clipLength;
         private readonly string openPath;   // opened from the card's pictures: straight to this one
         private readonly Image hero = new Image { Stretch = Stretch.UniformToFill, Opacity = 0, IsHitTestVisible = false };
+        private readonly Image heroBack = new Image { Stretch = Stretch.UniformToFill, Opacity = 0, IsHitTestVisible = false };
         private readonly DispatcherTimer heroLater = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(260) };
         private string heroShown;
 
@@ -66,9 +68,16 @@ namespace Selene
             Root.Children.Add(dark);
             // the focused capture's picture, soft and faint, behind everything; a vignette keeps the edges dark
             RenderOptions.SetBitmapScalingMode(hero, BitmapScalingMode.LowQuality);
-            hero.Effect = new System.Windows.Media.Effects.BlurEffect { Radius = 40, RenderingBias = System.Windows.Media.Effects.RenderingBias.Performance };
-            Panel.SetZIndex(hero, -6);
-            Root.Children.Add(hero);
+            // two layers: the new picture fades in over the old one (a crossfade; it went to black and back), each blurred once
+            // into a half-size cache, so a fade doesn't redraw the blur every frame
+            foreach (var layer in new[] { heroBack, hero })
+            {
+                RenderOptions.SetBitmapScalingMode(layer, BitmapScalingMode.LowQuality);
+                layer.Effect = new System.Windows.Media.Effects.BlurEffect { Radius = 40, RenderingBias = System.Windows.Media.Effects.RenderingBias.Performance };
+                layer.CacheMode = new BitmapCache(0.5);
+                Panel.SetZIndex(layer, -6);
+                Root.Children.Add(layer);
+            }
             var vignette = new Border { IsHitTestVisible = false, Background = new RadialGradientBrush(new GradientStopCollection { Ink.Stop("SeleneScrimColor", 0.35, 0), Ink.Stop("SeleneScrimColor", 0.6, 0.6), Ink.Stop("SeleneScrimColor", 0.92, 1) }) { RadiusX = 0.78, RadiusY = 0.85 } };
             Panel.SetZIndex(vignette, -5);
             Root.Children.Add(vignette);
@@ -76,14 +85,14 @@ namespace Selene
 
             // all / screenshots / clips: pills up top (LB / RB)
             var tabBar = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 36, 0, 0) };
-            tabBar.Children.Add(Ui.Prompt("LB", ""));
+            tabBar.Children.Add(HomeNav.FilterBadge("LB"));   // the same badges as Spotlight's and Collection's tabs
             foreach (var f in Filters)
             {
                 var pill = new Border { CornerRadius = new CornerRadius(18), Padding = new Thickness(18, 6, 18, 8), Margin = new Thickness(6, 0, 6, 0), Child = new TextBlock { Text = f, FontSize = 19, FontFamily = Ui.Body } };
                 tabs.Add(pill);
                 tabBar.Children.Add(pill);
             }
-            tabBar.Children.Add(Ui.Prompt("RB", ""));
+            tabBar.Children.Add(HomeNav.FilterBadge("RB"));
             Root.Children.Add(tabBar);
             ShowTabs();
 
@@ -118,31 +127,52 @@ namespace Selene
             viewer.Children.Add(picture);
             var shade = new Border { IsHitTestVisible = false, VerticalAlignment = VerticalAlignment.Bottom, Height = 300, Background = new LinearGradientBrush(new GradientStopCollection { new GradientStop(Color.FromArgb(0, 0, 0, 0), 0), new GradientStop(Color.FromArgb(0xB8, 0, 0, 0), 1) }, 90) };
             controls.Children.Add(shade);
-            var words = new StackPanel { HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(Side, 0, 0, 132) };
+            var words = new StackPanel { HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(Side, 0, 0, 150) };
             viewerName = new TextBlock { FontSize = 30, FontWeight = FontWeights.SemiBold, FontFamily = Ui.Display, Foreground = Brushes.White, MaxWidth = 1200, TextTrimming = TextTrimming.CharacterEllipsis };
             viewerDate = new TextBlock { FontSize = 17, FontFamily = Ui.Body, Foreground = new SolidColorBrush(Color.FromArgb(0xB3, 0xFF, 0xFF, 0xFF)), Margin = new Thickness(1, 4, 0, 0) };
             words.Children.Add(viewerName);
             words.Children.Add(viewerDate);
             controls.Children.Add(words);
             // the bar: where the clip is, with the time at its right end
-            progressTrack = new Border { Height = 6, CornerRadius = new CornerRadius(3), Background = new SolidColorBrush(Color.FromArgb(0x59, 0xFF, 0xFF, 0xFF)), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(Side, 0, 0, 104), Width = 1920 - 2 * Side - 150 };
+            progressTrack = new Border { Height = 6, CornerRadius = new CornerRadius(3), Background = new SolidColorBrush(Color.FromArgb(0x59, 0xFF, 0xFF, 0xFF)), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(Side, 0, 0, BarBottom), Width = 1920 - 2 * Side - 150 };
             progress.Background = Ink.Brush("SeleneFocusColor");
             progressTrack.Child = progress;
             controls.Children.Add(progressTrack);
-            timeText = new TextBlock { FontSize = 17, FontFamily = Ui.Body, Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, Side, 96) };
+            timeText = new TextBlock { FontSize = 17, FontFamily = Ui.Body, Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, Side, BarBottom - 8) };
             controls.Children.Add(timeText);
-            clipHints = Ui.Prompts(true, Ui.Prompt("LB RB", "Previous / next"), Ui.Prompt("\u25C0 \u25B6", "10 seconds"), Ui.Prompt("A", "Pause"));
+            // while holding Left / Right: the time being gone to, over the bar under the preview
+            scrubTime = new TextBlock { FontSize = 17, FontWeight = FontWeights.SemiBold, FontFamily = Ui.Body, Foreground = Brushes.White, Width = 90, TextAlignment = TextAlignment.Center, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom, Visibility = Visibility.Collapsed };
+            controls.Children.Add(scrubTime);
+            jumpHint = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom, Visibility = Visibility.Collapsed };
+            jumpHint.Children.Add(new Border
+            {
+                MinWidth = 24, Height = 24, CornerRadius = new CornerRadius(12), Padding = new Thickness(6, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center,
+                Background = new SolidColorBrush(Color.FromArgb(0xE6, 0xFF, 0xFF, 0xFF)), Child = Ui.Letter(Ui.PromptLabel("Y"), 12, FontWeights.Bold, new SolidColorBrush(Color.FromArgb(0xFF, 0x1A, 0x1A, 0x1A)))
+            });
+            jumpHint.Children.Add(new TextBlock { Text = "Jump here", FontSize = 16, FontFamily = Ui.Body, Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 1) });
+            controls.Children.Add(jumpHint);
+            clipHints = PlayerButtons();
             imageHints = Ui.Prompts(true, Ui.Prompt("\u25C0 \u25B6", "Previous / next"));
             controls.Children.Add(clipHints);
             controls.Children.Add(imageHints);
             controls.Children.Add(Ui.Prompts(false, Ui.Prompt("B", "Back")));
             viewer.Children.Add(controls);
+            // paused: a big see-through pause sign in the middle (pops in on pause, gone at once on play)
+            pauseBadge = new Border
+            {
+                Width = 132, Height = 132, CornerRadius = new CornerRadius(66), Background = new SolidColorBrush(Color.FromArgb(0x8C, 0, 0, 0)),
+                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false,
+                Visibility = Visibility.Collapsed, RenderTransformOrigin = new Point(0.5, 0.5),
+                Child = new TextBlock { Text = Ui.Icon(0xE034 /* pause */), FontFamily = Ui.Icons, FontSize = 72, Foreground = new SolidColorBrush(Color.FromArgb(0xEE, 0xFF, 0xFF, 0xFF)), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center }
+            };
+            viewer.Children.Add(pauseBadge);
+            viewer.Children.Add(VolumePanel());
             Panel.SetZIndex(viewer, 20);
             Root.Children.Add(viewer);
-            hideControls.Tick += (s, e) => { hideControls.Stop(); if (!paused) ShowControls(false); };
+            hideControls.Tick += (s, e) => { hideControls.Stop(); if (!paused && !pending && !scrubbing) ShowControls(false); };   // (kept while a spot waits)
             playerClock.Tick += (s, e) => PollPlayer();
 
-            Root.Children.Add(Ui.Prompts(false, Ui.Prompt("B", "Back"), Ui.Prompt("LB RB", "Filter")));
+            Root.Children.Add(Ui.Prompts(false, Ui.Prompt("B", "Back")));   // (the tabs show LB / RB themselves)
             Root.Children.Add(Ui.Prompts(true, Ui.Prompt("A", "Open")));
         }
 
@@ -156,7 +186,7 @@ namespace Selene
             });
         }
 
-        public override void Hidden() { closed = true; StopVideo(); hideControls.Stop(); playerClock.Stop(); heroLater.Stop(); }
+        public override void Hidden() { closed = true; if (releaseHooked) Ui.ButtonReleased -= OnReleased; HomeNav.ClipPlaying(false); StopVideo(); hideControls.Stop(); playerClock.Stop(); heroLater.Stop(); }
 
         // ---- the words, bar and hints over the viewer ----
         private void ShowControls(bool on)
@@ -174,10 +204,282 @@ namespace Selene
             return t.TotalHours >= 1 ? string.Format("{0}:{1:00}:{2:00}", (int)t.TotalHours, t.Minutes, t.Seconds) : string.Format("{0}:{1:00}", t.Minutes, t.Seconds);
         }
 
+        // ---- a clip's player: its buttons (icons with the controller button under each), volume, holding to scrub ----
+        private const double BarBottom = 122;
+        private static double clipVolume = Features.Number("clipvolume") / 100.0;   // the Clip volume setting (Up / Down change it too)
+        public static void ClipVolumeChanged() { clipVolume = Features.Number("clipvolume") / 100.0; }
+        private TextBlock playGlyph, scrubTime, volumeGlyph;
+        private StackPanel jumpHint;
+        private Border volumePanel, volumeFill;
+        private readonly DispatcherTimer volumeHide = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1600) };
+
+        private StackPanel PlayerButtons()
+        {
+            var row = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 22) };
+            row.Children.Add(PlayerButton(0xE045 /* skip_previous */, Ui.PromptLabel("LB"), 26));
+            row.Children.Add(PlayerButton(0xE059 /* replay_10 */, "\u25C0", 30));
+            var play = PlayerButton(0xE034 /* pause */, Ui.PromptLabel("A"), 36);
+            playGlyph = (TextBlock)((Border)play.Children[0]).Child;
+            ((Border)play.Children[0]).Width = ((Border)play.Children[0]).Height = 66;
+            ((Border)play.Children[0]).CornerRadius = new CornerRadius(33);
+            row.Children.Add(play);
+            row.Children.Add(PlayerButton(0xE056 /* forward_10 */, "\u25B6", 30));
+            row.Children.Add(PlayerButton(0xE050 /* volume_up */, "\u25B2\u25BC", 28));
+            row.Children.Add(PlayerButton(0xE044 /* skip_next */, Ui.PromptLabel("RB"), 26));
+            return row;
+        }
+
+        private static StackPanel PlayerButton(int glyph, string button, double size)
+        {
+            var item = new StackPanel { Margin = new Thickness(14, 0, 14, 0), VerticalAlignment = VerticalAlignment.Bottom };
+            item.Children.Add(new Border
+            {
+                Width = 54, Height = 54, CornerRadius = new CornerRadius(27), HorizontalAlignment = HorizontalAlignment.Center,
+                Background = new SolidColorBrush(Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF)), BorderBrush = new SolidColorBrush(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF)), BorderThickness = new Thickness(1),
+                Child = new TextBlock { Text = Ui.Icon(glyph), FontFamily = Ui.Icons, FontSize = size, Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center }
+            });
+            item.Children.Add(new Border
+            {
+                MinWidth = 26, Height = 22, CornerRadius = new CornerRadius(11), Padding = new Thickness(7, 0, 7, 0), Margin = new Thickness(0, 7, 0, 0), HorizontalAlignment = HorizontalAlignment.Center,
+                Background = new SolidColorBrush(Color.FromArgb(0xE6, 0xFF, 0xFF, 0xFF)),
+                Child = Ui.Letter(button, 11, FontWeights.Bold, new SolidColorBrush(Color.FromArgb(0xFF, 0x1A, 0x1A, 0x1A)))
+            });
+            return item;
+        }
+
+        // Up / Down: the clip's volume, shown on a slim upright bar at the right for a moment
+        private FrameworkElement VolumePanel()
+        {
+            volumeFill = new Border { CornerRadius = new CornerRadius(4), Background = Brushes.White, VerticalAlignment = VerticalAlignment.Bottom };
+            var track = new Border { Width = 8, Height = 220, CornerRadius = new CornerRadius(4), Background = new SolidColorBrush(Color.FromArgb(0x4D, 0xFF, 0xFF, 0xFF)), Child = volumeFill, Margin = new Thickness(0, 14, 0, 0), HorizontalAlignment = HorizontalAlignment.Center };
+            volumeGlyph = new TextBlock { FontFamily = Ui.Icons, FontSize = 30, Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Center };
+            var stack = new StackPanel();
+            stack.Children.Add(volumeGlyph);
+            stack.Children.Add(track);
+            volumePanel = new Border
+            {
+                Child = stack, Padding = new Thickness(16, 18, 16, 20), CornerRadius = new CornerRadius(20), Background = new SolidColorBrush(Color.FromArgb(0x8C, 0, 0, 0)),
+                HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 70, 0), Opacity = 0, IsHitTestVisible = false
+            };
+            volumeHide.Tick += (s, e) => { volumeHide.Stop(); Ui.Fade(volumePanel, 0, 300); };
+            return volumePanel;
+        }
+
+        private void ChangeVolume(int dir)
+        {
+            clipVolume = Math.Max(0, Math.Min(1, Math.Round((clipVolume + 0.1 * dir) * 10) / 10));
+            Features.SetValue("clipvolume", ((int)Math.Round(clipVolume * 100)).ToString());
+            if (clipSound != null) clipSound.Volume = clipVolume;
+            if (video != null) try { video.Volume = clipVolume; } catch { }
+            volumeFill.Height = 220 * clipVolume;
+            volumeGlyph.Text = Ui.Icon(clipVolume <= 0 ? 0xE04F /* volume_off */ : clipVolume < 0.5 ? 0xE04D /* volume_down */ : 0xE050 /* volume_up */);
+            Ui.Fade(volumePanel, 1, 120);
+            volumeHide.Stop();
+            volumeHide.Start();
+        }
+
+        // Left / Right: a tap jumps 10 s; held, the position glides (faster the longer it's held) with the frame there shown
+        // above the bar, and letting go jumps to it
+        private DateTime lastSeekPress = DateTime.MinValue, scrubStarted, scrubLastTick;
+        private int lastSeekDir;
+        private bool scrubbing;
+        private double scrubPos;
+        private DispatcherTimer scrubClock;
+
+        // with the controller, Selene sees the button let go: a short press is a tap (10 s), still down after a moment it's a
+        // hold and the glide starts there (Playnite only repeats a held button after 700 ms: the first press counted as a tap)
+        private bool padHeld, releaseHooked;
+        private int padDir;
+        private DispatcherTimer holdWait;
+
+        private void PadSeekPress(int dir)
+        {
+            if (!releaseHooked) { releaseHooked = true; Ui.ButtonReleased += OnReleased; }
+            if (padHeld) return;   // Playnite's repeats of the held button
+            padHeld = true;
+            padDir = dir;
+            if (holdWait == null)
+            {
+                holdWait = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(260) };
+                holdWait.Tick += (s, e) =>
+                {
+                    holdWait.Stop();
+                    if (!padHeld || closed || !viewing) return;
+                    lastSeekDir = padDir;
+                    scrubbing = true;
+                    if (pendingWait != null) pendingWait.Stop();
+                    scrubPos = ScrubClamp(pending ? scrubPos : clipAt);
+                    pending = false;
+                    scrubStarted = scrubLastTick = DateTime.Now;
+                    StartScrubClock();
+                };
+            }
+            holdWait.Stop();
+            holdWait.Start();
+        }
+
+        private void OnReleased(string button)
+        {
+            if (closed || (button != "DPadLeft" && button != "DPadRight") || !padHeld) return;
+            padHeld = false;
+            if (scrubbing) { WaitAtSpot(); return; }
+            if (holdWait != null && holdWait.IsEnabled)
+            {
+                holdWait.Stop();
+                Ui.Tick();
+                if (pending) { scrubPos = ScrubClamp(scrubPos + padDir * 10); ShowScrub(scrubPos); WaitAtSpot(); }   // a tap moves the waiting spot
+                else Seek(padDir * 10);
+            }
+        }
+
+        // the glide let go: the spot stays shown, with "Y Jump here"; it's gone to after 5 s, or at once on Y; held again, the
+        // glide goes on from it; B leaves it
+        private bool pending;
+        private DispatcherTimer pendingWait;
+
+        private void WaitAtSpot()
+        {
+            scrubbing = false;
+            if (scrubClock != null) scrubClock.Stop();
+            pending = true;
+            ShowScrub(scrubPos);
+            if (pendingWait == null)
+            {
+                pendingWait = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+                pendingWait.Tick += (s, e) => { pendingWait.Stop(); if (pending) JumpToSpot(); };
+            }
+            pendingWait.Stop();
+            pendingWait.Start();
+        }
+
+        private void JumpToSpot()
+        {
+            if (!pending) return;
+            pending = false;
+            if (pendingWait != null) pendingWait.Stop();
+            HideScrub();
+            SeekTo(scrubPos);
+        }
+
+        private void LeaveSpot()
+        {
+            pending = false;
+            if (pendingWait != null) pendingWait.Stop();
+            HideScrub();
+            ShowProgress(clipAt, clipLength, paused);
+        }
+
+        private void HideScrub()
+        {
+            scrubTime.Visibility = Visibility.Collapsed;
+            jumpHint.Visibility = Visibility.Collapsed;
+            if (clip != null) clip.HidePreview();
+        }
+
+        private void StartScrubClock()
+        {
+            if (scrubClock == null)
+            {
+                scrubClock = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(16) };
+                scrubClock.Tick += (s, e) => ScrubStep();
+            }
+            scrubClock.Start();
+            Ui.Tick();
+        }
+
+        // the keyboard: no "let go" to hear, so a held key is told by its repeats
+        private void SeekPress(int dir)
+        {
+            if (Ui.PressFromPad) { PadSeekPress(dir); return; }
+            var now = DateTime.Now;
+            bool repeat = dir == lastSeekDir && (now - lastSeekPress).TotalMilliseconds < 600;   // (a held button repeats after a short wait)
+            lastSeekPress = now;
+            lastSeekDir = dir;
+            if (!repeat && !scrubbing) { Ui.Tick(); Seek(dir * 10); return; }
+            if (scrubbing) return;
+            scrubbing = true;
+            scrubPos = ScrubClamp(clipAt + dir * 10);
+            scrubStarted = scrubLastTick = now;
+            StartScrubClock();
+        }
+
+        private double ScrubClamp(double t) { return Math.Max(0, Math.Min(Math.Max(0, clipLength - 0.5), t)); }
+
+        private void ScrubStep()
+        {
+            var now = DateTime.Now;
+            double dt = (now - scrubLastTick).TotalSeconds;
+            scrubLastTick = now;
+            if (!padHeld && (now - lastSeekPress).TotalMilliseconds > 330) { EndScrub(true); return; }   // (keyboard) let go
+            double held = (now - scrubStarted).TotalSeconds;
+            double speed = Math.Max(8, clipLength / 25) * (1 + held);   // seconds of clip per second held
+            scrubPos = ScrubClamp(scrubPos + lastSeekDir * speed * dt);
+            ShowScrub(scrubPos);
+        }
+
+        private void ShowScrub(double t)
+        {
+            double w = Math.Max(0, progressTrack.Width);
+            double frac = clipLength > 0 ? t / clipLength : 0;
+            progress.Width = Math.Max(0, Math.Min(w, w * frac));
+            timeText.Text = Clock(t) + (clipLength > 0 ? " / " + Clock(clipLength) : "");
+            double x = Side + w * frac;
+            scrubTime.Text = Clock(t);
+            scrubTime.Margin = new Thickness(x - 45, 0, 0, BarBottom + 14);
+            scrubTime.Visibility = Visibility.Visible;
+            jumpHint.Margin = new Thickness(x + 52, 0, 0, BarBottom + 12);
+            jumpHint.Visibility = pending ? Visibility.Visible : Visibility.Collapsed;
+            if (clip != null)
+            {
+                double h = viewer.ActualHeight > 0 ? viewer.ActualHeight : 1080, vw = viewer.ActualWidth > 0 ? viewer.ActualWidth : 1920;
+                clip.Preview(t, x / vw, (h - BarBottom - 6 - 40) / h);   // its bottom just over the time above the bar
+            }
+            ShowControls(true);
+        }
+
+        private void EndScrub(bool jump)
+        {
+            if (pending && !jump) { LeaveSpot(); return; }
+            if (!scrubbing) return;
+            scrubbing = false;
+            if (scrubClock != null) scrubClock.Stop();
+            HideScrub();
+            if (jump) SeekTo(scrubPos);
+        }
+
+        private void SeekTo(double at)
+        {
+            clipAt = at;
+            if (clip != null) { clip.SeekTo(at); return; }
+            var me = video;
+            if (me == null) return;
+            try { me.Position = TimeSpan.FromSeconds(at); ShowProgress(at, clipLength, paused); } catch { }
+        }
+
+        private Border pauseBadge;
+        private DateTime pressDecides = DateTime.MinValue;
+
+        private void PausedLook(bool on)
+        {
+            if (playGlyph != null) playGlyph.Text = Ui.Icon(on ? 0xE037 /* play_arrow */ : 0xE034 /* pause */);
+            if (pauseBadge == null) return;
+            if (!on) { pauseBadge.BeginAnimation(UIElement.OpacityProperty, null); pauseBadge.Visibility = Visibility.Collapsed; return; }   // play: gone at once
+            if (pauseBadge.Visibility == Visibility.Visible) return;
+            pauseBadge.Visibility = Visibility.Visible;
+            pauseBadge.Opacity = 0;
+            pauseBadge.BeginAnimation(UIElement.OpacityProperty, Ui.Fast(new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(90)) { EasingFunction = Ui.Out() }));
+            var pop = new ScaleTransform(0.94, 0.94);
+            pauseBadge.RenderTransform = pop;
+            pop.BeginAnimation(ScaleTransform.ScaleXProperty, Ui.Fast(new DoubleAnimation(0.94, 1, TimeSpan.FromMilliseconds(110)) { EasingFunction = Ui.Out() }));
+            pop.BeginAnimation(ScaleTransform.ScaleYProperty, Ui.Fast(new DoubleAnimation(0.94, 1, TimeSpan.FromMilliseconds(110)) { EasingFunction = Ui.Out() }));
+        }
+
         private void ShowProgress(double at, double length, bool isPaused)
         {
             clipAt = at; clipLength = length;
-            if (paused != isPaused) { paused = isPaused; ShowControls(true); }
+            // (just after a press the player's report can be from before it: the press decides for a moment)
+            if (paused != isPaused && DateTime.Now > pressDecides) { paused = isPaused; ShowControls(true); PausedLook(paused); }
+            if (scrubbing || pending) return;
             double w = Math.Max(0, progressTrack.Width);
             progress.Width = length > 0 ? Math.Max(0, Math.Min(w, w * at / length)) : 0;
             timeText.Text = Clock(at) + (length > 0 ? " / " + Clock(length) : "");
@@ -193,11 +495,22 @@ namespace Selene
 
         private void TogglePause()
         {
-            if (clip != null) { clip.TogglePause(); return; }
+            if (clip != null)
+            {
+                // the sign follows the press at once (it waited for the player's next report, half a second away)
+                clip.TogglePause();
+                if (clipSound != null) clipSound.Toggle();
+                paused = !paused;
+                pressDecides = DateTime.Now.AddMilliseconds(700);
+                PausedLook(paused);
+                ShowControls(true);
+                return;
+            }
             var me = video;
             if (me == null) return;
             try { if (paused) me.Play(); else me.Pause(); } catch { }
             paused = !paused;
+            PausedLook(paused);
             ShowControls(true);
         }
 
@@ -314,13 +627,19 @@ namespace Selene
             var path = c.IsVideo ? Thumbnails.Cached(c.Path) : c.Path;
             if (path == heroShown) return;
             heroShown = path;
-            if (path == null) { Ui.Fade(hero, 0, 300); return; }
+            if (path == null) { Ui.Fade(hero, 0, 300); Ui.Fade(heroBack, 0, 300); return; }
             Ui.LoadInOrder(new List<string> { path }, 480, (k, pic) =>
             {
                 if (closed || path != heroShown) return;
+                // the picture showing now stays underneath while the new one fades in over it
+                heroBack.BeginAnimation(UIElement.OpacityProperty, null);
+                heroBack.Source = hero.Source;
+                heroBack.Opacity = hero.Source != null ? hero.Opacity : 0;
+                hero.BeginAnimation(UIElement.OpacityProperty, null);
                 hero.Source = pic;
                 hero.Opacity = 0;
-                Ui.Fade(hero, 0.55, 600);
+                Ui.Fade(hero, 0.55, 420);
+                Ui.Fade(heroBack, 0, 520, 200);
             });
         }
 
@@ -334,7 +653,7 @@ namespace Selene
             int first = Math.Max(0, Math.Min(row - 1, rows - Visible));
             if (first == firstRow && animate) return;
             firstRow = first;
-            pageShift.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(-first * PitchY, TimeSpan.FromMilliseconds(animate ? 260 : 0)) { EasingFunction = Ui.Out() });
+            pageShift.BeginAnimation(TranslateTransform.YProperty, Ui.Fast(new DoubleAnimation(-first * PitchY, TimeSpan.FromMilliseconds(animate ? 260 : 0)) { EasingFunction = Ui.Out() }));   // at the screen's rate (WPF's default is 60)
         }
 
         // ---- the viewer ----
@@ -348,11 +667,13 @@ namespace Selene
             viewerName.Text = c.Game;
             viewerDate.Text = c.When.ToString("MMMM d, yyyy  ·  HH:mm");
             paused = false;
+            PausedLook(false);
             clipAt = 0; clipLength = 0;
             progress.Width = 0;
             timeText.Text = "";
             progressTrack.Visibility = timeText.Visibility = clipHints.Visibility = c.IsVideo ? Visibility.Visible : Visibility.Collapsed;
             imageHints.Visibility = c.IsVideo ? Visibility.Collapsed : Visibility.Visible;
+            HomeNav.ClipPlaying(c.IsVideo);   // the music waits while a clip plays
             ShowControls(true);
             if (c.IsVideo)
             {
@@ -365,7 +686,7 @@ namespace Selene
                 }
                 // Playnite's own player first (H.264 from Xbox Game Bar); a clip it can't decode (AV1 from the NVIDIA app) goes to
                 // the browser Playnite ships with, as the Store trailers do
-                var me = new MediaElement { Source = new Uri(c.Path), LoadedBehavior = MediaState.Manual, UnloadedBehavior = MediaState.Close, Stretch = Stretch.Uniform, Volume = 0.8 };
+                var me = new MediaElement { Source = new Uri(c.Path), LoadedBehavior = MediaState.Manual, UnloadedBehavior = MediaState.Close, Stretch = Stretch.Uniform, Volume = clipVolume };
                 video = me;
                 me.MediaEnded += (s, e) => { try { me.Position = TimeSpan.Zero; me.Play(); } catch { } };
                 me.MediaFailed += (s, e) =>
@@ -376,7 +697,8 @@ namespace Selene
                     var path = c.Path;
                     clip = WebTrailer.CreateFile(path, null);
                     if (clip == null) { viewerDate.Text = "This clip can't be played here."; return; }
-                    clip.Progress = (at, length, isPaused) => { if (viewing && clip != null) ShowProgress(at, length, isPaused); };
+                    clipSound = ClipAudio.For(path, clipVolume);
+                    clip.Progress = (at, length, isPaused) => { if (viewing && clip != null) { ShowProgress(at, length, isPaused); if (clipSound != null) clipSound.Sync(at, isPaused); } };
                     viewer.Children.Insert(1, clip.View);
                 };
                 viewer.Children.Insert(1, me);
@@ -399,6 +721,7 @@ namespace Selene
         private void CloseViewer()
         {
             viewing = false;
+            HomeNav.ClipPlaying(false);   // the music comes back
             StopVideo();
             Ui.Fade(viewer, 0, 200, 0, () => { viewer.Visibility = Visibility.Collapsed; picture.Source = null; });
             ShowFocus(true);
@@ -407,7 +730,9 @@ namespace Selene
         private void StopVideo()
         {
             playerClock.Stop();
+            EndScrub(false);
             if (clip != null) { clip.Stop(); clip = null; }
+            if (clipSound != null) { clipSound.Stop(); clipSound = null; }
             if (video == null) return;
             try { video.Stop(); video.Close(); } catch { }
             viewer.Children.Remove(video);
@@ -418,12 +743,15 @@ namespace Selene
         {
             if (viewing)
             {
+                if (b == "B" && pending) { Ui.Back(); LeaveSpot(); return; }
+                if (b == "Y" && pending) { Ui.Confirm(); JumpToSpot(); return; }
                 if (b == "B") { Ui.Back(); CloseViewer(); return; }
                 bool isClip = index < items.Count && items[index].IsVideo;
                 if (!controlsShown) ShowControls(true); else hideControls.Stop();
                 hideControls.Start();
                 if (b == "A" && isClip) { Ui.Tick(); TogglePause(); return; }
-                if ((b == "DPadLeft" || b == "DPadRight") && isClip) { Ui.Tick(); Seek(b == "DPadRight" ? 10 : -10); return; }
+                if ((b == "DPadLeft" || b == "DPadRight") && isClip) { SeekPress(b == "DPadRight" ? 1 : -1); return; }
+                if ((b == "DPadUp" || b == "DPadDown") && isClip) { Ui.Tick(); ChangeVolume(b == "DPadUp" ? 1 : -1); return; }
                 if (b == "DPadLeft" || b == "DPadRight" || b == "LeftShoulder" || b == "RightShoulder")
                 {
                     int next = index + (b == "DPadRight" || b == "RightShoulder" ? 1 : -1);

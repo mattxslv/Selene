@@ -21,7 +21,7 @@ namespace Selene
         public SeleneCorePlugin(IPlayniteAPI api) : base(api)
         {
             settings = new SeleneSettingsViewModel(this);
-            SelenePaths.Init(this, settings.Settings);
+            SelenePaths.Init(this, PlayniteApi, settings.Settings);
             Features.Init(settings.Settings, () => SavePluginSettings(settings.Settings));
             Profiles.Init(GetPluginUserDataPath());
             Properties = new GenericPluginProperties { HasSettings = true };
@@ -37,7 +37,8 @@ namespace Selene
 
         public override void OnApplicationStarted(OnApplicationStartedEventArgs args)
         {
-            if (!Active) { logger.Info("Selene Core: the Selene theme isn't in use, staying off"); return; }
+            if (!Active) { logger.Info("Selene Core: the Selene theme isn't in use (fullscreen theme: " + SelenePaths.ActiveThemeId + "), staying off"); return; }
+            HomeNav.Log("paths: config " + SelenePaths.PlayniteConfig + " | theme " + SelenePaths.ThemeDir + (PlayniteApi.Paths.IsPortable ? " | portable" : ""));
             HomeNav.Api = PlayniteApi;
             HomeNav.Install();
             if (Features.On("translate")) Lang.Load(PlayniteApi);
@@ -73,6 +74,17 @@ namespace Selene
             if (!Active || args.Game == null) return;
             LocalGames.AfterGameStopped(args.Game);
             Profiles.RecordSession(args.Game.Id, args.ElapsedSeconds);
+            // back from a game: a card says how long it was played (once Selene is in front again) (any session over 10 s: a short one showed nothing)
+            if (Features.On("sessioncard") && args.ElapsedSeconds >= 10)
+            {
+                var game = args.Game; var secs = args.ElapsedSeconds;
+                System.Windows.Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    var t = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1800) };
+                    t.Tick += (s, e) => { t.Stop(); ProgressToast.ShowSession(game, secs); };
+                    t.Start();
+                }));
+            }
         }
 
         public override void OnLibraryUpdated(OnLibraryUpdatedEventArgs args)
@@ -155,7 +167,7 @@ namespace Selene
         public void EndEdit()
         {
             plugin.SavePluginSettings(Settings);
-            SelenePaths.Init(plugin, Settings);
+            SelenePaths.Init(plugin, plugin.PlayniteApi, Settings);
             Features.Init(Settings, () => plugin.SavePluginSettings(Settings));
         }
 
@@ -234,57 +246,99 @@ namespace Selene
             public string[] Choices, Names;
             public string Default;
             public bool IsChoice { get { return Choices != null; } }
+            public bool Slider;   // a number along a line (Left / Right) instead of a list to pick from
+            public string Action; // a row that does something on A (its button's label) instead of a switch
         }
 
         // the groups Selene settings shows, in order (each option names its group)
-        public static readonly string[] Groups = { "Start-up", "Navigation", "Spotlight", "Sound & music", "Look", "Games" };
+        public static readonly string[] Groups = { "Start-up", "Spotlight", "Collection", "Notifications", "Sound & music", "Look", "Games", "Advanced" };
 
         public static readonly Option[] All =
         {
-            new Option { Group = "Start-up", Key = "intro", Label = "Logo intro", About = "The Selene logo when Playnite starts." },
+            // ---- Start-up ----
+            new Option { Group = "Start-up", Key = "intro", Label = "Logo intro", About = "The Selene logo as Playnite starts." },
+            new Option { Group = "Start-up", Key = "startsound", Label = "Start-up sound", About = "The chime with the logo." },
             new Option { Group = "Start-up", Key = "login", Label = "Who's playing?", About = "Pick a profile at start. Off: the last one signs in by itself." },
-            new Option { Group = "Start-up", Key = "startcollection", Label = "Start on Collection", About = "Open on all your games instead of Spotlight.", DefaultOn = false },
-            new Option { Group = "Start-up", Key = "startrefresh", Label = "Library update at start", About = "Selene asks Playnite to look for new and removed games 20 s after it starts, and when it comes back from the tray. Only the small mark in the top bar shows it." },
-            new Option { Group = "Start-up", Key = "setuphint", Label = "Add-on hint", About = "A note on the home when logos and trailers need the Extra Metadata add-on and it isn't installed." },
-            new Option { Group = "Navigation", Key = "viewswitch", Label = "View button", About = "Switches Spotlight and Collection. Hold it to search." },
-            new Option { Group = "Navigation", Key = "hints", Label = "Button hints", About = "What each button does, along the bottom." },
-            new Option { Group = "Navigation", Key = "prompts", Label = "Button names", About = "Which controller's buttons the hints name: Playnite's own Button prompts setting, Xbox, or PlayStation.", Choices = new[] { "playnite", "xbox", "playstation" }, Names = new[] { "As Playnite's setting", "Xbox", "PlayStation" }, Default = "playnite" },
-            new Option { Group = "Navigation", Key = "copylog", Label = "Copy log in the menu", About = "A menu entry that copies Selene's and Playnite's logs, for a bug report." },
-            new Option { Group = "Navigation", Key = "playnitesettings", Label = "Playnite settings, Selene's way", About = "The menu's Playnite settings open as a Selene screen. Off: Playnite's own pages." },
-            new Option { Group = "Spotlight", Key = "cardactivity", Label = "Activity card", About = "What you've been playing: most played, last played and the numbers." },
-            new Option { Group = "Spotlight", Key = "cardcaptures", Label = "Captures card", About = "Your screenshots and clips from Steam, Xbox Game Bar and the NVIDIA app." },
+            new Option { Group = "Start-up", Key = "starton", Label = "Start on", About = "The screen Playnite opens on.", Choices = new[] { "spotlight", "collection", "last" }, Names = new[] { "Spotlight", "Collection", "Where you left it" }, Default = "spotlight" },
+            new Option { Group = "Start-up", Key = "starttab", Label = "Starting tab", About = "The filter tab Spotlight opens on.", Choices = new[] { "last", "all", "installed", "recent", "favorites", "unplayed" }, Names = new[] { "Where you left it", "All games", "Installed", "Recently played", "Favorites", "Not played yet" }, Default = "last" },
+            new Option { Group = "Start-up", Key = "startrefresh", Label = "Library update at start", About = "Looks for new and removed games shortly after start and when back from the tray." },
+            // ---- Spotlight ----
+            new Option { Group = "Spotlight", Key = "cardactivity", Label = "Activity card", About = "What you've been playing, with the numbers." },
+            new Option { Group = "Spotlight", Key = "cardcaptures", Label = "Captures card", About = "Your screenshots and clips." },
             new Option { Group = "Spotlight", Key = "cardsurprise", Label = "Surprise me card", About = "Covers flick past and stop on a game to play." },
-            new Option { Group = "Spotlight", Key = "cardcollection", Label = "Collection card", About = "A card that opens Collection (the View button does too).", DefaultOn = false },
-            new Option { Group = "Spotlight", Key = "cardpictures", Label = "Pictures under the cards", About = "The latest captures, the games you played last and a few ideas under their cards. Down goes into them." },
-            new Option { Group = "Spotlight", Key = "trailerdelay", Label = "Trailer cards after", About = "How long you rest on a game before its tile grows into its trailer.", Choices = new[] { "1", "2.5", "5", "0" }, Names = new[] { "1 second", "2.5 seconds", "5 seconds", "Never" }, Default = "2.5" },
-            new Option { Group = "Spotlight", Key = "trailersound", Label = "Trailer sound", About = "Trailer cards start with their sound on. R3 switches it either way.", Choices = new[] { "off", "on" }, Names = new[] { "Off", "On" }, Default = "off" },
-            new Option { Group = "Spotlight", Key = "starttab", Label = "Starting tab", About = "The filter tab Spotlight opens on when Playnite starts.", Choices = new[] { "last", "all", "installed", "recent", "favorites", "unplayed" }, Names = new[] { "Where you left it", "All games", "Installed", "Recently played", "Favorites", "Not played yet" }, Default = "last" },
-            new Option { Group = "Spotlight", Key = "filtertabs", Label = "Filter tabs", About = "The tabs LB / RB go through, on Spotlight and in Collection: Selene's five, your own Playnite filter presets, or both.", Choices = new[] { "selene", "playnite", "both" }, Names = new[] { "Selene's", "Playnite's presets", "Both" }, Default = "selene" },
+            new Option { Group = "Spotlight", Key = "cardpictures", Label = "Pictures under the cards", About = "Latest captures, last played and a few ideas. Down goes into them." },
+            new Option { Group = "Spotlight", Key = "trailerdelay", Label = "Trailer cards after", About = "How long you rest on a game before its tile plays its trailer.", Choices = new[] { "1", "2.5", "5", "0" }, Names = new[] { "1 second", "2.5 seconds", "5 seconds", "Never" }, Default = "2.5" },
+            new Option { Group = "Spotlight", Key = "trailersound", Label = "Trailer sound", About = "Trailer cards start with sound. R3 switches it either way.", DefaultOn = false },
+            new Option { Group = "Spotlight", Key = "filtertabs", Label = "Filter tabs", About = "The tabs LB / RB go through, here and in Collection.", Choices = new[] { "selene", "playnite", "both" }, Names = new[] { "Selene's", "Playnite's presets", "Both" }, Default = "selene" },
+            new Option { Group = "Spotlight", Key = "shade", Label = "Shade over the art", About = "How much the art darkens behind the words.", Choices = new[] { "0.7", "1", "1.3" }, Names = new[] { "Lighter", "As needed", "Deeper" }, Default = "1" },
+            new Option { Group = "Spotlight", Key = "idle", Label = "Idle screen after", About = "Left alone, Spotlight dims and drifts through your games' art. Any button wakes it.", Choices = new[] { "0", "5", "10", "20" }, Names = new[] { "Never", "5 minutes", "10 minutes", "20 minutes" }, Default = "10" },
+            // ---- Collection ----
+            new Option { Group = "Collection", Key = "librarytrailer", Label = "Collection trailers", About = "Rest on a game and its trailer plays. R3 for its sound." },
+            new Option { Group = "Collection", Key = "cardcollection", Label = "Collection card on Spotlight", About = "A card that opens Collection (the View button does too).", DefaultOn = false },
+            // ---- Notifications ----
+            new Option { Group = "Notifications", Key = "notifysound", Label = "Notification sound", About = "A soft sound as a card comes in." },
+            new Option { Group = "Notifications", Key = "sessioncard", Label = "Session card", About = "After a game: how long you played, this time and in total." },
+            new Option { Group = "Notifications", Key = "progresstoast", Label = "Downloads as a card", About = "Add-ons fetching logos or trailers show a small card instead of covering the screen." },
+            new Option { Group = "Notifications", Key = "updatecheck", Label = "New version notice", About = "Once a day Selene checks for a newer version and says so. Nothing installs by itself." },
+            new Option { Group = "Notifications", Key = "setuphint", Label = "Add-on hint", About = "A note when logos and trailers need the Extra Metadata add-on." },
+            // ---- Sound & music ----
             new Option { Group = "Sound & music", Key = "sounds", Label = "Interface sounds", About = "Sounds when you move, select and go back." },
-            new Option { Group = "Sound & music", Key = "music", Label = "Music control", About = "Default music while browsing, a game's song with its trailer." },
+            new Option { Group = "Sound & music", Key = "soundvolume", Slider = true, Label = "Sound volume", About = "How loud Selene's own sounds are.", Choices = new[] { "25", "50", "75", "100" }, Names = new[] { "25%", "50%", "75%", "100%" }, Default = "100" },
+            new Option { Group = "Sound & music", Key = "clipvolume", Slider = true, Label = "Clip volume", About = "Clips in Captures. Up / Down change it there too.", Choices = new[] { "0", "10", "20", "30", "40", "50", "60", "70", "80", "90", "100" }, Names = new[] { "Off", "10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%", "100%" }, Default = "90" },
+            new Option { Group = "Sound & music", Key = "music", Label = "Background music", About = "The default track while browsing, a game's song with its trailer." },
             new Option { Group = "Sound & music", Key = "launchquiet", Label = "Quiet loading screen", About = "A starting game stays quiet until it shows." },
-            new Option { Group = "Sound & music", Key = "soundvolume", Label = "Sound volume", About = "How loud Selene's own sounds are.", Choices = new[] { "25", "50", "75", "100" }, Names = new[] { "25%", "50%", "75%", "100%" }, Default = "100" },
-            new Option { Group = "Look", Key = "brand", Label = "Selene logo", About = "The logo in Selene settings and on empty screens." },
-            new Option { Group = "Look", Key = "topprofile", Label = "Profile in the top bar", About = "Your avatar beside the clock." },
-            new Option { Group = "Look", Key = "textshadow", Label = "Readable text", About = "A soft halo behind text so it reads over bright pictures." },
-            new Option { Group = "Look", Key = "translate", Label = "Selene in Playnite's language", About = "Selene's words follow Playnite's language when theme\\Localization has a file for it." },
+            // ---- Look ----
+            new Option { Group = "Look", Key = "homebackground", Label = "Spotlight background", About = "Behind the picked game: its own art, or always your wallpaper.", Choices = new[] { "art", "wallpaper" }, Names = new[] { "Game art", "Wallpaper only" }, Default = "art" },
             new Option { Group = "Look", Key = "glow", Label = "Animated background", About = "The moving backdrop behind the login and cards." },
-            new Option { Group = "Look", Key = "librarytrailer", Label = "Collection trailers", About = "Rest on a game and its trailer plays. R3 for its sound." },
-            new Option { Group = "Look", Key = "shade", Label = "Shade over the art", About = "How much the home darkens the picture behind its words.", Choices = new[] { "0.7", "1", "1.3" }, Names = new[] { "Lighter", "As needed", "Deeper" }, Default = "1" },
+            new Option { Group = "Look", Key = "topprofile", Label = "Profile in the top bar", About = "Your avatar beside the clock." },
+            new Option { Group = "Look", Key = "textshadow", Label = "Readable text", About = "A soft halo behind text over bright pictures." },
+            new Option { Group = "Look", Key = "dialogs", Label = "Selene dialogs", About = "Playnite's questions and errors as Selene cards." },
+            new Option { Group = "Look", Key = "hints", Label = "Button hints", About = "What each button does, along the bottom." },
+            new Option { Group = "Look", Key = "prompts", Label = "Button names", About = "Which controller's buttons the hints name.", Choices = new[] { "playnite", "xbox", "playstation" }, Names = new[] { "As Playnite's setting", "Xbox", "PlayStation" }, Default = "playnite" },
+            // ---- Games ----
+            new Option { Group = "Games", Key = "loadingscreen", Label = "Loading screen", About = "A game's art and logo while it starts. Off: Playnite's plain start." },
+            new Option { Group = "Games", Key = "aftergame", Label = "After a game", About = "Where Selene comes back to.", Choices = new[] { "spotlight", "where" }, Names = new[] { "Spotlight, on that game", "Where you were" }, Default = "spotlight" },
+            new Option { Group = "Games", Key = "freeze", Label = "Freeze on Guide", About = "Guide pauses offline games. Off: they're only muted." },
+            new Option { Group = "Games", Key = "powerconfirm", Label = "Ask before power actions", About = "A question before Sleep, Restart and Shut down." },
+            new Option { Group = "Games", Key = "tray", Label = "Close to tray", About = "Exit hides Playnite so it comes back instantly. Alt+F4 still quits." },
             new Option { Group = "Games", Key = "storepage", Label = "Store page", About = "The Store card opens free games, sales and new releases. Off: it picks a store app." },
             new Option { Group = "Games", Key = "storetrailers", Label = "Store trailers", About = "A game's trailer plays behind its Store page." },
             new Option { Group = "Games", Key = "storetab", Label = "Store opens on", About = "The tab the Store page starts on.", Choices = new[] { "All", "Steam", "Epic Games", "GOG", "Xbox", "More stores" }, Default = "All" },
-            new Option { Group = "Games", Key = "surprisepool", Label = "Surprise me picks from", About = "Where Surprise me draws its game from. LB / RB change it there too.", Choices = new[] { "installed", "fresh", "all" }, Names = new[] { "Installed games", "Games not played yet", "All games" }, Default = "installed" },
-            new Option { Group = "Games", Key = "freeze", Label = "Freeze on Guide", About = "Guide pauses offline games. Off: they're only muted." },
-            new Option { Group = "Games", Key = "tray", Label = "Close to tray", About = "Exit hides Playnite so it comes back instantly." },
+            new Option { Group = "Games", Key = "storeregion", Label = "Store currency", About = "The currency the stores show their prices in.", Action = "Change" },
+            new Option { Group = "Games", Key = "surprisepool", Label = "Surprise me picks from", About = "Where Surprise me draws from. LB / RB change it there too.", Choices = new[] { "installed", "fresh", "all" }, Names = new[] { "Installed games", "Games not played yet", "All games" }, Default = "installed" },
+            new Option { Group = "Games", Key = "surprisenorepeat", Label = "Surprise me without repeats", About = "Every game comes up once before any comes round again." },
             new Option { Group = "Games", Key = "admin", Label = "No-prompt launchers", About = "Admin games skip the Windows prompt after their first run." },
-            new Option { Group = "Games", Key = "quietbackups", Label = "Quiet save backups", About = "Ludusavi backs up a game's saves after playing without asking each time." },
+            new Option { Group = "Games", Key = "quietbackups", Label = "Quiet save backups", About = "Ludusavi backs up saves after playing without asking." },
+            // ---- Advanced ----
+            new Option { Group = "Advanced", Key = "fullrate", Label = "Match the screen's refresh rate", About = "Selene moves at 120 / 144 Hz on such screens instead of 60. Only while Playnite is in front." },
+            new Option { Group = "Advanced", Key = "viewswitch", Label = "View button", About = "Switches Spotlight and Collection. Hold it to search." },
+            new Option { Group = "Advanced", Key = "playnitesettings", Label = "Playnite settings, Selene's way", About = "The menu's Playnite settings as a Selene screen. Off: Playnite's own pages." },
+            new Option { Group = "Advanced", Key = "translate", Label = "Selene in Playnite's language", About = "Selene's words follow Playnite's language when a translation exists." },
+            new Option { Group = "Advanced", Key = "reset", Label = "Reset Selene settings", About = "Every switch and choice back to how Selene ships. Profiles stay.", Action = "Reset" },
         };
 
         private static SeleneSettings settings;
         private static Action save;
 
-        public static void Init(SeleneSettings s, Action saveAll) { settings = s; save = saveAll; }
+        public static void Init(SeleneSettings s, Action saveAll)
+        {
+            settings = s; save = saveAll;
+            // the Start on Collection switch (up to 1.0.0) is the Start on choice now
+            if (s != null && s.TurnedOn != null && s.TurnedOn.Remove("startcollection"))
+            {
+                if (s.Values == null) s.Values = new Dictionary<string, string>();
+                if (!s.Values.ContainsKey("starton")) s.Values["starton"] = "collection";
+                if (save != null) save();
+            }
+            // Trailer sound was a choice (on / off, up to 1.0.0): a switch now
+            string ts;
+            if (s != null && s.Values != null && s.Values.TryGetValue("trailersound", out ts))
+            {
+                s.Values.Remove("trailersound");
+                if (ts == "on") Mark(s, "trailersound", true);
+                if (save != null) save();
+            }
+        }
 
         private static bool DefaultOn(string key) { var o = All.FirstOrDefault(f => f.Key == key); return o == null || o.DefaultOn; }
 
@@ -314,6 +368,16 @@ namespace Selene
 
         // ---- choices ----
         public static Option Find(string key) { return All.FirstOrDefault(f => f.Key == key); }
+
+        // every switch and choice back to its default (the Reset row)
+        public static void ResetAll()
+        {
+            if (settings == null) return;
+            if (settings.TurnedOn != null) settings.TurnedOn.Clear();
+            if (settings.TurnedOff != null) settings.TurnedOff.Clear();
+            if (settings.Values != null) settings.Values.Clear();
+            if (save != null) save();
+        }
 
         // the chosen value (its default until it's changed; a value no longer offered falls back too)
         public static string Value(string key)

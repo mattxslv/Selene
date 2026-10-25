@@ -1,6 +1,6 @@
-// Close-to-tray for Playnite Fullscreen: Exit / Alt+F4 / X hide Playnite to the notification area (hidden icons) and
+// Close-to-tray for Playnite Fullscreen: Exit / X / taskbar Close hide Playnite to the notification area (hidden icons) and
 // mute it, so the next TV switch or Guide press brings it back instantly instead of a cold start. Real shutdowns
-// (Windows shutting down, Playnite restarting itself) still go through. Right-click the tray icon to quit for real.
+// (Windows shutting down, Playnite restarting itself) still go through. Alt+F4, or right-click the tray icon, quits for real.
 using System;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -56,6 +56,9 @@ namespace Selene
                 else if (w.IsVisible) Shown();
             };
             Application.Current.SessionEnding += (s, e) => reallyQuit = true;
+            // Alt+F4 quits for real from anywhere in Playnite: caught as the raw key message on Playnite's thread, before any
+            // screen, dialog or handler sees it (the WPF key event and the close command it becomes didn't always arrive)
+            System.Windows.Interop.ComponentDispatcher.ThreadFilterMessage += OnThreadMessage;
 
             // Playnite only honours --startclosedtotray in Desktop mode; do it for Fullscreen (background preload at login)
             foreach (var a in Environment.GetCommandLineArgs())
@@ -77,11 +80,13 @@ namespace Selene
                 foreach (var sec in new[] { 1, 4, 10, 25 })
                 {
                     var t = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(sec) };
-                    t.Tick += (s2, e2) => { t.Stop(); if (w.IsVisible && w.WindowState != WindowState.Minimized) SetOwnAudioMute(false); };
+                    t.Tick += (s2, e2) => { t.Stop(); if (w.IsVisible && w.WindowState != WindowState.Minimized) System.Threading.Tasks.Task.Factory.StartNew(() => SetOwnAudioMute(false)); };   // off the UI thread: it took ~100 ms (a hitch in the intro)
                     t.Start();
                 }
             }
-            w.Activated += (s, e) => { if (w.IsVisible && w.WindowState != WindowState.Minimized) SetOwnAudioMute(false); };
+            // only when it was muted (going through every audio device on each activation took ~100 ms: a hitch whenever a
+            // notification or a dialog handed the focus back)
+            w.Activated += (s, e) => { if (ownMuted && w.IsVisible && w.WindowState != WindowState.Minimized) SetOwnAudioMute(false); };
             Application.Current.Exit += (s, e) => { if (tray != null) { tray.Visible = false; tray.Dispose(); } };
 
             // The theme builds its power panel only when it opens, so catch "Exit Playnite" at the moment it is pressed:
@@ -99,6 +104,15 @@ namespace Selene
         {
             if (msg == 0x0112 /* WM_SYSCOMMAND */ && ((int)wParam & 0xFFF0) == 0xF060 /* SC_CLOSE */ && !reallyQuit && !AppShuttingDown())
             {
+                HomeNav.Log("tray: close command (Alt " + ((GetAsyncKeyState(0x12) & 0x8000) != 0) + ", F4 " + ((GetAsyncKeyState(0x73) & 0x8000) != 0) + ")");
+                // Alt+F4 quits for real: the close goes on to Playnite as usual (Exit in the menu, the X, the taskbar still hide)
+                if (AltF4Held())
+                {
+                    reallyQuit = true;
+                    if (tray != null) tray.Visible = false;
+                    HomeNav.Log("tray: Alt+F4 -> quit");
+                    return IntPtr.Zero;
+                }
                 handled = true;
                 // on the TV (console mode) Playnite is the whole screen: hiding it left a black desktop the pad can't reach
                 if (OnTv()) { HomeNav.Log("tray: close ignored on the TV"); return IntPtr.Zero; }
@@ -106,6 +120,14 @@ namespace Selene
                 HomeNav.Log("tray: Alt+F4 / close -> tray");
             }
             return IntPtr.Zero;
+        }
+
+        [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int key);
+
+        // the close came from Alt+F4 (both keys down as Windows turns them into the close command)
+        private static bool AltF4Held()
+        {
+            return (GetAsyncKeyState(0x73 /* VK_F4 */) & 0x8000) != 0 && (GetAsyncKeyState(0x12 /* VK_MENU */) & 0x8000) != 0;
         }
 
         private static void OnAnyButtonClick(object sender, RoutedEventArgs e)
@@ -218,6 +240,37 @@ namespace Selene
             if (tray != null) tray.Visible = false;
         }
 
+        private static void OnThreadMessage(ref System.Windows.Interop.MSG msg, ref bool handled)
+        {
+            // WM_SYSKEYDOWN for F4 with Alt held (lParam bit 29), not a key repeat (bit 30)
+            if (handled || msg.message != 0x0104 || (int)msg.wParam != 0x73) return;
+            long lp = msg.lParam.ToInt64();
+            if (((lp >> 29) & 1) == 0 || ((lp >> 30) & 1) == 1) return;
+            handled = true;
+            AltF4();
+        }
+
+        // Alt+F4: quit for real, the way Alt+F4 quits Playnite without Selene (its main window closes, Playnite shuts down)
+        public static void AltF4()
+        {
+            HomeNav.Quitting = true;
+            if (reallyQuit) return;
+            HomeNav.Log("tray: Alt+F4 -> quit");
+            reallyQuit = true;
+            if (tray != null) tray.Visible = false;
+            Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                try
+                {
+                    var main = Application.Current.MainWindow;
+                    // a dialog up (an install question...) goes first, or the main window can't close under it
+                    foreach (Window other in Application.Current.Windows) if (!ReferenceEquals(other, main) && other.IsVisible) { try { other.Close(); } catch { } }
+                    if (main != null) main.Close(); else Application.Current.Shutdown();
+                }
+                catch (Exception ex) { HomeNav.Log("tray: Alt+F4 quit failed: " + ex.Message); Application.Current.Shutdown(); }
+            }));
+        }
+
         private static void QuitForReal()
         {
             reallyQuit = true;
@@ -311,8 +364,11 @@ namespace Selene
             int SetMute([MarshalAs(UnmanagedType.Bool)] bool mute, ref Guid ctx);
         }
 
+        private static bool ownMuted;
+
         public static void SetOwnAudioMute(bool mute)
         {
+            ownMuted = mute;
             try
             {
                 uint me = (uint)System.Diagnostics.Process.GetCurrentProcess().Id;

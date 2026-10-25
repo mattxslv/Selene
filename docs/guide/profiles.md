@@ -11,6 +11,6 @@ the + makes one.
 **Theme and background** are previewed live on your real home while you choose, with the theme's colors and
 wallpaper on every tile. The background is game art blending into the wallpaper, or the wallpaper alone.
 
-**The setup check** (also in the menu) looks at your library and offers the add-ons Selene works with, a word on
+**The setup check** (also in the menu) shows which of the add-ons Selene works with are installed and which are not, a word on
 each: ExtraMetadata (logos and trailers), UniPlaySong (music), Ludusavi (save backups), HowLongToBeat, SuccessStory
 (achievements) and more. Install all installs them one after another; Playnite restarts once at the end.

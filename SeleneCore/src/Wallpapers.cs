@@ -43,16 +43,59 @@ namespace Selene
 
         // puts a wallpaper behind Selene; the one already showing is left alone (a reloaded copy flickered)
         private static string shown;
+        public static string Current { get { return shown; } }   // the wallpaper behind Selene now
 
         public static void Show(string file)
         {
             var res = System.Windows.Application.Current.Resources;
             if (shown != null && string.Equals(shown, file ?? "", StringComparison.OrdinalIgnoreCase)) return;
             shown = file ?? "";
+            HomeNav.PreviewChanged();
             res["SeleneWallpaperPath"] = file;
-            var pic = Load(file);
+            var pic = Cached(file) ?? Load(file);
+            Remember(file, pic);
             res["SeleneWallpaper"] = pic;
             Contrast.Wallpaper(pic);   // the home's shades as deep as this picture needs
+        }
+
+        // the last few wallpapers decoded, so browsing back to one is instant (a 4K picture took ~50-100 ms to decode)
+        private static readonly List<KeyValuePair<string, System.Windows.Media.ImageSource>> recent = new List<KeyValuePair<string, System.Windows.Media.ImageSource>>();
+
+        // a wallpaper decoded already (Prepare first), else null
+        public static System.Windows.Media.ImageSource Decoded(string file) { return Cached(file); }
+
+        private static System.Windows.Media.ImageSource Cached(string file)
+        {
+            if (string.IsNullOrEmpty(file)) return null;
+            foreach (var p in recent) if (string.Equals(p.Key, file, StringComparison.OrdinalIgnoreCase)) return p.Value;
+            return null;
+        }
+
+        private static void Remember(string file, System.Windows.Media.ImageSource pic)
+        {
+            if (string.IsNullOrEmpty(file) || pic == null) return;
+            recent.RemoveAll(p => string.Equals(p.Key, file, StringComparison.OrdinalIgnoreCase));
+            recent.Insert(0, new KeyValuePair<string, System.Windows.Media.ImageSource>(file, pic));
+            if (recent.Count > 8) recent.RemoveAt(recent.Count - 1);
+        }
+
+        // decodes a wallpaper on a background thread, then calls ready on the UI thread (at once when it's decoded already), so
+        // Show is instant: decoding on the UI thread stalled the profile steps' glides. Only the latest request calls back.
+        private static int prepareGeneration;
+        public static void Prepare(string file, Action ready)
+        {
+            int mine = ++prepareGeneration;
+            if (string.IsNullOrEmpty(file) || Cached(file) != null) { ready(); return; }
+            var ui = System.Windows.Application.Current.Dispatcher;
+            System.Threading.Tasks.Task.Factory.StartNew(() =>
+            {
+                var pic = Load(file);   // frozen: safe to hand to the UI thread
+                ui.BeginInvoke(new Action(() =>
+                {
+                    Remember(file, pic);
+                    if (mine == prepareGeneration) ready();
+                }));
+            });
         }
 
         public static List<WallpaperChoice> All()

@@ -53,7 +53,7 @@
                     <Grid RenderTransformOrigin="0.5,0.5">
                         <Grid.RenderTransform><ScaleTransform x:Name="PillScale" ScaleX="1" ScaleY="1" /></Grid.RenderTransform>
                         <Border x:Name="Pill" CornerRadius="25" Background="{DynamicResource SeleneInk15Brush}" BorderBrush="{DynamicResource SeleneInk15Brush}" BorderThickness="1" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter x:Name="Label" HorizontalAlignment="Center" VerticalAlignment="Center"
+                            <ContentPresenter x:Name="Label" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-2,0,2"
                                               TextElement.Foreground="{DynamicResource SeleneInkBrush}" TextElement.FontSize="20" TextElement.FontFamily="{DynamicResource FontMain}" />
                         </Border>
                     </Grid>

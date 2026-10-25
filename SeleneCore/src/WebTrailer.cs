@@ -115,7 +115,8 @@ namespace Selene
                             if (parts.Length >= 3 && double.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out at)
                                 && double.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out length))
                             {
-                                if (t2.reports++ < 2) HomeNav.Log("clip: " + text + " (" + (int)view.ActualWidth + "x" + (int)view.ActualHeight + ")");
+                                var r = t2.reports++;
+                                if (r < 2 || r == 12) HomeNav.Log("clip: " + text + " (" + (int)view.ActualWidth + "x" + (int)view.ActualHeight + ")");
                                 if (t2.Progress != null) t2.Progress(at, length, parts[2] == "1");
                             }
                         }
@@ -125,14 +126,24 @@ namespace Selene
                 // off-screen picture (what WPF shows) never got, so the page stayed black while the clip "played"
                 var html = "<!doctype html><html><head><meta charset='utf-8'><style>html,body{margin:0;background:#000;overflow:hidden}"
                     + "canvas{position:fixed;left:0;top:0;width:100vw;height:100vh}video{position:fixed;left:0;top:0;width:4px;height:4px;opacity:0.01}</style></head><body>"
-                    + "<canvas id='c'></canvas><video id='v' src=\"" + src.Replace("\"", "%22") + "\" autoplay playsinline loop></video><script>"
+                    + "<canvas id='c'></canvas><video id='v' src=\"" + src.Replace("\"", "%22") + "\" autoplay playsinline loop></video>"
+                    + "<video id='pv' src=\"" + src.Replace("\"", "%22") + "\" muted preload='auto' playsinline></video>"
+                    + "<canvas id='pc' width='288' height='162' style='position:fixed;display:none;width:288px;height:162px;border-radius:12px;border:2px solid rgba(255,255,255,.9);box-shadow:0 8px 28px rgba(0,0,0,.65);background:#000'></canvas><script>"
                     + "var v=document.getElementById('v'),c=document.getElementById('c'),x=c.getContext('2d'),n=0;"
                     + "function fit(){c.width=innerWidth;c.height=innerHeight;}fit();addEventListener('resize',fit);"
                     + "function draw(){if(v.videoWidth>0){var s=Math.min(c.width/v.videoWidth,c.height/v.videoHeight),w=v.videoWidth*s,h=v.videoHeight*s;"
                     + "x.drawImage(v,(c.width-w)/2,(c.height-h)/2,w,h);n++;}requestAnimationFrame(draw);}requestAnimationFrame(draw);"
                     + "v.addEventListener('playing',function(){document.title=(v.muted?'playing muted ':'playing ')+v.videoWidth+'x'+v.videoHeight;});"
-                    + "setInterval(function(){if(v.readyState>0)document.title='p='+v.currentTime.toFixed(1)+'|'+(isFinite(v.duration)?v.duration.toFixed(1):'0')+'|'+(v.paused?1:0)+'|'+n;},500);"
+                    + "setInterval(function(){if(v.readyState>0)document.title='p='+v.currentTime.toFixed(1)+'|'+(isFinite(v.duration)?v.duration.toFixed(1):'0')+'|'+(v.paused?1:0)+'|'+n+'|muted='+(v.muted?1:0)+' vol='+v.volume+' audiobytes='+(v.webkitAudioDecodedByteCount||0)+' aac='+v.canPlayType('audio/mp4; codecs=mp4a.40.2');},500);"
                     + "window.selene={toggle:function(){if(v.paused)v.play();else v.pause();},seek:function(d){try{var m=isFinite(v.duration)?v.duration-0.3:1e9;v.currentTime=Math.max(0,Math.min(m,v.currentTime+d));}catch(e){}}};"
+                    // a jump to a time, and the scrub preview: the silent copy jumps (to the nearest key frame: quick), its frame drawn
+                    // small above the bar; asked again while busy, only the latest time is gone to
+                    + "selene.seekTo=function(t){try{var m=isFinite(v.duration)?v.duration-0.3:1e9;v.currentTime=Math.max(0,Math.min(m,t));}catch(e){}};"
+                    + "var pv=document.getElementById('pv'),pc=document.getElementById('pc'),px=pc.getContext('2d'),pvBusy=false,pvNext=null;"
+                    + "function pvGo(t){pvBusy=true;try{if(pv.fastSeek)pv.fastSeek(t);else pv.currentTime=t;}catch(e){pvBusy=false;}}"
+                    + "pv.addEventListener('seeked',function(){try{px.drawImage(pv,0,0,288,162);}catch(e){}pvBusy=false;if(pvNext!=null){var t=pvNext;pvNext=null;pvGo(t);}});"
+                    + "selene.preview=function(t,fx,fy){pc.style.left=Math.max(8,Math.min(innerWidth-296,fx*innerWidth-144))+'px';pc.style.top=(fy*innerHeight-162)+'px';pc.style.display='block';if(pvBusy)pvNext=t;else pvGo(t);};"
+                    + "selene.hidePreview=function(){pc.style.display='none';pvNext=null;};"
                     + "v.addEventListener('error',function(){document.title='failed: '+(v.error?v.error.code+' '+v.error.message:'');});"
                     + "document.addEventListener('mousedown',function(){if(v.muted){v.muted=false;var q=v.play();if(q&&q.catch)q.catch(function(){v.muted=true;v.play();});}});"
                     + "v.muted=false;var p=v.play();if(p&&p.catch)p.catch(function(){v.muted=true;v.play();});"
@@ -151,9 +162,12 @@ namespace Selene
         private int reports;
         private bool poked;
 
-        // a press of the mouse on the browser (WPF's own event, no pointer involved): the browser passes it on as a real one
+        // a press of the mouse on the browser, so it lets the clip play with sound (Chromium keeps media that starts by itself
+        // muted until the user has touched the page). Sent through the browser's host it counts as the user's own; WPF's own
+        // event (the fallback) was taken as made up and the clips stayed silent.
         private static void Poke(FrameworkElement view)
         {
+            if (HostClick(view)) return;
             try
             {
                 var down = new System.Windows.Input.MouseButtonEventArgs(System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount, System.Windows.Input.MouseButton.Left) { RoutedEvent = System.Windows.Input.Mouse.MouseDownEvent, Source = view };
@@ -165,11 +179,58 @@ namespace Selene
             catch (Exception ex) { HomeNav.Log("clip: couldn't ask for sound (" + ex.Message + ")"); }
         }
 
+        private static bool HostClick(FrameworkElement view)
+        {
+            try
+            {
+                var getBrowser = view.GetType().GetMethod("GetBrowser", Type.EmptyTypes);
+                var br = getBrowser != null ? getBrowser.Invoke(view, null) : null;
+                var getHost = br != null ? br.GetType().GetMethod("GetHost", Type.EmptyTypes) : null;
+                var host = getHost != null ? getHost.Invoke(br, null) : null;
+                if (host == null) return false;
+                int x = (int)Math.Max(1, view.ActualWidth / 2), y = (int)Math.Max(1, view.ActualHeight / 2);
+                foreach (var m in host.GetType().GetMethods().Where(mm => mm.Name == "SendMouseClickEvent"))
+                {
+                    var ps = m.GetParameters();
+                    Func<bool, object[]> args = null;
+                    if (ps.Length == 4 && ps[0].ParameterType.IsValueType && !ps[0].ParameterType.IsPrimitive)
+                    {
+                        // (MouseEvent, MouseButtonType, bool mouseUp, int clickCount)
+                        var flagsType = ps[0].ParameterType.GetConstructors().Select(c => c.GetParameters()).Where(p => p.Length == 3).Select(p => p[2].ParameterType).FirstOrDefault();
+                        if (flagsType == null) continue;
+                        var me = Activator.CreateInstance(ps[0].ParameterType, x, y, Enum.ToObject(flagsType, 0));
+                        args = up => new object[] { me, Enum.ToObject(ps[1].ParameterType, 0), up, 1 };
+                    }
+                    else if (ps.Length == 6)
+                    {
+                        // (int x, int y, MouseButtonType, bool mouseUp, int clickCount, CefEventFlags)
+                        args = up => new object[] { x, y, Enum.ToObject(ps[2].ParameterType, 0), up, 1, Enum.ToObject(ps[5].ParameterType, 0) };
+                    }
+                    if (args == null) continue;
+                    m.Invoke(host, args(false));
+                    m.Invoke(host, args(true));
+                    HomeNav.Log("clip: asked for sound (browser click)");
+                    return true;
+                }
+            }
+            catch (Exception ex) { HomeNav.Log("clip: browser click failed (" + ex.Message + ")"); }
+            return false;
+        }
+
         // where a clip is, how long it is, whether it's paused (twice a second, on the UI thread)
         public Action<double, double, bool> Progress;
 
         public void TogglePause() { Run("selene.toggle()"); }
         public void Seek(double seconds) { Run("selene.seek(" + seconds.ToString(System.Globalization.CultureInfo.InvariantCulture) + ")"); }
+        public void SeekTo(double at) { Run("selene.seekTo(" + at.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) + ")"); }
+        // the clip's frame at a time, small, its bottom middle at (fx, fy): fractions of the player's width and height (the
+        // page's pixels needn't be the screen's); HidePreview takes it away
+        public void Preview(double at, double fx, double fy)
+        {
+            var c = System.Globalization.CultureInfo.InvariantCulture;
+            Run("selene.preview(" + at.ToString("0.00", c) + "," + fx.ToString("0.0000", c) + "," + fy.ToString("0.0000", c) + ")");
+        }
+        public void HidePreview() { Run("selene.hidePreview()"); }
 
         // a line of script in the page (CefSharp's ExecuteScriptAsync, reached by reflection like the browser itself)
         private void Run(string js)

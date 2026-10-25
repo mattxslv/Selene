@@ -145,6 +145,21 @@ namespace Selene
 
         // developer switch: %TEMP%\selene-dev-keys holds "<ms> <button>" pairs (e.g. "3000 A 800 DPadRight"), pressed in turn
         // after start, to walk through the screens without a controller
+        private static void DevKeyOnHome(string button)
+        {
+            var key = button == "DPadLeft" ? System.Windows.Input.Key.Left : button == "DPadRight" ? System.Windows.Input.Key.Right : button == "DPadUp" ? System.Windows.Input.Key.Up
+                    : button == "DPadDown" ? System.Windows.Input.Key.Down : button == "A" ? System.Windows.Input.Key.Enter : button == "B" ? System.Windows.Input.Key.Escape : System.Windows.Input.Key.None;
+            var target = System.Windows.Input.Keyboard.FocusedElement as UIElement ?? Application.Current.MainWindow;
+            var source = target != null ? PresentationSource.FromVisual(target) : null;
+            if (key == System.Windows.Input.Key.None || source == null) return;
+            foreach (var ev in new[] { System.Windows.Input.Keyboard.PreviewKeyDownEvent, System.Windows.Input.Keyboard.KeyDownEvent })
+            {
+                var args = new System.Windows.Input.KeyEventArgs(System.Windows.Input.Keyboard.PrimaryDevice, source, Environment.TickCount, key) { RoutedEvent = ev };
+                target.RaiseEvent(args);
+                if (args.Handled) break;
+            }
+        }
+
         private static void DevKeys()
         {
             var file = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "selene-dev-keys");
@@ -169,7 +184,8 @@ namespace Selene
                 HomeNav.Log("dev key " + step[1]);
                 if (step[1] == "menu") SeleneShell.OpenMenu();
                 else if (step[1].StartsWith("type:") && current != null) current.Type(step[1].Substring(5));
-                else HandleButton(step[1]);
+                else if (IsActive) HandleButton(step[1]);
+                else DevKeyOnHome(step[1]);   // the layer closed: the key goes to the home as a keyboard press would
                 next();
             };
             next();
@@ -228,7 +244,7 @@ namespace Selene
             var next = pending;
             pending = null;
             if (next != null) Show(next(), 0);
-            else if (!introPlayed) { introPlayed = true; if (!Features.On("intro")) AllowBackdropVideo(); Show(Features.On("intro") ? (Screen)new IntroScreen() : Start(), 0); }
+            else if (!introPlayed) { introPlayed = true; AllowBackdropVideo(); WhenCalm(scene, () => Show(Features.On("intro") ? (Screen)new IntroScreen() : Start(), 0)); }
             else Show(Start(), 0);
         }
 
@@ -261,16 +277,20 @@ namespace Selene
             current = next;
             ApplyOverlay(next.Overlay, next.OverlayShade);
             if (!next.Overlay) HomeNav.ClearSelectedGame();
+            // the new screen is set up first (its grids, pictures, preview), then both slide: set up inside the slide's first frame,
+            // the work made it stutter (Selene settings -> Change theme)
+            next.Root.Opacity = 0;
             stage.Children.Add(next.Root);
-            if (old != null)
-            {
-                old.Hidden();
-                var r = old.Root;
-                r.IsHitTestVisible = false;
-                Ui.Slide(r, 0, -dir * 90, r.Opacity, 0, 240, () => stage.Children.Remove(r));
-            }
-            Ui.Slide(next.Root, dir * 90, 0, 0, 1, 320);
+            if (old != null) { old.Hidden(); old.Root.IsHitTestVisible = false; }
+            Ui.HoldVisuals(400);
             next.Shown();
+            var leaving = old != null ? old.Root : null;
+            stage.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (leaving != null) Ui.Slide(leaving, 0, -dir * 90, leaving.Opacity, 0, 240, () => stage.Children.Remove(leaving));
+                Ui.Slide(next.Root, dir * 90, 0, 0, 1, 320);
+                Ui.MeasureFrames("screen slide", 360);
+            }), System.Windows.Threading.DispatcherPriority.Background);
             if (!scene.IsKeyboardFocusWithin) scene.Dispatcher.BeginInvoke(new Action(() => { if (IsActive) Keyboard.Focus(scene); }), System.Windows.Threading.DispatcherPriority.Input);
         }
 
@@ -337,12 +357,63 @@ namespace Selene
         {
             var host = backdropHost;
             var scenePanel = host != null ? host.Parent as Panel : null;
-            if (host == null || scenePanel == null || host.Opacity > 0.99) return;
+            if (host == null || scenePanel == null || host.Opacity > 0.99)
+            {
+                HomeNav.Log("backdrop fade-in skipped: host=" + (host != null) + " panel=" + (scenePanel != null) + " opacity=" + (host != null ? host.Opacity.ToString("0.00") : "-"));
+                return;
+            }
             var dark = Application.Current.TryFindResource("SeleneScrimBrush") as Brush ?? Brushes.Black;
-            var cover = new ThreadedFade(dark);
+            // a plain cover on the UI thread (the one drawn on its own thread never showed on some PCs: the wallpaper snapped in),
+            // melting away once the scene has its size and its first frame has been drawn
+            var cover = new Border { Background = dark, IsHitTestVisible = false };
             scenePanel.Children.Insert(scenePanel.Children.IndexOf(host) + 1, cover);   // over the backdrop, under the logo
             host.Opacity = 1;
-            host.Dispatcher.BeginInvoke(new Action(() => cover.FadeOut(900)), DispatcherPriority.ApplicationIdle);
+            WhenCalm(scene, () =>
+            {
+                HomeNav.Log("backdrop fade-in: fading over 2200 ms");
+                // slow and even: a gentle sine curve over two seconds, at the screen's own frame rate
+                var fade = Ui.Fast(new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(2200)) { EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut } });
+                fade.Completed += (s, e) => scenePanel.Children.Remove(cover);
+                cover.BeginAnimation(UIElement.OpacityProperty, fade);
+            });
+        }
+
+        // once the element has its size, its first frame is drawn, and the frames come evenly (the start-up rush is over: the
+        // intro's fade and slide stuttered when they shared those frames with the library being built); 2.5 s at most
+        private static void WhenCalm(FrameworkElement el, Action act)
+        {
+            if (el == null) { act(); return; }
+            Action whenSized = () =>
+            {
+                // calm = 700 ms without a long frame (the start-up work comes in waves: eight even frames came between two of
+                // them and the fade stuttered); 3.5 s at most
+                int frames = 0;
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                double last = 0, calmSince = 0;
+                EventHandler tick = null;
+                tick = (s, e) =>
+                {
+                    double t = sw.Elapsed.TotalMilliseconds;
+                    double gap = t - last; last = t;
+                    frames++;
+                    if (frames > 1 && gap > 30) calmSince = t;
+                    bool calm = t - calmSince >= 700;
+                    if (frames < 2 || (!calm && t < 3500)) return;
+                    CompositionTarget.Rendering -= tick;
+                    HomeNav.Log("intro: frames calm after " + (int)t + " ms" + (calm ? "" : " (gave up waiting)"));
+                    act();
+                };
+                CompositionTarget.Rendering += tick;
+            };
+            if (el.ActualWidth > 1) { whenSized(); return; }
+            bool done = false;
+            SizeChangedEventHandler sized = null;
+            sized = (s, e) => { if (done || el.ActualWidth <= 1) return; done = true; el.SizeChanged -= sized; whenSized(); };
+            el.SizeChanged += sized;
+            // and never stuck: if no size comes (an odd start), the cover goes after a while anyway
+            var guard = new DispatcherTimer { Interval = TimeSpan.FromSeconds(6) };
+            guard.Tick += (s, e) => { guard.Stop(); if (done) return; done = true; el.SizeChanged -= sized; act(); };
+            guard.Start();
         }
         private static Grid BuildScene()
         {
@@ -350,7 +421,7 @@ namespace Selene
             backdropHost = new Grid { Opacity = 0 };   // faded in by FadeInBackdrop
             g.Children.Add(backdropHost);
             var gradient = new Border();
-            gradient.SetResourceReference(Border.BackgroundProperty, "MainBackgourndBrush");
+            gradient.SetResourceReference(Border.BackgroundProperty, "SeleneBaseBrush");
             backdropHost.Children.Add(gradient);
             backdrop.Add(gradient);
             var wallpaper = new Image { Stretch = Stretch.UniformToFill };
@@ -380,7 +451,8 @@ namespace Selene
         // beam, haze, drifting dust). Either only on themes without a wallpaper (RefreshBackdrop / RefreshHomeGlow).
         private static readonly List<KeyValuePair<MediaElement, Grid>> backdrops = new List<KeyValuePair<MediaElement, Grid>>();
 
-        // the background video starts once the logo intro is over (decoding it during the intro made the logo stutter)
+        // the background video starts with the logo intro, so the intro and the screens after it share one background (the
+        // logo draws on its own thread, IntroLogo, so decoding the video no longer makes it stutter)
         private static bool videoAllowed;
 
         public static void AllowBackdropVideo()
@@ -391,6 +463,21 @@ namespace Selene
             foreach (var pair in backdrops) if (pair.Key != null && pair.Key.IsVisible) pair.Key.Play();
         }
 
+        // the same moving background for a window of its own (Playnite's progress window); gone again with the window
+        public static Grid BackdropFor(Window w)
+        {
+            int pairs = backdrops.Count, dustCount = dusts.Count;
+            var g = BuildGlow();
+            var mine = backdrops.Skip(pairs).ToList();
+            var myDust = dusts.Skip(dustCount).ToList();
+            w.Closed += (s, e) =>
+            {
+                foreach (var p in mine) { backdrops.Remove(p); if (p.Key != null) { p.Key.Stop(); p.Key.Close(); } }
+                foreach (var d in myDust) { dusts.Remove(d); d.Stop(); }
+            };
+            return g;
+        }
+
         private static Grid BuildGlow()
         {
             var outer = new Grid { IsHitTestVisible = false };
@@ -399,9 +486,24 @@ namespace Selene
             if (System.IO.File.Exists(file))
             {
                 video = new MediaElement { Source = new Uri(file), LoadedBehavior = MediaState.Manual, UnloadedBehavior = MediaState.Manual, IsMuted = true, Stretch = Stretch.UniformToFill, Opacity = 0 };
-                // fades in over the navy once its first frame is there (it was black until then)
+                // fades in once its first frame is there (it was black until then), over the drawn backdrop, which melts away under
+                // it: hiding the drawn one first left the plain navy up for a moment after the logo intro (a dark flicker)
                 var v = video;
-                video.MediaOpened += (s, e) => v.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(700)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+                video.MediaOpened += (s, e) =>
+                {
+                    var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+                    v.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(700)) { EasingFunction = ease });
+                    var drawn = v.Tag as Grid;
+                    if (drawn == null || drawn.Visibility != Visibility.Visible) return;
+                    var melt = new DoubleAnimation(0, TimeSpan.FromMilliseconds(700)) { EasingFunction = ease };
+                    melt.Completed += (s2, e2) =>
+                    {
+                        if (v.Visibility == Visibility.Visible) drawn.Visibility = Visibility.Collapsed;
+                        drawn.BeginAnimation(UIElement.OpacityProperty, null);
+                        drawn.Opacity = 1;
+                    };
+                    drawn.BeginAnimation(UIElement.OpacityProperty, melt);
+                };
                 video.MediaEnded += (s, e) => { video.Position = TimeSpan.Zero; video.Play(); };
                 // plays only while it's on screen
                 video.IsVisibleChanged += (s, e) => { if ((bool)e.NewValue && videoAllowed) video.Play(); else video.Pause(); };
@@ -409,6 +511,7 @@ namespace Selene
             }
             var glow = new Grid { IsHitTestVisible = false };
             outer.Children.Add(glow);
+            if (video != null) video.Tag = glow;   // the drawn backdrop the video fades in over
             backdrops.Add(new KeyValuePair<MediaElement, Grid>(video, glow));
             ShowBackdropKind();
             // a beam of light in the theme's accent falling from the top left, slowly breathing
@@ -483,8 +586,10 @@ namespace Selene
             bool seleneTheme = string.IsNullOrEmpty(id) || id == ThemePalettes.DefaultId;
             foreach (var pair in backdrops)
             {
-                bool useVideo = seleneTheme && pair.Key != null && videoAllowed;   // the drawn one until the intro is over
+                bool useVideo = seleneTheme && pair.Key != null && videoAllowed;   // the drawn one until the login layer is up
                 if (pair.Key != null) pair.Key.Visibility = useVideo ? Visibility.Visible : Visibility.Collapsed;
+                // the video starts with the logo intro, so the drawn backdrop never shows under it: the screen rises from the dark
+                // straight into the video (the drawn one showed for half a second at start, then gave way)
                 pair.Value.Visibility = useVideo ? Visibility.Collapsed : Visibility.Visible;
             }
         }

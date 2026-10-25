@@ -15,9 +15,12 @@ namespace Selene
         private readonly List<Tile> tiles = new List<Tile>();
         private int index;
 
-        public StoreCurrencyScreen(bool first)
+        private readonly Func<Screen> back;   // where B and a pick go: the Store, or the settings it was opened from
+
+        public StoreCurrencyScreen(bool first, Func<Screen> back = null)
         {
             this.first = first;
+            this.back = back;
             var col = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, -30, 0, 0) };
             col.Children.Add(Ui.Title("Choose your currency"));
             col.Children.Add(Ui.Sub("The stores show their prices in it. GOG and the other stores' deals stay in dollars. Change it any time with X in the Store."));
@@ -51,7 +54,7 @@ namespace Selene
 
         public override void Handle(string b)
         {
-            if (b == "B") { Ui.Back(); if (first) LoginScene.Finish(); else LoginScene.Show(new StorePage(), 0); return; }
+            if (b == "B") { Ui.Back(); if (first) LoginScene.Finish(); else LoginScene.Show(back != null ? back() : new StorePage(), 0); return; }
             if (b.StartsWith("DPad"))
             {
                 int next = Ui.GridMove(index, b, tiles.Count, Columns);
@@ -65,7 +68,7 @@ namespace Selene
             {
                 Ui.Confirm();
                 StoreData.SetCountry(StoreData.Currencies[index].Country);
-                LoginScene.Show(new StorePage(), 0);
+                LoginScene.Show(back != null ? back() : new StorePage(), 0);
             }
         }
     }

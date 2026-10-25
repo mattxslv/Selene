@@ -148,7 +148,7 @@ namespace Selene
         {
             try
             {
-                var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumerator();
+                var enumerator = NewEnumerator();
                 IMMDevice device;
                 if (enumerator.GetDefaultAudioEndpoint(0 /* eRender */, 1 /* eMultimedia */, out device) != 0) return;
                 var iid = typeof(IAudioSessionManager2).GUID;
@@ -196,7 +196,7 @@ namespace Selene
                 StopWatch();
                 launchSince = DateTime.Now.AddSeconds(-2);
                 playnitePid = System.Diagnostics.Process.GetCurrentProcess().Id;
-                var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumerator();
+                var enumerator = NewEnumerator();
                 IMMDevice device;
                 if (enumerator.GetDefaultAudioEndpoint(0, 1, out device) != 0) return;
                 var iid = typeof(IAudioSessionManager2).GUID;
@@ -316,7 +316,7 @@ namespace Selene
         private static List<object> SessionsOf(ICollection<int> pids)
         {
             var found = new List<object>();
-            var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumerator();
+            var enumerator = NewEnumerator();
             IMMDevice device;
             if (enumerator.GetDefaultAudioEndpoint(0, 1, out device) != 0) return found;
             var iid = typeof(IAudioSessionManager2).GUID;
@@ -346,7 +346,7 @@ namespace Selene
             if (pids == null || pids.Count == 0) return 0;
             try
             {
-                var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumerator();
+                var enumerator = NewEnumerator();
                 IMMDevice device;
                 if (enumerator.GetDefaultAudioEndpoint(0 /* eRender */, 1 /* eMultimedia */, out device) != 0) return 0;
                 var iid = typeof(IAudioSessionManager2).GUID;
@@ -378,7 +378,12 @@ namespace Selene
             int GetPeakValue(out float peak);
         }
 
-        [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] private class MMDeviceEnumerator { }
+        // made from its class id, as the tray's mute does: "new" on a [ComImport] class failed in Playnite now and then
+        // ("Unable to cast System.__ComObject to MMDeviceEnumerator"), and every mute and hush with it
+        private static IMMDeviceEnumerator NewEnumerator()
+        {
+            return (IMMDeviceEnumerator)Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")));
+        }
 
         [ComImport, Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
         private interface IMMDeviceEnumerator

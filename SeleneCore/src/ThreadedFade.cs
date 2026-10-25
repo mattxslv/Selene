@@ -17,6 +17,8 @@ namespace Selene
         private Dispatcher thread;
         private Grid root;
         private bool fading;
+        private int lateWaits;
+        public bool Ready { get { return thread != null; } }
 
         public ThreadedFade(params Brush[] layers)
         {
@@ -84,9 +86,26 @@ namespace Selene
             var d = thread;
             if (fading) return;
             fading = true;
-            if (d == null) { Remove(); return; }
+            if (d == null)
+            {
+                // the fade's thread isn't up yet (a busy start with a big library): waited for, a little at a time (the cover
+                // used to be dropped at once, and the intro's backdrop snapped in instead of fading)
+                if (++lateWaits <= 80)
+                {
+                    if (lateWaits == 1) HomeNav.Log("threaded fade: thread late, waiting");
+                    fading = false;
+                    var again = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
+                    again.Tick += (s2, e2) => { again.Stop(); FadeOut(ms, delayMs); };
+                    again.Start();
+                    return;
+                }
+                HomeNav.Log("threaded fade: thread never came, cover dropped");
+                Remove();
+                return;
+            }
             d.BeginInvoke(new Action(() =>
             {
+                HomeNav.Log("threaded fade: fading out over " + ms + " ms");
                 var fade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(ms)) { BeginTime = TimeSpan.FromMilliseconds(delayMs), EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut } };
                 fade.Completed += (s, e) => Dispatcher.BeginInvoke(new Action(Remove));
                 root.BeginAnimation(UIElement.OpacityProperty, fade);

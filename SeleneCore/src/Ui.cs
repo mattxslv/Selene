@@ -134,7 +134,7 @@ namespace Selene
                 foreach (var b in new[] { "A", "B", "X", "Y", "LB", "RB", "LT", "RT" }) res["SelenePrompt" + b] = PromptLabel(b);
             }
             catch { }
-            if (changed) HomeNav.Log("prompts: " + (ps ? "PlayStation" : "Xbox"));
+            if (changed) { HomeNav.Log("prompts: " + (ps ? "PlayStation" : "Xbox")); try { HomeHints.Update(); } catch { } }
         }
 
         public static string PromptLabel(string button)
@@ -160,10 +160,36 @@ namespace Selene
             var dot = new Grid { Width = 32, Height = 32 };
             dot.Children.Add(new Ellipse { Fill = Ink.Brush("SeleneInkColor") });
             button = PromptLabel(button);
-            dot.Children.Add(new TextBlock { Text = button, FontSize = button.Length > 1 ? 11 : 16, FontWeight = FontWeights.SemiBold, FontFamily = Body, Foreground = Ink.Brush("SeleneScrimColor"), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 0, 2) });   // capitals sit low in their box
+            dot.Children.Add(Letter(button, button.Length > 1 ? 11 : 16, FontWeights.SemiBold, Ink.Brush("SeleneScrimColor")));
             sp.Children.Add(dot);
             sp.Children.Add(new TextBlock { Text = label, FontSize = 21, FontFamily = Body, Foreground = Ink.Brush("SeleneInkColor", 0.9), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0) });
             return sp;
+        }
+
+        // a button's letter centred on its drawn shape in a round badge (a TextBlock centres its line box, so capitals sat
+        // off-centre, and nudging it was right for one letter and wrong for the next)
+        public static FrameworkElement Letter(string text, double size, FontWeight weight, Brush brush)
+        {
+            var typeface = new Typeface(Body, FontStyles.Normal, weight, FontStretches.Normal);
+            var ft = new FormattedText(text ?? "", System.Globalization.CultureInfo.InvariantCulture, FlowDirection.LeftToRight, typeface, size, Brushes.Black, 1.0);
+            var geometry = ft.BuildGeometry(new Point(0, 0));
+            var b = geometry.Bounds;
+            if (b.IsEmpty) return new TextBlock { Text = text, FontSize = size, FontWeight = weight, FontFamily = Body, Foreground = brush, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+            geometry.Transform = new TranslateTransform(-b.X, -b.Y);
+            return new System.Windows.Shapes.Path
+            {
+                Data = geometry, Fill = brush, Width = b.Width, Height = b.Height, Stretch = Stretch.None,
+                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, SnapsToDevicePixels = false
+            };
+        }
+
+        // a badge letter's color (Letter's shape, or a plain TextBlock)
+        public static void LetterBrush(UIElement letter, Brush brush)
+        {
+            var path = letter as System.Windows.Shapes.Shape;
+            if (path != null) { path.Fill = brush; return; }
+            var tb = letter as TextBlock;
+            if (tb != null) tb.Foreground = brush;
         }
 
         // prompts row, bottom right (or left)
@@ -182,9 +208,12 @@ namespace Selene
         // ---------------- motion ----------------
         public static IEasingFunction Out() { return new CubicEase { EasingMode = EasingMode.EaseOut }; }
 
+        // at the screen's own speed (WPF caps an animation near 60 frames a second unless told otherwise; the TV runs at 120 / 144)
+        public static T Fast<T>(T t) where T : Timeline { Timeline.SetDesiredFrameRate(t, 144); return t; }
+
         public static void Fade(UIElement el, double to, int ms, int delay = 0, Action done = null)
         {
-            var a = new DoubleAnimation(to, TimeSpan.FromMilliseconds(ms)) { BeginTime = TimeSpan.FromMilliseconds(delay), EasingFunction = Out() };
+            var a = Fast(new DoubleAnimation(to, TimeSpan.FromMilliseconds(ms)) { BeginTime = TimeSpan.FromMilliseconds(delay), EasingFunction = Out() });
             if (done != null) a.Completed += (s, e) => done();
             el.BeginAnimation(UIElement.OpacityProperty, a);
         }
@@ -201,7 +230,7 @@ namespace Selene
         {
             el.Opacity = 0;
             Fade(el, 1, ms, delay);
-            Shift(el).BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(from, 0, TimeSpan.FromMilliseconds(ms)) { BeginTime = TimeSpan.FromMilliseconds(delay), EasingFunction = Out() });
+            Shift(el).BeginAnimation(TranslateTransform.YProperty, Fast(new DoubleAnimation(from, 0, TimeSpan.FromMilliseconds(ms)) { BeginTime = TimeSpan.FromMilliseconds(delay), EasingFunction = Out() }));
         }
 
         // slides sideways while fading (screen changes)
@@ -209,7 +238,7 @@ namespace Selene
         {
             el.Opacity = fromOpacity;
             Fade(el, toOpacity, ms, 0, done);
-            Shift(el).BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(fromX, toX, TimeSpan.FromMilliseconds(ms)) { EasingFunction = Out() });
+            Shift(el).BeginAnimation(TranslateTransform.XProperty, Fast(new DoubleAnimation(fromX, toX, TimeSpan.FromMilliseconds(ms)) { EasingFunction = Out() }));
         }
 
         public static ScaleTransform Scaler(FrameworkElement el)
@@ -287,6 +316,7 @@ namespace Selene
                 host.Children.Add(pill);
                 notice = pill;
                 Rise(pill, 0, 12, 260);
+                NotifySound();
                 var gone = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(ms) };
                 gone.Tick += (s2, e2) =>
                 {
@@ -303,6 +333,149 @@ namespace Selene
 
         // frame times over the next `ms`, to the log: how smooth a move really was (count, average, worst gap)
         private static bool measuring;
+        // Full refresh rate: WPF draws only when something animates, and its animations step at 60 fps; on a 120/144 Hz screen
+        // 60 doesn't divide the refresh, so frames landed unevenly (a stutter). Listening to every frame makes it draw at the
+        // screen's own rate. Only while Playnite's window is the active one (never behind a game). Switch: "fullrate".
+        private static bool fullRateOn;
+        private static void EveryFrame(object sender, EventArgs e) { }
+        [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+        [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+        private static readonly uint ownPid = (uint)System.Diagnostics.Process.GetCurrentProcess().Id;
+
+        // Playnite is what's in front: any of its windows has the foreground (its hidden progress window takes the activation
+        // while a notification shows: going by the main window's own "active", the full rate went off just then)
+        private static bool PlayniteInFront(Window main)
+        {
+            if (main == null || !main.IsVisible || main.WindowState == WindowState.Minimized) return false;
+            uint pid;
+            GetWindowThreadProcessId(GetForegroundWindow(), out pid);
+            return pid == ownPid;
+        }
+
+        private static Window fullRateWatched;
+        public static void WatchFullRate(Window main)
+        {
+            if (main == null || ReferenceEquals(main, fullRateWatched)) return;
+            fullRateWatched = main;
+            main.Activated += (s, e) => FullRateChanged();
+            main.Deactivated += (s, e) => FullRateChanged();
+            main.StateChanged += (s, e) => FullRateChanged();
+            main.IsVisibleChanged += (s, e) => FullRateChanged();
+            var check = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(500) };
+            check.Tick += (s, e) => FullRateChanged();
+            check.Start();
+            FullRateChanged();
+        }
+
+        // the screen's refresh rate (the main display; asked again every 10 s, a TV can change mode)
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential, CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+        private struct DevMode
+        {
+            [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValTStr, SizeConst = 32)] public string dmDeviceName;
+            public short dmSpecVersion, dmDriverVersion, dmSize, dmDriverExtra; public int dmFields;
+            public int dmPositionX, dmPositionY, dmDisplayOrientation, dmDisplayFixedOutput;
+            public short dmColor, dmDuplex, dmYResolution, dmTTOption, dmCollate;
+            [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValTStr, SizeConst = 32)] public string dmFormName;
+            public short dmLogPixels; public int dmBitsPerPel, dmPelsWidth, dmPelsHeight, dmDisplayFlags, dmDisplayFrequency;
+            public int dmICMMethod, dmICMIntent, dmMediaType, dmDitherType, dmReserved1, dmReserved2, dmPanningWidth, dmPanningHeight;
+        }
+        [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)] private static extern bool EnumDisplaySettings(string device, int mode, ref DevMode dm);
+        private static int screenRate; private static DateTime screenRateAt = DateTime.MinValue;
+        public static int ScreenRate()
+        {
+            if ((DateTime.Now - screenRateAt).TotalSeconds < 10) return screenRate;
+            screenRateAt = DateTime.Now;
+            try { var dm = new DevMode(); dm.dmSize = (short)System.Runtime.InteropServices.Marshal.SizeOf(typeof(DevMode)); if (EnumDisplaySettings(null, -1, ref dm)) screenRate = dm.dmDisplayFrequency; }
+            catch { }
+            return screenRate;
+        }
+
+        public static void FullRateChanged()
+        {
+            // only worth it above 60 Hz (drawing every frame keeps the GPU a little busy; on a 60 Hz TV there's nothing to gain)
+            bool want = Features.On("fullrate") && ScreenRate() > 62 && PlayniteInFront(fullRateWatched ?? Application.Current.MainWindow);
+            if (want == fullRateOn) return;
+            fullRateOn = want;
+            if (want) System.Windows.Media.CompositionTarget.Rendering += EveryFrame;
+            else System.Windows.Media.CompositionTarget.Rendering -= EveryFrame;
+            HomeNav.Log("full refresh rate " + (want ? "on" : "off") + " (screen " + ScreenRate() + " Hz)");
+        }
+
+        // developer switch: %TEMP%\selene-dev-frames makes the log say, each second, how many frames were drawn and the longest
+        // gap between two (to find what makes Selene stutter)
+        public static void StartupFrameLog()
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            WatchSlowJobs(sw, 40, 9000);
+            double last = 0; int n = 0;
+            EventHandler tick = null;
+            tick = (s, e) =>
+            {
+                double t = sw.Elapsed.TotalMilliseconds;
+                if (n++ > 0 && t - last > 40) HomeNav.Log("start-up frame gap " + (t - last).ToString("0") + " ms");
+                last = t;
+                if (t > 9000) System.Windows.Media.CompositionTarget.Rendering -= tick;
+            };
+            System.Windows.Media.CompositionTarget.Rendering += tick;
+        }
+
+        public static void DevFrameLog()
+        {
+            if (!System.IO.File.Exists(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "selene-dev-frames"))) return;
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            double last = 0, worst = 0, second = 0; int n = 0;
+            WatchSlowJobs(sw, 14, 0);
+            System.Windows.Media.CompositionTarget.Rendering += (s, e) =>
+            {
+                double t = sw.Elapsed.TotalMilliseconds;
+                if (n > 0 && t - last > 60) HomeNav.Log("frame gap " + (t - last).ToString("0") + " ms");
+                if (n > 0) worst = Math.Max(worst, t - last);
+                last = t; n++;
+                if (t - second >= 1000)
+                {
+                    HomeNav.Log("fps " + n + ", worst gap " + worst.ToString("0") + " ms" + (ProgressToast.Busy ? " (notification up)" : ""));
+                    second = t; n = 0; worst = 0;
+                }
+            };
+        }
+
+        // every UI-thread job longer than 'threshold' ms goes to the log by name (for 'forMs' ms, 0 = for good)
+        private static void WatchSlowJobs(System.Diagnostics.Stopwatch sw, double threshold, double forMs)
+        {
+            var started = new Dictionary<System.Windows.Threading.DispatcherOperation, double>();
+            var hooks = Application.Current.Dispatcher.Hooks;
+            System.Windows.Threading.DispatcherHookEventHandler onStart = null, onDone = null;
+            onStart = (s, e) => { started[e.Operation] = sw.Elapsed.TotalMilliseconds; };
+            onDone = (s, e) =>
+            {
+                if (forMs > 0 && sw.Elapsed.TotalMilliseconds > forMs) { hooks.OperationStarted -= onStart; hooks.OperationCompleted -= onDone; return; }
+                double t0;
+                if (!started.TryGetValue(e.Operation, out t0)) return;
+                started.Remove(e.Operation);
+                double took = sw.Elapsed.TotalMilliseconds - t0;
+                if (took < threshold) return;
+                string name = "?";
+                try
+                {
+                    var f = typeof(System.Windows.Threading.DispatcherOperation).GetField("_method", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                    var d = f != null ? f.GetValue(e.Operation) as Delegate : null;
+                    if (d != null) name = (d.Method.DeclaringType != null ? d.Method.DeclaringType.FullName : "") + "." + d.Method.Name + (d.Target != null ? " on " + d.Target.GetType().Name : "");
+                    var timer = d != null ? d.Target as System.Windows.Threading.DispatcherTimer : null;
+                    if (timer != null)
+                    {
+                        var tf = typeof(System.Windows.Threading.DispatcherTimer).GetField("Tick", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                        var tick = tf != null ? tf.GetValue(timer) as Delegate : null;
+                        if (tick != null) foreach (var h in tick.GetInvocationList()) name += " -> " + (h.Method.DeclaringType != null ? h.Method.DeclaringType.FullName : "") + "." + h.Method.Name;
+                        name += " every " + timer.Interval.TotalMilliseconds + " ms";
+                    }
+                }
+                catch { }
+                HomeNav.Log("slow job " + took.ToString("0") + " ms: " + name + " (" + e.Operation.Priority + ")");
+            };
+            hooks.OperationStarted += onStart;
+            hooks.OperationCompleted += onDone;
+        }
+
         public static void MeasureFrames(string what, int ms)
         {
             if (measuring) return;
@@ -330,8 +503,14 @@ namespace Selene
         public static void Confirm() { if (Features.On("sounds") && !HomeNav.PlayPlayniteSound(true)) Play("activation.wav", 0.85); }
         public static void Back() { Play("CloseAdditionalView.wav", 0.8); }
         public static void Chime() { Play("Success.wav", 0.85); }   // something finished: a profile made, a setup step done
-        public static void Boot() { Play("Boot.wav", 0.9); }
-        public static void Alert() { Play("Alert.wav", 0.85); }   // asking before something can't be undone
+        public static void Boot() { if (Features.On("startsound")) Play("Boot.wav", 0.9); }
+        public static void Alert() { Play("Alert.wav", 0.85); }
+        // a notification shows (Selene's notices, a progress card): theme\Audio\Notification.wav, else the panel sound
+        public static void NotifySound()
+        {
+            if (!Features.On("notifysound")) return;
+            if (System.IO.File.Exists(SelenePaths.ThemeAudio("Notification.wav"))) Play("Notification.wav", 0.8); else Play("OpenPanel.wav", 0.55);
+        }   // asking before something can't be undone
 
         // decodes pictures one after another off the UI thread and hands each over on it (avatar and wallpaper grids)
         public static void LoadInOrder(IList<string> files, int width, Action<int, ImageSource> loaded)
@@ -344,9 +523,23 @@ namespace Selene
                     var pic = Wallpapers.Load(files[i], width);
                     if (pic == null) continue;
                     int at = i;
-                    dispatcher.BeginInvoke(new Action(() => loaded(at, pic)), System.Windows.Threading.DispatcherPriority.Background);
+                    dispatcher.BeginInvoke(new Action(() => AfterHold(() => loaded(at, pic))), System.Windows.Threading.DispatcherPriority.Background);
                 }
             });
+        }
+
+        // a page slide in progress: changes to what's on it wait until it's over (each picture arriving mid-slide redrew the
+        // whole sliding page: the step slides stuttered)
+        private static DateTime holdUntil = DateTime.MinValue;
+        public static void HoldVisuals(int ms) { holdUntil = DateTime.Now.AddMilliseconds(ms); }
+
+        public static void AfterHold(Action act)
+        {
+            var wait = (holdUntil - DateTime.Now).TotalMilliseconds;
+            if (wait <= 0) { act(); return; }
+            var t = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(wait + 10) };
+            t.Tick += (s, e) => { t.Stop(); act(); };
+            t.Start();
         }
 
         // a button-like pill: the controller badge inside, then what it does (the main one filled with the focus color)
@@ -355,7 +548,7 @@ namespace Selene
             var row = new StackPanel { Orientation = Orientation.Horizontal };
             var dot = new Grid { Width = 26, Height = 26 };
             dot.Children.Add(new Ellipse { Fill = main ? Ink.Brush("SeleneOnFocusColor") : Ink.Brush("SeleneInkColor", 0.9) });
-            dot.Children.Add(new TextBlock { Text = button, FontSize = 13, FontWeight = FontWeights.Bold, FontFamily = Body, Foreground = main ? Ink.Brush("SeleneFocusColor") : Ink.Brush("SeleneScrimColor"), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 0, 2) });   // capitals sit low in their box
+            dot.Children.Add(Letter(button, 13, FontWeights.Bold, main ? Ink.Brush("SeleneFocusColor") : Ink.Brush("SeleneScrimColor")));
             row.Children.Add(dot);
             row.Children.Add(new TextBlock { Text = label, FontSize = 17, FontWeight = FontWeights.SemiBold, FontFamily = Body, Foreground = main ? Ink.Brush("SeleneOnFocusColor") : Ink.Brush("SeleneInkColor"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 4, 1) });
             return new Border
@@ -389,6 +582,12 @@ namespace Selene
         // selection skipped one). Every keyboard handler checks KeyIsPadCopy first.
         private static DateTime padHandledAt = DateTime.MinValue;
         public static void PadHandled() { padHandledAt = DateTime.Now; }
+
+        // the controller: when a button last went down (a press that came from it), and buttons being let go
+        public static DateTime PadPressAt = DateTime.MinValue;
+        public static bool PressFromPad { get { return (DateTime.Now - PadPressAt).TotalMilliseconds < 80; } }
+        public static event Action<string> ButtonReleased;
+        public static void Released(string button) { var h = ButtonReleased; if (h != null) h(button); }
         public static bool KeyIsPadCopy() { return (DateTime.Now - padHandledAt).TotalMilliseconds < 120; }
 
         public static void Pressed(string button)
@@ -596,18 +795,21 @@ namespace Selene
         private readonly Action onYes, onNo;
         private bool onYesButton, done;
         private readonly FrameworkElement panel;
+        private readonly bool warning;
 
-        public Dialog(string icon, string title, string text, string yesLabel, string noLabel, Action onYes, Action onNo)
+        // warning: a red badge and a red Yes (Remove...); otherwise the theme's accent (Install all, Restart)
+        public Dialog(string icon, string title, string text, string yesLabel, string noLabel, Action onYes, Action onNo, bool warning = true)
         {
             this.onYes = onYes;
             this.onNo = onNo;
+            this.warning = warning;
             Root = new Grid { Background = Ink.Brush("SeleneScrimColor", 0.62) };
             var col = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
             var badge = new Grid { Width = 84, Height = 84, HorizontalAlignment = HorizontalAlignment.Center };
-            badge.Children.Add(new Ellipse { Fill = new SolidColorBrush(Color.FromArgb(0x30, 0xFF, 0x6B, 0x6B)) });
+            badge.Children.Add(new Ellipse { Fill = warning ? (Brush)new SolidColorBrush(Color.FromArgb(0x30, 0xFF, 0x6B, 0x6B)) : Ink.Brush("GlyphColor", 0.19) });
             // icon glyphs sit a little low in their box: nudged to the circle's middle
             var glyph = new TextBlock { Text = icon, FontFamily = Ui.Glyphs, FontSize = 36, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 0, 5) };
-            glyph.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
+            if (warning) glyph.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush"); else glyph.Foreground = Ink.Brush("GlyphColor");
             badge.Children.Add(glyph);
             col.Children.Add(badge);
             col.Children.Add(new TextBlock { Text = title, FontSize = 34, FontWeight = FontWeights.SemiBold, FontFamily = Ui.Display, Foreground = Ink.Brush("SeleneInkColor"), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 22, 0, 0) });
@@ -646,8 +848,11 @@ namespace Selene
             no.Focus(!onYesButton);
             yes.Focus(onYesButton);
             // the destructive answer turns red when chosen
-            if (onYesButton) { yes.Root.SetResourceReference(Border.BackgroundProperty, "WarningBrush"); yes.Root.SetResourceReference(Border.BorderBrushProperty, "WarningBrush"); }
+            if (onYesButton && warning) { yes.Root.SetResourceReference(Border.BackgroundProperty, "WarningBrush"); yes.Root.SetResourceReference(Border.BorderBrushProperty, "WarningBrush"); }
         }
+
+        // starts on Yes (for a question whose Yes is the usual answer)
+        public Dialog StartOnYes() { onYesButton = true; ShowFocus(); return this; }
 
         public void Handle(string b)
         {

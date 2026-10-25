@@ -33,6 +33,7 @@ namespace Selene
         private readonly StackPanel bar = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 70) };
         private readonly TextBlock status = new TextBlock { FontSize = 16, FontFamily = Ui.Body, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 30) };
         private Border powerList;
+        private Dialog ask;
         private readonly List<Border> powerRows = new List<Border>();
         private int index, powerIndex;
         private bool leaving;
@@ -74,7 +75,6 @@ namespace Selene
             items.Add(new Item { Icon = Ui.Icon(0xe627), Label = "Update library", Run = UpdateLibrary });
             items.Add(new Item { Icon = Ui.Icon(0xe429), Label = "Selene settings", Run = () => LoginScene.Show(new SettingsScreen(true), 1) });
             items.Add(new Item { Icon = Ui.Icon(0xf0c5), Label = "Setup check", Run = () => LoginScene.Show(new SetupScreen(false, true), 1) });
-            if (Features.On("copylog")) items.Add(new Item { Icon = Ui.Icon(0xe14d), Label = "Copy log", Run = CopyLog });
             items.Add(new Item { Icon = Ui.Icon(0xe8b8), Label = "Playnite settings", Run = () => { if (Features.On("playnitesettings")) LoginScene.Show(new PlayniteSettingsScreen(), 1); else Later(PlayniteMenu.OpenSettings); } });
             items.Add(new Item { Icon = Ui.Icon(0xe30c), Label = "Desktop mode", Run = () => Later(() => PlayniteMenu.Main("SwitchToDesktopCommand")) });
             items.Add(new Item { Icon = Ui.Icon(0xe8ac), Label = "Power", Run = OpenPower });
@@ -139,6 +139,7 @@ namespace Selene
         public override void Handle(string b)
         {
             if (leaving) return;
+            if (ask != null) { ask.Handle(b); return; }   // the power question is up
             if (powerList != null) { HandlePower(b); return; }
             if (b == "B" || b == "Start") { leaving = true; Ui.Back(); LoginScene.Finish(); return; }
             if (b == "A")
@@ -208,12 +209,26 @@ namespace Selene
             {
                 Ui.Confirm();
                 int what = (int)PowerItems[powerIndex][2];
-                try
+                var label = (string)PowerItems[powerIndex][1];
+                Action run = () =>
                 {
-                    if (what < 0) Later(() => PlayniteMenu.Run("ExitCommand"));
-                    else Power.Run(what);
+                    try
+                    {
+                        HomeNav.Quitting = true;
+                        if (what < 0) Later(() => PlayniteMenu.Run("ExitCommand"));
+                        else Power.Run(what);
+                    }
+                    catch (Exception ex) { HomeNav.Log("menu: power failed: " + ex); Ui.Shake(powerRows[powerIndex]); }
+                };
+                // Ask before power actions: a question first (easy to hit by accident on a controller)
+                if (what >= 0 && Features.On("powerconfirm"))
+                {
+                    ask = new Dialog(Ui.Icon((int)PowerItems[powerIndex][0]), label + "?", what == 0 ? "The PC goes to sleep." : what == 1 ? "The PC restarts. Anything unsaved is lost." : "The PC shuts down. Anything unsaved is lost.",
+                        label, "Cancel", () => { ask = null; run(); }, () => ask = null, what != 0);
+                    ask.Open(Root);
+                    return;
                 }
-                catch (Exception ex) { HomeNav.Log("menu: power failed: " + ex); Ui.Shake(powerRows[powerIndex]); }
+                run();
                 return;
             }
             int next = powerIndex + (b == "DPadUp" ? -1 : b == "DPadDown" ? 1 : 0);
@@ -232,7 +247,7 @@ namespace Selene
 
         // Playnite's own windows open once the menu has faded away
         // the tail of Selene's and Playnite's logs to the clipboard, for a bug report
-        private static void CopyLog()
+        internal static void CopyLog()
         {
             try
             {

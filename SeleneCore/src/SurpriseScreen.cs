@@ -55,14 +55,14 @@ namespace Selene
 
             // where it draws from: three pills up top (LB / RB)
             var tabBar = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 36, 0, 0) };
-            tabBar.Children.Add(Ui.Prompt("LB", ""));
+            tabBar.Children.Add(HomeNav.FilterBadge("LB"));   // the same badges as Spotlight's and Collection's tabs
             foreach (var p in Pools)
             {
                 var pill = new Border { CornerRadius = new CornerRadius(18), Padding = new Thickness(18, 6, 18, 8), Margin = new Thickness(6, 0, 6, 0), Child = new TextBlock { Text = p, FontSize = 19, FontFamily = Ui.Body } };
                 tabs.Add(pill);
                 tabBar.Children.Add(pill);
             }
-            tabBar.Children.Add(Ui.Prompt("RB", ""));
+            tabBar.Children.Add(HomeNav.FilterBadge("RB"));
             Root.Children.Add(tabBar);
 
             var col = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 20, 0, 0) };
@@ -80,7 +80,7 @@ namespace Selene
             Root.Children.Add(col);
 
             Root.Children.Add(Ui.Prompts(false, Ui.Prompt("B", "Back")));
-            Root.Children.Add(Ui.Prompts(true, Ui.Prompt("Y", "Spin again"), Ui.Prompt("X", "Show on Spotlight"), Ui.Prompt("A", "Play")));
+            Root.Children.Add(Ui.Prompts(true, Ui.Prompt("Y", "Spin again"), Ui.Prompt("X", "Show on Spotlight")));   // (A: the Play pill under the card says it)
             step.Tick += (s, e) => Step();
             ShowTabs();
         }
@@ -115,7 +115,16 @@ namespace Selene
                 label.FontWeight = on ? FontWeights.SemiBold : FontWeights.Normal;
             }
             candidates = pool == 0 ? all.Where(g => g.IsInstalled).ToList() : pool == 1 ? all.Where(g => GameFacts.Seconds(g) == 0 && !GameFacts.LastPlayed(g).HasValue).ToList() : all.ToList();
+            // without repeats: the ones already picked wait until every game has come up (then it starts over)
+            if (Features.On("surprisenorepeat") && candidates.Count > 1)
+            {
+                var fresh = candidates.Where(g => !seen.Contains(g.Id)).ToList();
+                if (fresh.Count == 0) { seen.Clear(); fresh = candidates; }
+                candidates = fresh;
+            }
         }
+
+        private static readonly HashSet<Guid> seen = new HashSet<Guid>();   // picked already (while Playnite runs)
 
         public override void Shown() { Spin(); }
         public override void Hidden() { closed = true; step.Stop(); }
@@ -136,6 +145,7 @@ namespace Selene
             }
             hint.Text = "Not sure what to play? Selene picks one.";
             pick = preset != null && candidates.Contains(preset) ? preset : candidates[random.Next(candidates.Count)];
+            seen.Add(pick.Id);
             preset = null;   // Y spins for real next time
             // a handful of other covers to flick past (decoded ahead, off the UI thread), the pick's last
             var pass = new List<Game>();
@@ -213,9 +223,7 @@ namespace Selene
             {
                 case "LeftShoulder":
                 case "RightShoulder":
-                case "DPadLeft":
-                case "DPadRight":
-                    pool = (pool + (b == "RightShoulder" || b == "DPadRight" ? 1 : Pools.Length - 1)) % Pools.Length;
+                    pool = (pool + (b == "RightShoulder" ? 1 : Pools.Length - 1)) % Pools.Length;
                     Ui.Tick();
                     ShowTabs();
                     Ui.Pop(tabs[pool]);

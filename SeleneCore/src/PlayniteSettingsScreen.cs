@@ -21,6 +21,7 @@ namespace Selene
             public string[] Values, Names;   // a choice: the values as text (parsed into the property's type) and how they read
             public Action Run;               // an action row instead
             public bool IsChoice { get { return Values != null; } }
+            public bool Slider;              // a number along a line (Left / Right) instead of a list to pick from
         }
 
         private class Section { public string Name; public int Icon; public List<Row> Rows = new List<Row>(); }
@@ -29,6 +30,7 @@ namespace Selene
 
         private static Row Switch(string prop, string label, string about) { return new Row { Prop = prop, Label = label, About = about }; }
         private static Row Choice(string prop, string label, string about, string[] values, string[] names) { return new Row { Prop = prop, Label = label, About = about, Values = values, Names = names }; }
+        private static Row Slider(string prop, string label, string about, string[] values, string[] names) { return new Row { Prop = prop, Label = label, About = about, Values = values, Names = names, Slider = true }; }
 
         private static List<Section> Build()
         {
@@ -38,8 +40,7 @@ namespace Selene
             general.Rows.Add(Switch("HideMouserCursor", "Hide the mouse pointer", "The pointer stays hidden while you use a controller."));
             general.Rows.Add(Switch("MinimizeAfterGameStartup", "Minimize when a game starts", "Playnite gets out of the way as a game starts."));
             general.Rows.Add(Switch("ShowClock", "Clock", "The time in the top bar."));
-            general.Rows.Add(Switch("ShowBattery", "Controller battery", "The controller's battery in the top bar."));
-            general.Rows.Add(Switch("ShowBatteryPercentage", "Battery as a number", "The battery as a percentage, not only a symbol."));
+            general.Rows.Add(Switch("ShowBattery", "Controller battery", "The controller's battery in the top bar, as a percentage."));
             general.Rows.Add(Choice("ButtonPrompts", "Button prompts", "Which controller's buttons the hints show.", new[] { "Xbox", "PlayStation" }, null));
             general.Rows.Add(Switch("AsyncImageLoading", "Load pictures in the background", "Lists stay smooth while their pictures load."));
             general.Rows.Add(Switch("SmoothScrolling", "Smooth scrolling", "Lists glide instead of stepping."));
@@ -53,21 +54,21 @@ namespace Selene
             visuals.Rows.Add(Choice("MainBackgroundImageDarkAmount", "Darkening of that art", "How much the art behind is darkened.", new[] { "0", "15", "30", "50", "70" }, new[] { "None", "A little", "Some", "Much", "Most" }));
             visuals.Rows.Add(Switch("DarkenUninstalledGamesGrid", "Dim games that aren't installed", "Uninstalled games show darker in Collection."));
             visuals.Rows.Add(Switch("ShowGameTitles", "Names under the tiles", "Each game's name under its tile in Collection."));
-            visuals.Rows.Add(Choice("FontSize", "Text size", "Playnite's main text size.", new[] { "18", "20", "22", "24", "26", "28" }, null));
-            visuals.Rows.Add(Choice("FontSizeSmall", "Small text size", "Playnite's smaller text.", new[] { "14", "16", "18", "20", "22" }, null));
+            visuals.Rows.Add(Slider("FontSize", "Text size", "Playnite's main text size.", new[] { "18", "20", "22", "24", "26", "28" }, null));
+            visuals.Rows.Add(Slider("FontSizeSmall", "Small text size", "Playnite's smaller text.", new[] { "14", "16", "18", "20", "22" }, null));
             visuals.Rows.Add(Choice("ImageScalerMode", "Picture scaling", "How tile pictures are scaled down.", new[] { "None", "BitmapDotNet", "Custom" }, new[] { "Off", "Windows", "Playnite" }));
             list.Add(visuals);
 
             var audio = new Section { Name = "Audio", Icon = 0xe050 };
-            audio.Rows.Add(Choice("InterfaceVolume", "Interface volume", "Playnite's own interface sounds.", new[] { "0", "0.25", "0.5", "0.75", "1" }, new[] { "Off", "25%", "50%", "75%", "100%" }));
-            audio.Rows.Add(Choice("BackgroundVolume", "Music volume", "Background music.", new[] { "0", "0.25", "0.5", "0.75", "1" }, new[] { "Off", "25%", "50%", "75%", "100%" }));
+            audio.Rows.Add(Slider("InterfaceVolume", "Interface volume", "Playnite's own interface sounds.", new[] { "0", "0.25", "0.5", "0.75", "1" }, new[] { "Off", "25%", "50%", "75%", "100%" }));
+            audio.Rows.Add(Slider("BackgroundVolume", "Music volume", "Background music.", new[] { "0", "0.25", "0.5", "0.75", "1" }, new[] { "Off", "25%", "50%", "75%", "100%" }));
             audio.Rows.Add(Switch("IsMusicMuted", "Music muted", "No background music."));
             audio.Rows.Add(Switch("MuteInBackground", "Quiet in the background", "Sounds and music stop when Playnite isn't in front."));
             list.Add(audio);
 
             var layout = new Section { Name = "Layout", Icon = 0xe871 };
-            layout.Rows.Add(Choice("Rows", "Rows in Collection", "How many rows of tiles Collection shows.", new[] { "1", "2", "3", "4", "5", "6" }, null));
-            layout.Rows.Add(Choice("Columns", "Columns in Collection", "How many tiles across.", new[] { "3", "4", "5", "6", "7", "8", "9", "10", "11", "12" }, null));
+            layout.Rows.Add(Slider("Rows", "Rows in Collection", "How many rows of tiles Collection shows.", new[] { "1", "2", "3", "4", "5", "6" }, null));
+            layout.Rows.Add(Slider("Columns", "Columns in Collection", "How many tiles across.", new[] { "3", "4", "5", "6", "7", "8", "9", "10", "11", "12" }, null));
             layout.Rows.Add(Switch("HorizontalLayout", "Scroll sideways", "Collection scrolls left and right instead of up and down."));
             list.Add(layout);
 
@@ -174,6 +175,8 @@ namespace Selene
         private readonly List<Border> knobs = new List<Border>();
         private readonly List<Border> tracks = new List<Border>();
         private readonly List<TextBlock> values = new List<TextBlock>();
+        private readonly List<SliderBar> sliders = new List<SliderBar>();
+        private ChoiceList picker;
         private List<Row> options = new List<Row>();
         private int group, index;
         private bool inOptions;
@@ -187,7 +190,6 @@ namespace Selene
             layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(400) });
             layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             var left = new StackPanel();
-            if (Features.On("brand"))
             {
                 // Playnite's own logo beside the title (these are its settings), with a soft breathing halo like Selene's mark
                 var head = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(14, 0, 0, 30) };
@@ -199,11 +201,6 @@ namespace Selene
                 words.Children.Add(new TextBlock { Text = "Playnite", FontSize = 16, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.55), Margin = new Thickness(2, 2, 0, 0) });
                 head.Children.Add(words);
                 left.Children.Add(head);
-            }
-            else
-            {
-                left.Children.Add(new TextBlock { Text = "Settings", FontSize = 40, FontFamily = Ui.Display, Foreground = Ink.Brush("SeleneInkColor"), Margin = new Thickness(18, 0, 0, 6) });
-                left.Children.Add(new TextBlock { Text = "Playnite", FontSize = 16, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.55), Margin = new Thickness(20, 0, 0, 30) });
             }
             foreach (var s in Sections)
             {
@@ -218,8 +215,8 @@ namespace Selene
             var right = new StackPanel { Margin = new Thickness(24, 0, 0, 0) };
             groupTitle = new TextBlock { FontSize = 15, FontWeight = FontWeights.SemiBold, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.55), Margin = new Thickness(8, 14, 0, 16) };
             right.Children.Add(groupTitle);
-            var scroller = new ScrollViewer { Content = optionList, VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, MaxHeight = 780, Focusable = false };
-            right.Children.Add(scroller);
+            var scroller = new ScrollViewer { Content = optionList, VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, MaxHeight = 715, Focusable = false };
+            right.Children.Add(PeekScroller.Wrap(scroller, optionList));   // the rows past the edge peek in, blurred, fading into the dark
             Grid.SetColumn(right, 1);
             layout.Children.Add(right);
             Root.Children.Add(layout);
@@ -272,7 +269,7 @@ namespace Selene
         {
             options = Sections[group].Rows;
             groupTitle.Text = Sections[group].Name.ToUpperInvariant();
-            optionList.Children.Clear(); rows.Clear(); knobs.Clear(); tracks.Clear(); values.Clear();
+            optionList.Children.Clear(); rows.Clear(); knobs.Clear(); tracks.Clear(); values.Clear(); sliders.Clear();
             for (int i = 0; i < options.Count; i++)
             {
                 var f = options[i];
@@ -281,18 +278,20 @@ namespace Selene
                 text.Children.Add(new TextBlock { Text = f.About, FontSize = 15, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.6), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 3, 0, 0) });
                 Border knob = null, track;
                 TextBlock value = null;
+                SliderBar slider = null;
                 if (f.Run != null)
                 {
                     track = new Border { CornerRadius = new CornerRadius(17), Padding = new Thickness(14, 4, 14, 5), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(24, 0, 0, 0), Background = Ink.Brush("SeleneInkColor", 0.12), Child = new TextBlock { Text = "Open", FontSize = 17, FontWeight = FontWeights.SemiBold, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor") } };
                 }
+                else if (f.IsChoice && f.Slider)
+                {
+                    slider = new SliderBar();   // a number: a line with a knob (Left / Right)
+                    track = slider.Root;
+                    value = slider.Value;
+                }
                 else if (f.IsChoice)
                 {
-                    var pill = new StackPanel { Orientation = Orientation.Horizontal };
-                    pill.Children.Add(new TextBlock { Text = "‹", FontSize = 22, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.5), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 3) });
-                    value = new TextBlock { FontSize = 17, FontWeight = FontWeights.SemiBold, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor"), VerticalAlignment = VerticalAlignment.Center, MinWidth = 120, TextAlignment = TextAlignment.Center };
-                    pill.Children.Add(value);
-                    pill.Children.Add(new TextBlock { Text = "›", FontSize = 22, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.5), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 3) });
-                    track = new Border { CornerRadius = new CornerRadius(17), Padding = new Thickness(12, 4, 12, 5), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(24, 0, 0, 0), Background = Ink.Brush("SeleneInkColor", 0.12), Child = pill };
+                    track = ChoiceLook.Pill(out value);   // a choice: A opens the list of them
                 }
                 else
                 {
@@ -305,7 +304,7 @@ namespace Selene
                 line.Children.Add(text);
                 var row = new Border { Child = line, CornerRadius = new CornerRadius(16), Padding = new Thickness(26, 18, 24, 18), Margin = new Thickness(0, 0, 0, 8), BorderThickness = new Thickness(2), BorderBrush = Brushes.Transparent, Background = Ink.Brush("SeleneInkColor", 0.06) };
                 optionList.Children.Add(row);
-                rows.Add(row); knobs.Add(knob); tracks.Add(track); values.Add(value);
+                rows.Add(row); knobs.Add(knob); tracks.Add(track); values.Add(value); sliders.Add(slider);
                 ShowValue(i, false);
                 if (animate) Ui.Rise(row, i * 40, 10, 220);
             }
@@ -315,6 +314,7 @@ namespace Selene
         {
             var f = options[i];
             if (f.Run != null) return;
+            if (f.IsChoice && sliders[i] != null) { sliders[i].Set(ChoiceIndex(f), f.Values.Length, ChoiceName(f), animate); return; }
             if (f.IsChoice) { values[i].Text = ChoiceName(f); if (animate) Ui.Pop(tracks[i]); return; }
             bool on = On(f.Prop);
             var slide = new DoubleAnimation(on ? 26 : 0, TimeSpan.FromMilliseconds(animate ? 200 : 0)) { EasingFunction = Ui.Out() };
@@ -341,8 +341,10 @@ namespace Selene
                     var row = rows[index];
                     var top = row.TranslatePoint(new Point(0, 0), optionList).Y;
                     double want = scroller.VerticalOffset;
-                    if (top < scroller.VerticalOffset) want = top;
-                    else if (top + row.ActualHeight > scroller.VerticalOffset + scroller.ViewportHeight) want = top + row.ActualHeight - scroller.ViewportHeight;
+                    // the focused row clear of the peek bands (it sat half faded at the edge)
+                    double pad = PeekScroller.Band;
+                    if (top - pad * 0.6 < scroller.VerticalOffset) want = Math.Max(0, top - pad * 0.6);
+                    else if (top + row.ActualHeight > scroller.VerticalOffset + scroller.ViewportHeight - pad) want = top + row.ActualHeight - (scroller.ViewportHeight - pad);
                     if (Math.Abs(want - scroller.VerticalOffset) > 0.5) scroller.ScrollToVerticalOffset(want);
                 }
                 catch { }
@@ -351,6 +353,7 @@ namespace Selene
 
         public override void Handle(string b)
         {
+            if (picker != null && picker.IsOpen) { picker.Handle(b); return; }   // a choice's list has the buttons
             if (!inOptions)
             {
                 if (b == "B") { Ui.Back(); LoginScene.Show(new MenuScreen(true), -1); return; }
@@ -364,7 +367,7 @@ namespace Selene
                 return;
             }
             var opt = options[index];
-            if (b == "B" || (b == "DPadLeft" && !opt.IsChoice)) { inOptions = false; Ui.Back(); ShowFocus(); return; }
+            if (b == "B" || (b == "DPadLeft" && !(opt.IsChoice && opt.Slider))) { inOptions = false; Ui.Back(); ShowFocus(); return; }
             if (opt.Run != null)
             {
                 if (b != "A") { Move(b); return; }
@@ -373,17 +376,30 @@ namespace Selene
                 else opt.Run();
                 return;
             }
-            if (opt.IsChoice && (b == "A" || b == "DPadLeft" || b == "DPadRight"))
+            if (opt.IsChoice && opt.Slider && (b == "DPadLeft" || b == "DPadRight"))
             {
-                int i = (ChoiceIndex(opt) + (b == "DPadLeft" ? -1 : 1) + opt.Values.Length) % opt.Values.Length;
+                int i = ChoiceIndex(opt) + (b == "DPadLeft" ? -1 : 1);
+                if (i < 0 || i >= opt.Values.Length) return;   // the end of the line
                 Set(opt.Prop, opt.Values[i]);
-                Ui.Key();
+                Ui.Tick();
                 ShowValue(index, true);
                 return;
             }
+            if (opt.IsChoice && b == "A" && !opt.Slider)
+            {
+                int row = index;
+                picker = ChoiceList.Open(Root, tracks[row], opt.Names ?? opt.Values, ChoiceIndex(opt), k =>
+                {
+                    Set(opt.Prop, opt.Values[k]);
+                    ShowValue(row, true);
+                });
+                return;
+            }
+            if (opt.IsChoice && (b == "DPadRight" || b == "A")) return;
             if (b == "A")
             {
                 Set(opt.Prop, !On(opt.Prop));
+                if (opt.Prop == "ShowBattery") Set("ShowBatteryPercentage", On(opt.Prop));   // the number goes with the symbol
                 Ui.Key();
                 ShowValue(index, true);
                 return;

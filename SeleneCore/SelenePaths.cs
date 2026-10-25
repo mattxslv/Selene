@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using Playnite.SDK;
 using Playnite.SDK.Plugins;
 
 namespace Selene
@@ -11,9 +12,10 @@ namespace Selene
     public static class SelenePaths
     {
         private static Plugin plugin;
+        private static IPlayniteAPI api;
         private static SeleneSettings settings;
 
-        public static void Init(Plugin owner, SeleneSettings s) { plugin = owner; settings = s; themeDir = null; }
+        public static void Init(Plugin owner, IPlayniteAPI playnite, SeleneSettings s) { plugin = owner; api = playnite; settings = s; themeDir = null; }
 
         // downloaded art, preview clips, screenshots: the user's choice, else the add-on's own data folder
         public static string Media(string sub)
@@ -112,16 +114,23 @@ namespace Selene
             }
         }
 
+        // where Playnite keeps its settings, library and themes: %AppData%\Playnite for an installed Playnite, the program
+        // folder for a portable one (Playnite says which; the AppData guess is only for code running without the API)
         public static string PlayniteConfig
         {
-            get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Playnite"); }
+            get
+            {
+                try { if (api != null && !string.IsNullOrEmpty(api.Paths.ConfigurationPath)) return api.Paths.ConfigurationPath; } catch { }
+                return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Playnite");
+            }
         }
 
-        // the fullscreen theme Playnite is set to
+        // the fullscreen theme Playnite is set to (asked of Playnite; read from its file when the API can't say)
         public static string ActiveThemeId
         {
             get
             {
+                try { var t = api != null ? api.ApplicationSettings.FullscreenTheme : null; if (!string.IsNullOrEmpty(t)) return t; } catch { }
                 try
                 {
                     var m = Regex.Match(File.ReadAllText(Path.Combine(PlayniteConfig, "fullscreenConfig.json")), "\"Theme\"\\s*:\\s*\"([^\"]+)\"");

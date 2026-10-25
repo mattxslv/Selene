@@ -65,8 +65,12 @@ namespace Selene
             UpdateLastPlayed();
             // no login this start (intro and Who's playing? both off): Collection right away if that's the start screen
             var loginLayer = Part("AcceuilSettings");
+            // Collection's "no games" message stays readable over a bright wallpaper
+            AdaptiveText.Watch(Part("SeleneLibraryEmpty") as FrameworkElement, () => Contrast.WallpaperImage);
+            var coreNote = Part("SeleneCoreNotice");
+            if (coreNote != null) coreNote.Visibility = Visibility.Collapsed;   // the theme's note for when Core isn't running
             if (loginLayer != null && !loginLayer.IsVisible) LoginScene.AllowBackdropVideo();
-            if (loginLayer != null && !loginLayer.IsVisible && Features.On("startcollection")) ShowLibrary();
+            if (loginLayer != null && !loginLayer.IsVisible && StartOnCollection()) ShowLibrary();
             // Playnite's "game is running" screen (switching back to Playnite while a game runs): the home instead
             var status = HomeNav.FindByName(main, "PART_ElemGameStatus") as UIElement;
             if (status != null) status.IsVisibleChanged += (s, e) => { if ((bool)e.NewValue) HomeNav.GameStatusShown(); };
@@ -98,6 +102,7 @@ namespace Selene
             Wire("SeleneNav_captures", () => new CapturesScreen());
             Wire("SeleneNav_surprise", () => new SurpriseScreen());
             HomeNav.ApplyValueSettings();
+            Ui.WatchFullRate(main);            // the screen's own refresh rate while Playnite is in front
             DetailsStage.Attach(main);         // the details page's lower half
             GameFacts.CardStats();
             CapturesScreen.CountInBackground();
@@ -170,6 +175,24 @@ namespace Selene
         // Collection is showing (or being switched to): Spotlight's selection guard stays out of its way
         public static bool CollectionActive { get; private set; }
 
+        // the screen you were on last, for Start on: Where you left it (a word in a file, like the filter tab)
+        private static readonly string StartScreenFile = System.IO.Path.Combine(SelenePaths.PlayniteConfig, "selene-start-screen.txt");
+
+        private static void RememberScreen(string screen)
+        {
+            if (Features.Value("starton") != "last") return;
+            try { System.IO.File.WriteAllText(StartScreenFile, screen); } catch { }
+        }
+
+        // the Start on setting: Collection, or whichever screen was up when Playnite last closed
+        public static bool StartOnCollection()
+        {
+            var v = Features.Value("starton");
+            if (v != "last") return v == "collection";
+            try { return System.IO.File.Exists(StartScreenFile) && System.IO.File.ReadAllText(StartScreenFile).Trim() == "collection"; }
+            catch { return false; }
+        }
+
         public static void ShowLibrary()
         {
             var home = Part("WelcomeHubOverlay");
@@ -177,6 +200,8 @@ namespace Selene
             if (home == null || library == null) return;
             int mine = ++switchCount;
             CollectionActive = true;
+            RememberScreen("collection");
+            HomeNav.UpdateFilterTabs();
             library.BeginAnimation(UIElement.OpacityProperty, null);
             library.Visibility = Visibility.Visible;   // under Spotlight, loading its art meanwhile
             HomeNav.SetMusic("home");   // Collection like Spotlight: the default track, a game's song with its trailer
@@ -231,9 +256,15 @@ namespace Selene
                 {
                     var api = HomeNav.Api;
                     if (api == null) return;
-                    bool missing = false;
-                    foreach (var a in SetupCheck.MissingIncluded(api)) if (a.Id.StartsWith("ExtraMetadataLoader")) missing = true;
-                    if (missing) Ui.Notice("Logos and trailers come with the Extra Metadata add-on. Menu, Setup check installs it.", 9000);
+                    // worked out off the UI thread (asking Playnite which add-ons are installed took ~120 ms: a hitch on the home)
+                    var ui = Application.Current.Dispatcher;
+                    System.Threading.Tasks.Task.Factory.StartNew(() =>
+                    {
+                        bool missing = false;
+                        try { foreach (var a in SetupCheck.MissingIncluded(api)) if (a.Id.StartsWith("ExtraMetadataLoader")) missing = true; }
+                        catch (Exception ex) { HomeNav.Log("add-on hint: " + ex.Message); }
+                        if (missing) ui.BeginInvoke(new Action(() => Ui.Notice("Logos and trailers come with the Extra Metadata add-on. Menu, Setup check installs it.", 9000)));
+                    });
                 }
                 catch (Exception ex) { HomeNav.Log("add-on hint: " + ex.Message); }
             };
@@ -250,6 +281,8 @@ namespace Selene
             if (home == null) return;
             int mine = ++switchCount;
             CollectionActive = false;
+            RememberScreen("spotlight");
+            HomeNav.UpdateFilterTabs();
             if (instant)
             {
                 if (library != null) { library.BeginAnimation(UIElement.OpacityProperty, null); library.Visibility = Visibility.Collapsed; }
@@ -355,7 +388,7 @@ namespace Selene
             var login = Part("AcceuilSettings");
             if (login == null) return;
             HomeNav.QuietFocus(1200);   // focus goes back to the home
-            if (!LoginScene.KeepHome && Features.On("startcollection")) { ShowLibrary(); HomeNav.Log("start on Collection"); }
+            if (!LoginScene.KeepHome && StartOnCollection()) { ShowLibrary(); HomeNav.Log("start on Collection"); }
             else if (!LoginScene.KeepHome) HomeNav.HoldHomeForIntro();
             var fade = new DoubleAnimation(0, TimeSpan.FromMilliseconds(420)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn } };
             fade.Completed += (s, e) => { login.Visibility = Visibility.Collapsed; login.BeginAnimation(UIElement.OpacityProperty, null); login.Opacity = 1; };

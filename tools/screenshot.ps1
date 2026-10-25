@@ -1,6 +1,6 @@
 # Dev: picture of Playnite's fullscreen window (even when other windows cover it), to look at Selene while building it.
 # Usage: screenshot.ps1 <out.png> [width]
-param([string]$out = "$env:TEMP\selene-shot.png", [int]$width = 1600)
+param([string]$out = "$env:TEMP\selene-shot.png", [int]$width = 1600, [int]$procId = 0)
 Add-Type -AssemblyName System.Drawing
 Add-Type @"
 using System; using System.Runtime.InteropServices;
@@ -24,7 +24,7 @@ public static class Win {
 }
 "@
 [Win]::SetProcessDPIAware() | Out-Null
-$p = Get-Process Playnite.FullscreenApp -ErrorAction Stop | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero } | Select-Object -First 1
+$p = Get-Process Playnite.FullscreenApp -ErrorAction Stop | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero -and ($procId -eq 0 -or $_.Id -eq $procId) } | Select-Object -First 1
 $h = [Win]::TopWindow([uint32]$p.Id); if ($h -eq [IntPtr]::Zero) { $h = $p.MainWindowHandle }
 $r = New-Object Win+RECT
 [Win]::GetWindowRect($h, [ref]$r) | Out-Null

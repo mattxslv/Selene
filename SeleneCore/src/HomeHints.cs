@@ -53,6 +53,7 @@ namespace Selene
             else if (focused != null && focused.Name.StartsWith("SeleneShotTile")) { key = "shot"; hints = new[] { "A", "View" }; }
             else if (focused != null && (focused.Name == "SelenePlayBtn" || focused.Name == "SeleneDetailsBtn" || focused.Name == "SeleneFavBtn")) { key = "pill"; hints = new[] { "A", "Select" }; }
             else { key = "other"; hints = new string[0]; }
+            if (Ui.PlayStationPrompts) key += "|ps";   // the button names changed (Xbox / PlayStation): built again
             if (key == shown) return;
             shown = key;
             bar.Children.Clear();
@@ -65,8 +66,12 @@ namespace Selene
         {
             var prompt = Ui.Prompt(Ui.Icon(icon), label);
             var dot = prompt.Children[0] as Grid;
-            var glyph = dot != null && dot.Children.Count > 1 ? dot.Children[1] as TextBlock : null;
-            if (glyph != null) { glyph.FontFamily = Ui.Icons; glyph.FontSize = size; glyph.FontWeight = FontWeights.Normal; glyph.Margin = new Thickness(0); }
+            if (dot != null && dot.Children.Count > 1)
+            {
+                // an icon font glyph (the letter shape is drawn in the body font, which has no icons)
+                dot.Children.RemoveAt(1);
+                dot.Children.Add(new TextBlock { Text = Ui.Icon(icon), FontFamily = Ui.Icons, FontSize = size, Foreground = Ink.Brush("SeleneScrimColor"), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center });
+            }
             return prompt;
         }
 

@@ -25,7 +25,7 @@
 
 ## Install
 
-1. Download `Selene.pthm` and `SeleneCore.pext` from the [latest release](../../releases/latest).
+1. Download **both** `Selene.pthm` and `SeleneCore.pext` from the [latest release](../../releases/latest). The theme alone shows only a dark screen with a note.
 2. Open each file (or drag it onto Playnite) and confirm. Restart Playnite.
 3. Fullscreen mode → **Menu → Playnite settings → Appearance → Theme → Selene**. Selene walks you through the rest.
 

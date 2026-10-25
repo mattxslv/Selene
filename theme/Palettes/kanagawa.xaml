@@ -52,7 +52,7 @@
         <GradientStop Color="#FFDCD7BA" Offset="1.0" />
     </LinearGradientBrush>
 
-    <RadialGradientBrush x:Key="MainBackgourndBrush" GradientOrigin="0.5,0.1" Center="0.5,0.2" RadiusX="0.5" RadiusY="0.7">
+    <RadialGradientBrush x:Key="SeleneBaseBrush" GradientOrigin="0.5,0.1" Center="0.5,0.2" RadiusX="0.5" RadiusY="0.7">
         <GradientStop Color="#FF223249" Offset="0" />
         <GradientStop Color="#FF111116" Offset="1.0" />
     </RadialGradientBrush>

@@ -65,10 +65,27 @@ namespace Selene
             return names.Count > 0 ? string.Join(" · ", names) : "No store apps on this PC: games open in your browser";
         }
 
-        private static bool Registered(string protocol)
+        public static bool Registered(string protocol)
         {
+            if (DevNoStores) return false;
             try { using (var key = Microsoft.Win32.Registry.ClassesRoot.OpenSubKey(protocol)) return key != null; }
             catch (Exception) { return false; }
+        }
+
+        // dev: %TEMP%\selene-dev-nostores at start makes Selene act as if no store app were installed (to see that Store); the
+        // file is used up, so the next start is normal again
+        public static readonly bool DevNoStores = UseFlag("selene-dev-nostores");
+
+        private static bool UseFlag(string name)
+        {
+            try
+            {
+                var f = System.IO.Path.Combine(System.IO.Path.GetTempPath(), name);
+                if (!System.IO.File.Exists(f)) return false;
+                System.IO.File.Delete(f);
+                return true;
+            }
+            catch { return false; }
         }
 
         public override void Shown()

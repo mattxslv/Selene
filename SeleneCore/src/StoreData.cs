@@ -95,6 +95,7 @@ namespace Selene
         {
             try { Directory.CreateDirectory(SelenePaths.DataFolder); File.WriteAllText(RegionFile, country); } catch (Exception ex) { HomeNav.Log("store region: " + ex.Message); }
             if (chosen == country) return;
+            if (country == Country) { chosen = country; HomeNav.Log("store: prices stay in " + country); return; }   // the prices already shown
             bool changed = chosen != null && chosen.Length == 2 || country != Country;
             chosen = country;
             HomeNav.Log("store: prices for " + country);
@@ -257,9 +258,7 @@ namespace Selene
 
         private static string Open(string protocol, string appLink, string web)
         {
-            try { using (var key = Microsoft.Win32.Registry.ClassesRoot.OpenSubKey(protocol)) if (key != null) return appLink; }
-            catch { }
-            return web;
+            return StoreScreen.Registered(protocol) ? appLink : web;   // the app when it's there, else the store's page in the browser
         }
 
         // Steam's lists are its search results (they page: 25 games at a time, as far as you scroll), in this region's prices

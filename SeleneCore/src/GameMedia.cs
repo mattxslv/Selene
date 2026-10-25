@@ -283,7 +283,7 @@ namespace Selene
 
         private static List<string> ScreenshotUrls(Guid id, string name, string pluginId, string gameId)
         {
-            var eml = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Playnite", "ExtensionsData", EmlData, id + "_SteamAppDetails.json");
+            var eml = System.IO.Path.Combine(SelenePaths.PlayniteConfig, "ExtensionsData", EmlData, id + "_SteamAppDetails.json");
             if (System.IO.File.Exists(eml))
             {
                 var fromEml = ParseScreenshots(System.IO.File.ReadAllText(eml));

@@ -156,7 +156,7 @@ def xaml(theme_id, name, c, wallpaper):
     ]
     lines += [
         "",
-        '    <RadialGradientBrush x:Key="MainBackgourndBrush" GradientOrigin="0.5,0.1" Center="0.5,0.2" RadiusX="0.5" RadiusY="0.7">',
+        '    <RadialGradientBrush x:Key="SeleneBaseBrush" GradientOrigin="0.5,0.1" Center="0.5,0.2" RadiusX="0.5" RadiusY="0.7">',
         f'        <GradientStop Color="{argb(top)}" Offset="0" />',
         f'        <GradientStop Color="{argb(darker)}" Offset="1.0" />',
         "    </RadialGradientBrush>",

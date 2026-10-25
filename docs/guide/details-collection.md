@@ -24,4 +24,4 @@ Up goes back a band; B leaves the page.
 Playnite's full grid in Selene's look: the View button (or the Collection card, off by default) opens it. The game's
 art crossfades behind the grid as you move, and a trailer plays when you rest on a game (switch: *Collection
 trailers*; R3 for its sound). **A** plays the game the way Spotlight does, **X** opens its details, **Y** its options
-(Play, Favorite, Hide, Edit fields, Uninstall...). *Start on Collection* opens Playnite here instead of Spotlight.
+(Play, Favorite, Hide, Edit fields, Uninstall...). *Start on* (Selene settings, Start-up) can open Playnite here instead of Spotlight, or on whichever of the two you were on last.

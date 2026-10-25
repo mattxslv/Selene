@@ -135,6 +135,18 @@ namespace Selene
 
             status = new TextBlock { FontSize = 18, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.6), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(98, 640, 0, 0) };
             Root.Children.Add(status);
+            // nothing to show yet (first open, or the currency just changed): a loading card in the middle, not a bare dark page
+            var ring = new System.Windows.Shapes.Ellipse { Width = 54, Height = 54, StrokeThickness = 4, Stroke = Ink.Brush("GlyphColor"), StrokeDashArray = new DoubleCollection { 22, 14 }, StrokeDashCap = PenLineCap.Round, RenderTransformOrigin = new Point(0.5, 0.5), HorizontalAlignment = HorizontalAlignment.Center };
+            var spin = new RotateTransform();
+            ring.RenderTransform = spin;
+            spin.BeginAnimation(RotateTransform.AngleProperty, new DoubleAnimation(0, 360, TimeSpan.FromSeconds(1.6)) { RepeatBehavior = RepeatBehavior.Forever });
+            var loadingWords = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+            loadingWords.Children.Add(ring);
+            loadingWords.Children.Add(new TextBlock { Text = "Loading the store…", FontSize = 26, FontFamily = Ui.Display, Foreground = Ink.Brush("SeleneInkColor"), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 22, 0, 0) });
+            loadingWords.Children.Add(new TextBlock { Text = "Fetching prices and deals.", FontSize = 17, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.6), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 6, 0, 0) });
+            loading = new Grid { Visibility = Visibility.Collapsed, IsHitTestVisible = false };
+            loading.Children.Add(loadingWords);
+            Root.Children.Add(loading);
 
             var leftHints = Ui.Prompts(false, Ui.Prompt("B", "Back"), Ui.Prompt("Y", "Store apps"), Ui.Prompt("X", "Currency"));
             var rightHints = Ui.Prompts(true, Ui.Prompt("A", "Details"));
@@ -165,15 +177,21 @@ namespace Selene
             Ui.Rise(info, 60, 16, 320);
         }
 
-        public override void Hidden() { closed = true; heroLater.Stop(); }
+        public override void Hidden() { closed = true; heroLater.Stop(); if (rebuildLater != null) rebuildLater.Stop(); }
+        private System.Windows.Threading.DispatcherTimer rebuildLater;
 
         // a list came in: rebuild the rows if it belongs to this tab (keeping the place)
         private void Arrived(string key)
         {
             if (!RowsFor(tab).Any(r => r.Item2.Contains(key))) { ShowStatus(); return; }
-            if (rebuildQueued) return;
+            if (rebuildLater == null)
+            {
+                rebuildLater = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) };
+                rebuildLater.Tick += (s, e) => { rebuildLater.Stop(); rebuildQueued = false; if (!closed) Build(); };
+            }
             rebuildQueued = true;
-            Root.Dispatcher.BeginInvoke(new Action(() => { rebuildQueued = false; if (!closed) Build(); }), System.Windows.Threading.DispatcherPriority.Background);
+            rebuildLater.Stop();
+            rebuildLater.Start();
         }
 
         // the rows each tab shows, and the lists they're made of (mixed in turn)
@@ -251,7 +269,8 @@ namespace Selene
             bool last = rowIndex == rows.Count - 1;
             double h = RowH + Peek;
             var ms = TimeSpan.FromMilliseconds(animate ? 260 : 0);
-            rowShift.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(-rowIndex * RowH + (last ? Peek : 0), ms) { EasingFunction = Ui.Out() });
+            rowShift.BeginAnimation(TranslateTransform.YProperty, Ui.Fast(new DoubleAnimation(-rowIndex * RowH + (last ? Peek : 0), ms) { EasingFunction = Ui.Out() }));
+            if (animate) Ui.MeasureFrames("store row glide", 300);
             fadeAbove.BeginAnimation(GradientStop.ColorProperty, new ColorAnimation(last ? Color.FromArgb(0, 0, 0, 0) : Colors.Black, ms));
             fadeTop.BeginAnimation(GradientStop.OffsetProperty, new DoubleAnimation(last ? 1 : RowH / h, ms));
             fadeMid.BeginAnimation(GradientStop.OffsetProperty, new DoubleAnimation(last ? 1 : (RowH + 30) / h, ms));
@@ -440,10 +459,14 @@ namespace Selene
             });
         }
 
+        private Grid loading;   // the centred loading card while nothing has arrived
+
         private void ShowStatus()
         {
             bool any = rows.Count > 0;
-            if (!any) status.Text = StoreData.LoadedAt == DateTime.MinValue ? "Loading the store…" : "Nothing here right now.";
+            bool fetching = StoreData.LoadedAt == DateTime.MinValue;
+            if (!any) status.Text = fetching ? "" : "Nothing here right now.";
+            if (loading != null) loading.Visibility = !any && fetching ? Visibility.Visible : Visibility.Collapsed;
             else if (StoreData.FromDisk)
             {
                 var ago = DateTime.Now - StoreData.LoadedAt;
@@ -491,7 +514,8 @@ namespace Selene
                     int next = row.Index + (b == "DPadRight" ? 1 : -1);
                     if (next < 0 || next >= row.Items.Count) return;
                     row.Index = next;
-                    row.Shift.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(-Math.Max(0, next - 1) * Pitch, TimeSpan.FromMilliseconds(220)) { EasingFunction = Ui.Out() });
+                    row.Shift.BeginAnimation(TranslateTransform.XProperty, Ui.Fast(new DoubleAnimation(-Math.Max(0, next - 1) * Pitch, TimeSpan.FromMilliseconds(220)) { EasingFunction = Ui.Out() }));
+                    Ui.MeasureFrames("store tile glide", 260);
                     Ui.Tick();
                     LoadNearby();
                     MoreFor(row);

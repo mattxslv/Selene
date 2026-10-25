@@ -19,43 +19,9 @@ namespace Selene
         public static readonly FontFamily Glyphs = new FontFamily("Segoe MDL2 Assets");
         private static FontFamily icons;
 
-        [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Ansi)]
-        private static extern bool EnumDisplaySettings(string device, int mode, ref DevMode dm);
-
-        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential, CharSet = System.Runtime.InteropServices.CharSet.Ansi)]
-        private struct DevMode
-        {
-            [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValTStr, SizeConst = 32)] public string dmDeviceName;
-            public short dmSpecVersion, dmDriverVersion, dmSize, dmDriverExtra;
-            public int dmFields, dmPositionX, dmPositionY, dmDisplayOrientation, dmDisplayFixedOutput;
-            public short dmColor, dmDuplex, dmYResolution, dmTTOption, dmCollate;
-            [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValTStr, SizeConst = 32)] public string dmFormName;
-            public short dmLogPixels;
-            public int dmBitsPerPel, dmPelsWidth, dmPelsHeight, dmDisplayFlags, dmDisplayFrequency;
-            public int dmICMMethod, dmICMIntent, dmMediaType, dmDitherType, dmReserved1, dmReserved2, dmPanningWidth, dmPanningHeight;
-        }
-
-        private static int hz;
-
-        // the primary screen's refresh rate: WPF renders at 60 fps unless an animation asks for more, so every animation
-        // that wants a smooth move asks for this (a fixed 144 capped a 360 Hz screen at 144)
-        public static int RefreshHz
-        {
-            get
-            {
-                if (hz > 0) return hz;
-                int found = 0;
-                try
-                {
-                    var dm = new DevMode();
-                    dm.dmSize = (short)System.Runtime.InteropServices.Marshal.SizeOf(typeof(DevMode));
-                    if (EnumDisplaySettings(null, -1, ref dm)) found = dm.dmDisplayFrequency;   // -1: the current mode
-                }
-                catch { }
-                hz = found >= 30 && found <= 1000 ? found : 144;
-                return hz;
-            }
-        }
+        // the screen's refresh rate: WPF renders at 60 fps unless an animation asks for more, so every animation that
+        // wants a smooth move asks for this (a fixed 144 capped a 360 Hz screen at 144); 144 when Windows does not say
+        public static int RefreshHz { get { int r = ScreenRate(); return r >= 30 && r <= 1000 ? r : 144; } }
 
         // solid icons: Google's Material Icons (theme\Fonts\MaterialIcons-Regular.ttf); Segoe's thin ones when it's missing
         public static FontFamily Icons
@@ -209,7 +175,7 @@ namespace Selene
         public static IEasingFunction Out() { return new CubicEase { EasingMode = EasingMode.EaseOut }; }
 
         // at the screen's own speed (WPF caps an animation near 60 frames a second unless told otherwise; the TV runs at 120 / 144)
-        public static T Fast<T>(T t) where T : Timeline { Timeline.SetDesiredFrameRate(t, 144); return t; }
+        public static T Fast<T>(T t) where T : Timeline { Timeline.SetDesiredFrameRate(t, RefreshHz); return t; }
 
         public static void Fade(UIElement el, double to, int ms, int delay = 0, Action done = null)
         {

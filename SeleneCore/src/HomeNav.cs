@@ -108,6 +108,9 @@ namespace Selene
                 if (IntroRunning && (e.Key == Key.Left || e.Key == Key.Right || e.Key == Key.Up || e.Key == Key.Down || e.Key == Key.Enter || e.Key == Key.Space) && FocusOnHome()) { e.Handled = true; return; }
                 // the Store card's game pictures (Down from the card goes into them)
                 var asPad = e.Key == Key.Down ? "DPadDown" : e.Key == Key.Up ? "DPadUp" : e.Key == Key.Left ? "DPadLeft" : e.Key == Key.Right ? "DPadRight" : e.Key == Key.Enter ? "A" : e.Key == Key.Escape || e.Key == Key.Back ? "B" : null;
+                // (not under one of Playnite's dialogs, a game's options menu above the details page: the keys, and the pad's
+                // copies as keys, are the dialog's, the page behind must not move)
+                if (DialogUp()) return;
                 if (asPad != null && !e.Handled && (StoreShowcase.Handle(asPad) || CardShowcase.Handle(asPad) || DetailsStage.Handle(asPad))) { e.Handled = true; return; }
                 // Up/Down never shrink the card; Left/Right only while moving inside the row (not in the bar below)
                 bool dirKey = e.Key == Key.Up || e.Key == Key.Down || e.Key == Key.Left || e.Key == Key.Right;
@@ -3076,7 +3079,15 @@ namespace Selene
             {
                 var main = Application.Current.MainWindow;
                 foreach (Window w in Application.Current.Windows)
-                    if (!ReferenceEquals(w, main) && w.IsVisible && w.IsActive) return true;
+                {
+                    if (ReferenceEquals(w, main) || !w.IsVisible) continue;
+                    if (w.IsActive) return true;
+                    // Playnite's own dialogs (a game's options menu, a question) count while they're up even when Windows hasn't
+                    // made them the active window: the press is theirs, not the page behind's (the details page moved under the
+                    // options menu). Its hidden progress windows are Selene's cards, not dialogs.
+                    var type = w.GetType();
+                    if ((type.Namespace ?? "").StartsWith("Playnite") && type.Name != "ProgressWindow" && w.Opacity > 0.01) return true;
+                }
             }
             catch { }
             return false;

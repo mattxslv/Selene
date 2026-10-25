@@ -707,8 +707,11 @@ namespace Selene
                 {
                     var f = i < files.Count ? files[i] : null;
                     if (i >= tiles.Count) return;
-                    tiles[i].Face.Background = f != null && f.EndsWith(".gif", StringComparison.OrdinalIgnoreCase)
-                        ? AnimatedAvatar.Brush(f, 192) : new ImageBrush(pic) { Stretch = Stretch.UniformToFill };
+                    bool gif = f != null && f.EndsWith(".gif", StringComparison.OrdinalIgnoreCase);
+                    tiles[i].Face.Background = gif ? AnimatedAvatar.Brush(f, 192) : new ImageBrush(pic) { Stretch = Stretch.UniformToFill };
+                    // a moving picture isn't cached (its cache was redrawn every frame and, snapped to pixels while the tile grew,
+                    // the row around it vibrated)
+                    if (gif) { tiles[i].Root.CacheMode = null; tiles[i].Root.SnapsToDevicePixels = false; }
                 });
             }
 
@@ -815,6 +818,7 @@ namespace Selene
                     files.Insert(1, kept);
                     var gt = AddTile(kept, 1);
                     gt.Face.Background = AnimatedAvatar.Brush(kept, 192);
+                    gt.Root.CacheMode = null; gt.Root.SnapsToDevicePixels = false;
                     index = 1;
                     ShowFocus();
                     Ui.Pop(gt.Root);

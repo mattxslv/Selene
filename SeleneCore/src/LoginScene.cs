@@ -59,6 +59,7 @@ namespace Selene
                     Panel.SetZIndex(scene, -100);
                     shell.Children.Insert(0, scene);
                     HomeNav.Log("login: scene attached");
+                    if (!introPlayed) HomeNav.HoldMusicForLaunch(true);   // the music waits for the intro (it started over the dark wait before it)
                 }
                 login.IsVisibleChanged += (s, e) =>
                 {
@@ -243,9 +244,9 @@ namespace Selene
             FadeInBackdrop();
             var next = pending;
             pending = null;
-            if (next != null) Show(next(), 0);
-            else if (!introPlayed) { introPlayed = true; AllowBackdropVideo(); WhenCalm(scene, () => Show(Features.On("intro") ? (Screen)new IntroScreen() : Start(), 0)); }
-            else Show(Start(), 0);
+            if (next != null) { HomeNav.HoldMusicForLaunch(false); Show(next(), 0); }
+            else if (!introPlayed) { introPlayed = true; AllowBackdropVideo(); WhenCalm(scene, () => { HomeNav.HoldMusicForLaunch(false); Show(Features.On("intro") ? (Screen)new IntroScreen() : Start(), 0); }); }
+            else { HomeNav.HoldMusicForLaunch(false); Show(Start(), 0); }
         }
 
         // Who's playing? switched off: the last profile (or the only one) signs in by itself. False when it's still needed:

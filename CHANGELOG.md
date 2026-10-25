@@ -4,6 +4,10 @@ Selene (theme) and Selene Core (add-on) share one version number and are release
 
 ## Unreleased
 
+## 1.1.0 - 2026-10-25
+
+- Start-up: the background music waits for the intro to show (it started over the dark moment before it). Avatar step: moving along a row of GIF avatars no longer vibrates.
+- Setup check warns when Aniki Helper is still on: it belongs to the Aniki ReMake theme and, with Selene, adds start-up work, plays its own alert sounds and fights over the music.
 - Avatars: your own GIF keeps moving (it went through the framing step and became one still).
 - Idle screen: anywhere in Selene (not only Spotlight); each game's art comes with its logo or name and a line (playtime, last played), every fourth turn one of your own screenshots; the clock and date at the bottom right; the press that wakes it does nothing else.
 - Settings lists show there is more: the rows past the edge peek in, blurred and fading into the dark, at the bottom and (once scrolled) the top. Store: a loading card in the middle while the store fetches (after a currency change it looked like a dark page); Store currency changed from settings comes back to settings.

@@ -59,6 +59,8 @@ namespace Selene
             new AddonInfo { Id = "SplashScreen_d8c4f435-2bd2-49d8-98f6-87b1d415934a", Name = "Splash Screen", About = "shows a launch screen, which Selene already does" },
             new AddonInfo { Id = "NowPlaying_db4e7ade-57fb-426c-8392-60e2347a0209", Name = "Now Playing", About = "handles the running game, which Selene already does" },
             new AddonInfo { Id = "playnite-backgroundchanger-plugin", Name = "BackgroundChanger", About = "changes backgrounds, which Selene's wallpapers already do" },
+            // made for the Aniki ReMake theme: with Selene it still runs its own start-up work, sounds and music control
+            new AddonInfo { Id = "AnikiHelper_96a983a3-3f13-4dce-a474-4052b718bb52", Name = "Aniki Helper", About = "belongs to the Aniki ReMake theme; with Selene it adds start-up work, plays its own alert sounds and fights over the music" },
         };
 
         public static List<SetupItem> Run(IPlayniteAPI api)

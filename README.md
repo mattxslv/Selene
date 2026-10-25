@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.0-9CCBFF?style=flat-square" alt="Version 0.9.0">
+  <img src="https://img.shields.io/badge/version-1.1.0-9CCBFF?style=flat-square" alt="Version 0.9.0">
   <img src="https://img.shields.io/badge/Playnite-10%2B-1A2A4A?style=flat-square" alt="Playnite 10+">
   <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-1A2A4A?style=flat-square" alt="Windows 10 | 11">
   <img src="https://img.shields.io/badge/controller-first-1A2A4A?style=flat-square" alt="Controller first">

@@ -348,9 +348,9 @@ namespace Selene
             glideHooked = true;
             glideLast = TimeSpan.Zero;
             CompositionTarget.Rendering += OnGlideFrame;
-            // WPF renders at 60 fps unless an animation asks for more: keep a dummy one running at the 143 Hz refresh
+            // WPF renders at 60 fps unless an animation asks for more: keep a dummy one running at the screen refresh rate
             var clock = new DoubleAnimation(0, 1, TimeSpan.FromSeconds(1)) { RepeatBehavior = RepeatBehavior.Forever };
-            Timeline.SetDesiredFrameRate(clock, 144);
+            Timeline.SetDesiredFrameRate(clock, Ui.RefreshHz);
             glideClock.BeginAnimation(TranslateTransform.XProperty, clock);
         }
 
@@ -359,7 +359,7 @@ namespace Selene
             var shift = glideShift;
             var now = ((RenderingEventArgs)e).RenderingTime;
             if (now == glideLast) return;           // Rendering can fire more than once per frame
-            double dt = glideLast == TimeSpan.Zero ? 1.0 / 144 : Math.Min(0.05, (now - glideLast).TotalSeconds);
+            double dt = glideLast == TimeSpan.Zero ? 1.0 / Ui.RefreshHz : Math.Min(0.05, (now - glideLast).TotalSeconds);
             glideLast = now;
             if (shift == null) { StopGlide(); return; }
             // exact critically damped step: x(t) = (x0 + (v0 + w x0) t) e^-wt

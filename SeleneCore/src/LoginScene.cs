@@ -548,7 +548,7 @@ namespace Selene
                 double dur = 16 + rnd.NextDouble() * 18;
                 var begin = TimeSpan.FromSeconds(-rnd.NextDouble() * dur);
                 var drift = new DoubleAnimation(0, -size.Height * (0.10 + rnd.NextDouble() * 0.18), TimeSpan.FromSeconds(dur)) { RepeatBehavior = RepeatBehavior.Forever, BeginTime = begin };
-                Timeline.SetDesiredFrameRate(drift, 144);
+                Timeline.SetDesiredFrameRate(drift, Ui.RefreshHz);
                 tr.BeginAnimation(TranslateTransform.YProperty, drift);
                 tr.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(-14, 14 + rnd.NextDouble() * 20, TimeSpan.FromSeconds(5 + rnd.NextDouble() * 6)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, BeginTime = begin, EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut } });
                 double peak = bokeh ? 0.25 + rnd.NextDouble() * 0.3 : 0.4 + rnd.NextDouble() * 0.6;

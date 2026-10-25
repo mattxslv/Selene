@@ -1437,9 +1437,14 @@ namespace Selene
             {
                 if (previewShowing || !row.IsVisible || !row.IsKeyboardFocusWithin || movingCard != null || movingGame != null || LoginScene.IsActive) return;
                 var game = row.SelectedItem;
-                var path = game is string ? null : (previewSound ? FullTrailerPath(game) ?? TrailerPath(game) : TrailerPath(game));
+                // the silent clip when there is one; else the game's ExtraMetadata trailer, muted (its sound is R3's) and
+                // started past its logo, as the clips are
+                var clip = game is string ? null : TrailerPath(game);
+                var full = game is string ? null : FullTrailerPath(game);
+                var path = previewSound ? full ?? clip : clip ?? full;
                 var item = row.ItemContainerGenerator.ContainerFromItem(game) as ListBoxItem;
                 if (path == null || item == null) return;
+                if (path == full && !previewSound) pendingSeek = TimeSpan.FromSeconds(4);
                 var tile = FindByName(item, "Tile");
                 var video = TileVideo(item, true);
                 var scale = item.Template.FindName("TileScale", item) as ScaleTransform;
@@ -1481,6 +1486,7 @@ namespace Selene
                     tileGrid.SizeChanged += follow;
                 }
                 ApplyVideoPause();
+                video.IsMuted = !previewSound;
                 video.Source = new Uri(path);
                 video.Opacity = 0;
                 video.MediaOpened -= OnPreviewOpened;
@@ -1569,9 +1575,19 @@ namespace Selene
             if (video == null) return;
             var game = item.DataContext;
             var full = FullTrailerPath(game); var clip = TrailerPath(game);
-            if (full == null || clip == null) return;
+            if (full == null) return;
+            if (clip == null)   // no silent clip: the trailer itself is playing, so the sound is just switched
+            {
+                previewSound = !previewSound;
+                video.IsMuted = !previewSound;
+                ApplyVideoPause();
+                ShowSoundBadge(item, true);
+                Log("trailer sound " + (previewSound ? "on" : "off"));
+                return;
+            }
             var pos = video.Position;
             previewSound = !previewSound;
+            video.IsMuted = !previewSound;
             // the silent clip starts 4 s into the trailer
             pendingSeek = previewSound ? pos + TimeSpan.FromSeconds(4) : (pos > TimeSpan.FromSeconds(4) ? pos - TimeSpan.FromSeconds(4) : TimeSpan.Zero);
             ApplyVideoPause();
@@ -3143,7 +3159,7 @@ namespace Selene
         // for the home's button hints
         internal static bool Moving { get { return movingCard != null || movingGame != null; } }
         internal static bool InRow(DependencyObject d) { return IsInRow(d); }
-        internal static bool HasTrailer(object game) { return game != null && !(game is string) && TrailerPath(game) != null; }
+        internal static bool HasTrailer(object game) { return game != null && !(game is string) && (TrailerPath(game) != null || FullTrailerPath(game) != null); }
 
         private static void SetMoveVisual(ListBoxItem item, bool on)
         {

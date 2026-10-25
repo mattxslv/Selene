@@ -243,6 +243,56 @@
                                     </StackPanel>
                                 </StackPanel>
 
+                                <!-- how long it takes to beat (the HowLongToBeat add-on's numbers for this game; hidden without the add-on or data) -->
+                                <StackPanel x:Name="SeleneHltb" Orientation="Horizontal" Margin="4,22,0,0">
+                                    <StackPanel.Style>
+                                        <Style TargetType="StackPanel">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{PluginSettings Plugin=HowLongToBeat, Path=HasData}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </StackPanel.Style>
+                                    <StackPanel Margin="0,0,28,0">
+                                        <StackPanel.Style>
+                                            <Style TargetType="StackPanel">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{PluginSettings Plugin=HowLongToBeat, Path=MainStory}" Value="0"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
+                                                    <DataTrigger Binding="{PluginSettings Plugin=HowLongToBeat, Path=ShowMainTime}" Value="False"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </StackPanel.Style>
+                                        <TextBlock Text="MAIN STORY" Style="{StaticResource SeleneStatLabel}"/>
+                                        <TextBlock Text="{PluginSettings Plugin=HowLongToBeat, Path=MainStoryFormat}" Style="{StaticResource SeleneStatValue}"/>
+                                    </StackPanel>
+                                    <StackPanel Margin="0,0,28,0">
+                                        <StackPanel.Style>
+                                            <Style TargetType="StackPanel">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{PluginSettings Plugin=HowLongToBeat, Path=MainExtra}" Value="0"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
+                                                    <DataTrigger Binding="{PluginSettings Plugin=HowLongToBeat, Path=ShowExtraTime}" Value="False"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </StackPanel.Style>
+                                        <TextBlock Text="MAIN + EXTRA" Style="{StaticResource SeleneStatLabel}"/>
+                                        <TextBlock Text="{PluginSettings Plugin=HowLongToBeat, Path=MainExtraFormat}" Style="{StaticResource SeleneStatValue}"/>
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <StackPanel.Style>
+                                            <Style TargetType="StackPanel">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{PluginSettings Plugin=HowLongToBeat, Path=Completionist}" Value="0"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
+                                                    <DataTrigger Binding="{PluginSettings Plugin=HowLongToBeat, Path=ShowCompletionistTime}" Value="False"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </StackPanel.Style>
+                                        <TextBlock Text="COMPLETIONIST" Style="{StaticResource SeleneStatLabel}"/>
+                                        <TextBlock Text="{PluginSettings Plugin=HowLongToBeat, Path=CompletionistFormat}" Style="{StaticResource SeleneStatValue}"/>
+                                    </StackPanel>
+                                </StackPanel>
+
                                 <!-- the genres as chips -->
                                 <ItemsControl ItemsSource="{Binding Genres}" Margin="2,22,0,0" IsTabStop="False" Focusable="False">
                                     <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>

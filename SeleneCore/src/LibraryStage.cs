@@ -46,9 +46,81 @@ namespace Selene
             if (list == null || library == null || host == null) { HomeNav.Log("library stage: parts not found"); list = null; return; }
             arm = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(4000) };   // like Aniki: the art first, the trailer about 4 s in
             arm.Tick += (s, e) => { arm.Stop(); Play(); };
+            HookEndOfRow();
             list.SelectionChanged += (s, e) => Rearm(true);
             library.IsVisibleChanged += (s, e) => { if ((bool)e.NewValue) Rearm(false); else Stop(); };
             HookArtCrossfade(grid);
+        }
+
+        // ---- the row's ends ----
+        // The row scrolls by its own size estimate, which stops short of the last tile (the last game ended 47 px past the
+        // screen's edge at the furthest scroll), and the selected tile grows (zoom and ring) past whatever edge it is at. So
+        // the tile is kept inside the row by what is really on screen: the whole row slides back by the missing distance,
+        // smoothly, at the start and the end, on any screen size.
+        private static bool endHooked;
+        private static DateTime endSettleUntil, endLastFrame = DateTime.MinValue;
+
+        private static void HookEndOfRow()
+        {
+            list.SelectionChanged += (s, e) =>
+            {
+                endSettleUntil = DateTime.Now.AddMilliseconds(900);   // the row's own scroll runs a moment after the move
+                if (endHooked) return;
+                endHooked = true;
+                CompositionTarget.Rendering += KeepTileInside;
+            };
+        }
+
+        private static void KeepTileInside(object sender, EventArgs e)
+        {
+            try
+            {
+                var presenter = FindPresenter(list);
+                if (presenter == null) { Unhook(); return; }
+                var shift = presenter.RenderTransform as TranslateTransform;
+                if (shift == null || shift.IsFrozen) { shift = new TranslateTransform(); presenter.RenderTransform = shift; }
+                var item = list.SelectedIndex >= 0 ? list.ItemContainerGenerator.ContainerFromIndex(list.SelectedIndex) as FrameworkElement : null;
+                double target = 0;
+                // only the two ends need it (everywhere else the row's own scroll leaves the tile well inside), and nothing
+                // reacts to the tiles passing the edge mid-scroll: that made the row rubber-band
+                bool atEnd = list.SelectedIndex == 0 || list.SelectedIndex == list.Items.Count - 1;
+                if (atEnd && item != null && item.IsVisible && item.ActualWidth > 0)
+                {
+                    double edge = Math.Max(18, list.ActualWidth * 0.008);   // what the zoom and the ring need beside the tile
+                    double left = item.TranslatePoint(new Point(0, 0), list).X - shift.X + 14;   // the tile itself (the item has a 14 px margin on its left)
+                    double right = left - 14 + item.ActualWidth - 0;
+                    if (right > list.ActualWidth - edge) target = (list.ActualWidth - edge) - right;
+                    else if (left < edge) target = edge - left;
+                }
+                // eased by time, not per frame: the same speed on a 60 Hz and a 360 Hz screen
+                var nowAt = DateTime.Now;
+                double dt = endLastFrame == DateTime.MinValue ? 0.016 : Math.Min(0.05, (nowAt - endLastFrame).TotalSeconds);
+                endLastFrame = nowAt;
+                double diff = target - shift.X;
+                shift.X = Math.Abs(diff) < 0.4 ? target : shift.X + diff * (1 - Math.Exp(-dt / 0.09));
+                if (DateTime.Now > endSettleUntil && Math.Abs(diff) < 0.4) Unhook();
+            }
+            catch { Unhook(); }
+        }
+
+        private static void Unhook()
+        {
+            CompositionTarget.Rendering -= KeepTileInside;
+            endHooked = false;
+            endLastFrame = DateTime.MinValue;
+        }
+
+        private static ItemsPresenter FindPresenter(DependencyObject root)
+        {
+            if (root == null) return null;
+            int n = VisualTreeHelper.GetChildrenCount(root);
+            for (int i = 0; i < n; i++)
+            {
+                var child = VisualTreeHelper.GetChild(root, i);
+                var found = child as ItemsPresenter ?? FindPresenter(child);
+                if (found != null) return found;
+            }
+            return null;
         }
 
         // ---- the art from game to game: a crossfade of Selene's own ----

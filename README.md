@@ -96,9 +96,13 @@ tools\package.ps1        # Selene.pthm + SeleneCore.pext in dist\
 
 More in the guide: [building](docs/guide/building.md).
 
-## How it is developed
+## Development
 
-Selene is worked on in releases with a short list. How a release is chosen, what "done" means and how requests are answered (planned, later, or not planned) is in [ROADMAP.md](ROADMAP.md).
+Selene started as a personal project, built around the fullscreen gaming experience I wanted for myself. I shared it publicly in case others would enjoy it too.
+
+I'll keep maintaining Selene, investigating bugs, and improving its stability and overall experience as time allows. Suggestions are welcome, but new features aren't promised: I'll work on ideas that fit Selene and that I feel inspired to build.
+
+There is no fixed release schedule. Sometimes I'll add features, sometimes I'll polish what's already here, and sometimes I'll simply enjoy using it. More about this approach is in [ROADMAP.md](ROADMAP.md).
 
 ## Credits
 

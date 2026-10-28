@@ -6,7 +6,7 @@ Selene (theme) and Selene Core (add-on) share one version number and are release
 
 ## 1.4.0 - 2026-10-29
 
-- The admin helper (SeleneHelper.exe) is gone. Older versions set it up through a scheduled task with admin rights, and it had real security problems, so it's out for good. Updating replaces it with a dummy file that does nothing. We never confirmed exactly why Defender flagged 1.3.1, so if you still get a warning on this version, please open an issue.
+- The admin helper (SeleneHelper.exe) is gone. Older versions set it up through a scheduled task with admin rights, and it had real security problems, so it's out for good. Updating replaces it with a dummy file that does nothing. We never confirmed exactly why some antivirus tools flagged 1.3.1, so if yours still warns about this version, please open an issue.
 - If you used the helper before, go to Selene settings > Advanced > Old administrator tasks to remove the leftover tasks (it asks first). Games that launched through it get their normal Play action back, and the old setup is backed up first.
 - Because of that, Guide can't pause, close or restart games that run as admin anymore. Alt+Tab still works.
 - Big smoothness fix: Selene was stuck at 30 fps on 60 Hz screens (TVs especially). It runs at the full refresh rate now.
@@ -20,7 +20,7 @@ Selene (theme) and Selene Core (add-on) share one version number and are release
 - Steam art matching is stricter, so sequels and other editions don't steal a game's logo or background anymore. Wrong art from before gets replaced. Your own custom art is left alone.
 - Lots of smaller fixes: music fades instead of cutting off, the left stick doesn't skip two steps, dialogs answer to A and Enter, sharper dialog text, clearer setting names, and notification cards stay up long enough to read.
 - The Controller battery card is gone.
-- Releases now ship with SHA256SUMS and a BUILDINFO.txt so you can check the files.
+- Releases now ship with SHA256SUMS so you can check the files.
 
 ## 1.3.1 - 2026-10-27
 

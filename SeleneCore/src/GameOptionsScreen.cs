@@ -34,6 +34,7 @@ namespace Selene
         }
 
         private readonly Game game;
+        private readonly string rootTitle;
         private readonly Stack<Level> levels = new Stack<Level>();
         private readonly StackPanel list = new StackPanel();
         private readonly ScrollViewer scroller;
@@ -61,10 +62,17 @@ namespace Selene
 
         // no game: the add-ons' and scripts' main menus (Playnite's Extensions menu), opened from Selene's menu
         public static GameOptionsScreen Extensions() { return new GameOptionsScreen(null); }
+        public static GameOptionsScreen Tools() { return new GameOptionsScreen(null, null, false, true); }
 
         public GameOptionsScreen(Game game, Action move = null, bool toMetadata = false)
+            : this(game, move, toMetadata, false)
+        {
+        }
+
+        private GameOptionsScreen(Game game, Action move, bool toMetadata, bool toolsMenu)
         {
             this.game = game;
+            rootTitle = game != null ? game.Name : toolsMenu ? "Tools" : "Extensions";
             this.move = move;
             // one column in the middle (the game's name is in the title above the rows)
             var layout = new Grid { Margin = new Thickness(0, 90, 0, 110), Width = 1040, HorizontalAlignment = HorizontalAlignment.Center };
@@ -79,7 +87,7 @@ namespace Selene
             Root.Children.Add(layout);
             Root.Children.Add(Ui.Prompts(false, Ui.Prompt("B", "Back")));
             Root.Children.Add(Ui.Prompts(true, Ui.Prompt("A", "Select")));
-            levels.Push(game != null ? MainLevel() : SectionLevel("Extensions", MenuItems(), 0));
+            levels.Push(game != null ? MainLevel() : toolsMenu ? ToolsLevel() : SectionLevel("Extensions", MenuItems(), 0));
             if (toMetadata && game != null) levels.Push(MetadataLevel());   // back from typing an id
         }
 
@@ -217,6 +225,46 @@ namespace Selene
         {
             var items = ExtensionItems();
             return SectionLevel("Extensions", items, 0);
+        }
+
+        private Level ToolsLevel()
+        {
+            var l = new Level { Title = "Tools" };
+            l.Entries.Add(new Entry
+            {
+                Label = "Playnite settings", Sub = "Configure Playnite itself.", Icon = 0xe8b8,
+                Run = () => { if (Features.On("playnitesettings")) LoginScene.Show(new PlayniteSettingsScreen(), 1); else FinishTool(PlayniteMenu.OpenSettings); }
+            });
+            if (!Features.On("startrefresh"))
+                l.Entries.Add(new Entry
+                {
+                    Label = "Update library", Sub = "Look for new and removed games.", Icon = 0xe627,
+                    Run = () => FinishTool(() =>
+                    {
+                        string busy;
+                        bool started = HomeNav.UpdateLibraryNow(out busy);
+                        Ui.Notice(started ? "Updating your library in the background." : "Already updating: " + busy);
+                    })
+                });
+            l.Entries.Add(new Entry
+            {
+                Label = "Desktop mode", Sub = "Switch to Playnite's desktop app.", Icon = 0xe30c,
+                Run = () => FinishTool(() => PlayniteMenu.Main("SwitchToDesktopCommand"))
+            });
+            l.Entries.Add(new Entry
+            {
+                Label = "Update", Sub = UpdateCheck.Available != null ? "Selene " + UpdateCheck.Available : "Check for a newer Selene.", Icon = 0xe923,
+                Run = () => RunTool(() => { if (UpdateCheck.Available != null) LoginScene.Show(new UpdateScreen(() => new MenuScreen(true)), 1); else UpdateCheck.CheckNow(() => new MenuScreen(true)); })
+            });
+            return l;
+        }
+
+        private static void FinishTool(Action action) { LoginScene.FinishThen(() => RunTool(action)); }
+
+        private static void RunTool(Action action)
+        {
+            try { action(); }
+            catch (Exception ex) { HomeNav.Log("tools: " + ex); }
         }
 
         private Level SectionLevel(string titleText, List<Item> items, int depth)
@@ -419,9 +467,9 @@ namespace Selene
         private void Show(bool animate)
         {
             var l = levels.Peek();
-            var top = game != null ? game.Name : "Extensions";
+            var top = rootTitle;
             title.Text = levels.Count == 1 ? top : l.Title;
-            // above the title: "GAME OPTIONS" (nothing for Extensions), then the levels walked through
+            // above the title: "GAME OPTIONS" (nothing for a menu), then the levels walked through
             crumbs.Text = (levels.Count == 1 ? (game != null ? "Game options" : "") : top + "  ›  " + string.Join("  ›  ", levels.Reverse().Skip(1).Take(levels.Count - 2).Select(x => x.Title).ToArray())).TrimEnd(' ', '›').ToUpperInvariant();
             list.Children.Clear();
             rows.Clear();

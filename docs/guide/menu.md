@@ -4,10 +4,15 @@
 
 ![Menu](../screenshots/menu.png)
 
-**Start** opens a control-center row along the bottom over the dimmed home: switch or edit your profile, update the
-library, Selene settings, the setup check, Playnite's settings and desktop mode. **Power** on the row opens sleep,
-restart, shut down and exit right above it. Hold Start to go straight to Selene settings. **Copy log** puts the tail of Selene's and Playnite's logs on the clipboard, ready to paste into
-a GitHub issue.
+**Start** opens a control-center row along the bottom over the dimmed home: switch or edit your profile, change the
+theme, open Selene settings, Sound, **Extensions** and **Tools**. Extensions contains add-ons' and scripts' main-menu
+actions; Tools contains Playnite settings, library update (unless it runs automatically at start), desktop mode and
+Selene updates. **Power** opens sleep, restart, shut down and exit. Hold Start to go straight to Selene settings.
+**Copy log** puts the tail of Selene's and
+Playnite's logs on the clipboard, ready to paste into a GitHub issue.
+
+Show or hide **Extensions** and **Tools** separately in Selene settings → Advanced. These switches affect Selene's
+menu only; Playnite's own menu visibility stays in Playnite settings → Menus.
 
 **Playnite's settings** open as a Selene screen: General, Visuals, Audio, Layout, Menus and Input as sections, their
 settings as Selene's switches and choices, saved straight into Playnite. A row opens Playnite's own pages for the

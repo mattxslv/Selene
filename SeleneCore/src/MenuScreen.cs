@@ -32,7 +32,6 @@ namespace Selene
         private readonly List<FrameworkElement> labels = new List<FrameworkElement>();
         private readonly List<ScaleTransform> scales = new List<ScaleTransform>();
         private readonly StackPanel bar = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 70) };
-        private readonly TextBlock status = new TextBlock { FontSize = 16, FontFamily = Ui.Body, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 30) };
         private Border powerList;
         private Border soundList;   // the Sound card: Windows' volume and which device plays
         private SliderBar soundSlider;
@@ -84,13 +83,10 @@ namespace Selene
             if (Features.On("soundmenu")) items.Add(new Item { Icon = Ui.Icon(0xe050), Label = "Sound", Sub = SystemAudio.Summary(), Run = OpenSound });   // Windows' volume and output
             items.Add(new Item { Icon = Ui.Icon(0xe8ac), Label = "Power", Run = OpenPower });
             // the add-ons' own menus (Playnite's Extensions menu): audio switchers, metadata tools...
-            items.Add(new Item { Icon = Ui.Icon(0xe87b), Picture = Ui.Glyph(Ui.Icon(0xe87b), Ui.Icons, 34, Ink.Brush("SeleneInkColor"), true), Label = "Extensions", Run = () => LoginScene.Show(GameOptionsScreen.Extensions(), 1) });   // (the piece centred by its body, not its knobs)
-            items.Add(new Item { Icon = Ui.Icon(0xe8b8), Label = "Playnite settings", Run = () => { if (Features.On("playnitesettings")) LoginScene.Show(new PlayniteSettingsScreen(), 1); else Later(PlayniteMenu.OpenSettings); } });
-            if (!Features.On("startrefresh")) items.Add(new Item { Icon = Ui.Icon(0xe627), Label = "Update library", Run = UpdateLibrary });   // (it updates at every start otherwise)
-            items.Add(new Item { Icon = Ui.Icon(0xe30c), Label = "Desktop mode", Run = () => Later(() => PlayniteMenu.Main("SwitchToDesktopCommand")) });
-            // Update, where Setup check was (that one is in Selene settings > Advanced now): a newer Selene found opens it, else it looks
-            items.Add(new Item { Icon = Ui.Icon(0xe923), Label = "Update", Sub = UpdateCheck.Available != null ? "Selene " + UpdateCheck.Available : null, Badge = UpdateCheck.Available != null,
-                Run = () => { if (UpdateCheck.Available != null) LoginScene.Show(new UpdateScreen(() => new MenuScreen(true)), 1); else UpdateCheck.CheckNow(() => new MenuScreen(true)); } });
+            if (Features.On("menuextensions"))
+                items.Add(new Item { Icon = Ui.Icon(0xe87b), Picture = Ui.Glyph(Ui.Icon(0xe87b), Ui.Icons, 34, Ink.Brush("SeleneInkColor"), true), Label = "Extensions", Run = () => LoginScene.Show(GameOptionsScreen.Extensions(), 1) });   // (the piece centred by its body, not its knobs)
+            if (Features.On("menutools"))
+                items.Add(new Item { Icon = Ui.Icon(0xe8b8), Label = "Tools", Run = () => LoginScene.Show(GameOptionsScreen.Tools(), 1) });
 
             index = items.FindIndex(i => i.Label == "Power");   // opens on Power, in the middle
             if (returning && lastOpened != null) index = Math.Max(0, items.FindIndex(i => i.Label == lastOpened));
@@ -135,8 +131,6 @@ namespace Selene
                 cells.Add(cell); rings.Add(ring); labels.Add(label); scales.Add(scale);
             }
             Root.Children.Add(bar);
-            status.Foreground = Ink.Brush("SeleneInkColor", 0.75);
-            Root.Children.Add(status);
             Root.Children.Add(Ui.Prompts(false, Ui.Prompt("B", "Close")));
             Root.Children.Add(Ui.Prompts(true, Ui.Prompt("A", "Select")));
         }
@@ -183,7 +177,6 @@ namespace Selene
             int next = index + (b == "DPadLeft" ? -1 : b == "DPadRight" ? 1 : 0);
             if (next == index || next < 0 || next >= items.Count) return;
             index = next;
-            status.Text = "";
             Ui.Tick();
             ShowFocus(true);
         }
@@ -459,20 +452,6 @@ namespace Selene
                 try { run(); }
                 catch (Exception ex) { HomeNav.Log("menu action failed: " + ex); }
             };
-            t.Start();
-        }
-
-        // starts Playnite's library update in the background (from the hidden Playnite menu it waited behind one already
-        // running); says what happens under the icons, then closes
-        private void UpdateLibrary()
-        {
-            string busy;
-            bool started = HomeNav.UpdateLibraryNow(out busy);
-            status.Text = started ? "Updating your library in the background." : "Already updating: " + busy;
-            if (!started) { Ui.Shake(cells[index]); return; }
-            leaving = true;
-            var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(900) };
-            t.Tick += (s, e) => { t.Stop(); LoginScene.Finish(); };
             t.Start();
         }
 

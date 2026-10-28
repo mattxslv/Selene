@@ -15,6 +15,8 @@ under Playnite → Add-ons → Generic → **Selene Core**. Settings with a choi
 | | Button hints | What each button does, along the bottom |
 | | Playnite settings, Selene's way | The menu's Playnite settings open as a Selene screen |
 | | Button names | Which controller's buttons the hints name: as Playnite's setting, Xbox, or PlayStation |
+| Advanced | Extensions in Selene's menu | Show or hide the add-ons' and scripts' main-menu actions |
+| | Tools in Selene's menu | Show or hide Selene's utility submenu |
 | Spotlight | Activity card, Captures card, Surprise me card, News card | Each card on or off |
 | | News feeds | Add, remove and enable RSS/Atom URLs. Their latest headlines show on the News card; select an article to open it in the browser. With no feed yet the card offers a few to follow |
 | | Collection card | A card that opens Collection (off by default: the View button does it) |

@@ -10,6 +10,12 @@
   <ItemGroup>
     <PackageReference Include="PlayniteSDK" Version="6.17.0" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.Web.Extensions" />
+    <Reference Include="System.Windows.Forms" />
+  </ItemGroup>
   
   <ItemGroup>
     <None Include="extension.yaml">

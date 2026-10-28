@@ -40,7 +40,7 @@ namespace Selene
             catch (Exception ex) { HomeNav.Log("cover crop: " + ex.Message); }
         }
 
-        private static void Apply(ImageBrush brush)
+        internal static void Apply(ImageBrush brush)
         {
             var src = brush.ImageSource as BitmapSource;
             if (src == null) return;
@@ -57,6 +57,14 @@ namespace Selene
             brush.ViewboxUnits = BrushMappingMode.RelativeToBoundingBox;
             brush.Viewbox = window;
             brush.Stretch = Stretch.Fill;   // the window is already square
+        }
+
+        // worked out ahead, off the UI thread (TileCovers): Apply then only looks it up
+        internal static void Prepare(BitmapSource src)
+        {
+            object known;
+            if (src == null || windows.TryGetValue(src, out known)) return;
+            try { windows.Add(src, Choose(src)); } catch { }
         }
 
         // the square window (relative to the picture) with the most detail

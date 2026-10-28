@@ -205,7 +205,7 @@ namespace Selene
         private bool Save()
         {
             try { NewsFeeds.Save(feeds); return true; }
-            catch (Exception ex) { Ui.Notice("Could not save the feeds: " + ex.Message); return false; }
+            catch (Exception ex) { HomeNav.Log("news feeds: save: " + ex.Message); Ui.Notice("Couldn't save your feeds."); return false; }
         }
 
         private void OpenAdd() { LoginScene.Show(new AddNewsFeedScreen(() => new NewsFeedsScreen(back)), 1); }

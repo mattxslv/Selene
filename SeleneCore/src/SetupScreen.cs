@@ -442,11 +442,11 @@ namespace Selene
                     ShowFocus();
                     if (queued == 0)
                     {
-                        Ui.Notice("The add-ons couldn't be downloaded. Check the internet connection and try again.", 7000);
+                        Ui.Notice("Couldn't download the add-ons. Check your connection and try again.", 7000);
                         return;
                     }
                     Ui.Chime();
-                    var text = queued + (queued == 1 ? " add-on is" : " add-ons are") + " ready" + (failed > 0 ? " (" + failed + " couldn't be downloaded)" : "") + ". They start working after a restart.";
+                    var text = queued + (queued == 1 ? " add-on is" : " add-ons are") + " ready" + (failed > 0 ? ", " + failed + " couldn't be downloaded" : "") + ". Restart Playnite to start using " + (queued == 1 ? "it" : "them") + ".";
                     ask = new Dialog("\uE72C", "Restart Playnite?", text, "Restart now", "Later",
                         () => { ask = null; if (!AddonBatch.RestartPlaynite()) Ui.Notice("Restart Playnite to finish installing.", 7000); },
                         () => ask = null, false).StartOnYes();

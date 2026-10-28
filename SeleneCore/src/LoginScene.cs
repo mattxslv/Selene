@@ -33,6 +33,14 @@ namespace Selene
         public static bool CoversHome { get { return IsActive && !current.Overlay; } }
         private static Screen current;
         private static bool startupQuiet;   // from launch until the home first shows
+        private static bool musicHeldAtStart;   // from launch until "Who's playing?" (or the home) shows: the chime alone, then the music
+        private static void ReleaseStartMusic()
+        {
+            if (!musicHeldAtStart) return;
+            musicHeldAtStart = false;
+            HomeNav.QuietStartup(false);
+            HomeNav.HoldMusicForLaunch(false);
+        }
         public static bool StartingUp { get { return startupQuiet; } }
         private static bool keysHooked, introPlayed;
         // what to show the next time the layer opens (set by the menu), instead of Who's playing?
@@ -61,14 +69,14 @@ namespace Selene
                     Panel.SetZIndex(scene, -100);
                     shell.Children.Insert(0, scene);
                     HomeNav.Log("login: scene attached");
-                    if (!introPlayed) { startupQuiet = true; HomeNav.HoldMusicForLaunch(true); HomeNav.QuietStartup(true); }   // no music at start-up but the chime: it starts with the home
+                    if (!introPlayed) { startupQuiet = true; musicHeldAtStart = true; HomeNav.HoldMusicForLaunch(true); HomeNav.QuietStartup(true); }   // no music at start-up but the chime: it starts with "Who's playing?"
                 }
                 login.IsVisibleChanged += (s, e) =>
                 {
                     if ((bool)e.NewValue) Open();
                     else
                     {
-                        if (startupQuiet) { startupQuiet = false; HomeNav.QuietStartup(false); HomeNav.HoldMusicForLaunch(false); }   // (the layer gone some other way)
+                        if (startupQuiet) { startupQuiet = false; ReleaseStartMusic(); }   // (the layer gone some other way)
                         if (current != null) { current.Hidden(); stage.Children.Clear(); current = null; }
                     }
                 };
@@ -108,12 +116,13 @@ namespace Selene
         {
             if (!IsActive) return false;
             lastPad = DateTime.Now;
+            Ui.PadWent(pressed);
             return Press(pressed);
         }
 
         private static bool FromKeyboard(string pressed)
         {
-            if ((DateTime.Now - lastPad).TotalMilliseconds < 120) return true;   // the copy of a pad press: already handled
+            if ((DateTime.Now - lastPad).TotalMilliseconds < 120 || Ui.KeyIsPadCopy(pressed.StartsWith("DPad") ? pressed : null)) return true;   // the copy of a pad press: already handled (a stick push's can come later)
             return Press(pressed);
         }
 
@@ -181,6 +190,8 @@ namespace Selene
             }
         }
 
+        private static void DevPad(string button, bool down) { Ui.SendPad(button, down); }
+
         private static void DevKeys()
         {
             var file = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "selene-dev-keys");
@@ -203,7 +214,9 @@ namespace Selene
                 timer.Stop();
                 var step = queue.Dequeue();
                 HomeNav.Log("dev key " + step[1]);
-                if (step[1] == "menu") SeleneShell.OpenMenu();
+                if (step[1].StartsWith("pad:")) DevPad(step[1].Substring(4), true);   // a real controller press, through Playnite's input path
+                else if (step[1].StartsWith("padup:")) DevPad(step[1].Substring(6), false);   // and its release
+                else if (step[1] == "menu") SeleneShell.OpenMenu();
                 else if (step[1].StartsWith("shot:")) HomeNav.DevShot(step[1].Substring(5));
                 else if (step[1] == "blank") HomeNav.DevBlank();
                 else if (step[1] == "fakequit") HomeNav.BeginQuit();
@@ -216,7 +229,6 @@ namespace Selene
                 else if (step[1] == "screen:currency") OpenWith(() => new StoreCurrencyScreen(false, null));
                 else if (step[1] == "windows?") foreach (Window x in Application.Current.Windows) HomeNav.Log("dev window: '" + x.Title + "' " + x.GetType().Name + " #" + x.GetHashCode() + " visible=" + x.IsVisible + " topmost=" + x.Topmost + " opacity=" + x.Opacity.ToString("0.00") + " content=" + (x.Content != null ? x.Content.GetType().Name : "null"));
                 else if (step[1] == "r3") { if (!LibraryStage.ToggleSound()) HomeNav.DevR3(); }
-                else if (step[1] == "helpersetup") LocalGames.DevSetUpHelper();
                 else if (step[1].StartsWith("filter:")) { int d; if (int.TryParse(step[1].Substring(7), out d)) HomeNav.DevCycleFilter(d); }
                 else if (step[1].StartsWith("type:") && current != null) current.Type(step[1].Substring(5));
                 else if (IsActive) HandleButton(step[1]);
@@ -279,9 +291,9 @@ namespace Selene
             FadeInBackdrop();
             var next = pending;
             pending = null;
-            if (next != null) { if (!startupQuiet) HomeNav.HoldMusicForLaunch(false); Show(next(), 0); }
+            if (next != null) { if (!musicHeldAtStart) HomeNav.HoldMusicForLaunch(false); Show(next(), 0); }
             else if (!introPlayed) { introPlayed = true; AllowBackdropVideo(); WhenCalm(scene, () => { Show(Features.On("intro") ? (Screen)new IntroScreen() : Start(), 0); }); }
-            else { if (!startupQuiet) HomeNav.HoldMusicForLaunch(false); Show(Start(), 0); }
+            else { if (!musicHeldAtStart) HomeNav.HoldMusicForLaunch(false); Show(Start(), 0); }
         }
 
         // Who's playing? switched off: the last profile (or the only one) signs in by itself. False when it's still needed:
@@ -374,6 +386,7 @@ namespace Selene
             var old = current;
             current = next;
             ApplyOverlay(next.Overlay, next.OverlayShade);
+            if (next is WhoScreen) ReleaseStartMusic();   // the music comes in with "Who's playing?"
             if (!next.Overlay) HomeNav.ClearSelectedGame();
             // the new screen is set up first (its grids, pictures, preview), then both slide: set up inside the slide's first frame,
             // the work made it stutter (Selene settings -> Change theme)
@@ -400,7 +413,7 @@ namespace Selene
         {
             DropUnder();
             ClosedAt = DateTime.Now;
-            if (startupQuiet) { startupQuiet = false; HomeNav.QuietStartup(false); HomeNav.HoldMusicForLaunch(false); }
+            if (startupQuiet) { startupQuiet = false; ReleaseStartMusic(); }
             SeleneShell.HideLogin();
             if (!keepHome) return;
             // back to where the home was, once the layer has really gone: the home's watchers read KeepHome as the layer
@@ -602,6 +615,7 @@ namespace Selene
         private static Grid BuildGlow()
         {
             var outer = new Grid { IsHitTestVisible = false };
+            if (HomeNav.Light) return outer; // keep the theme's still gradient; no decoder or particle thread
             MediaElement video = null;
             var file = SelenePaths.ThemeFile("Media", "selene-background.mp4");
             if (System.IO.File.Exists(file))
@@ -658,10 +672,10 @@ namespace Selene
             // no dust when WPF draws in software (no usable graphics card: a VM, a remote desktop, an old driver): it can't keep
             // 130 moving motes smooth, and the glow alone still reads as the animated background
             if ((System.Windows.Media.RenderCapability.Tier >> 16) < 2) { HomeNav.Log("glow: software rendering, no dust"); return outer; }
-            // the dust on a thread of its own: a busy main thread (start-up, a game starting) can't make it stumble
+            // the dust on the main thread: on a thread of its own it halved the whole window's rate (30 fps on a 60 Hz TV)
             var accent = Ink.Of("GlyphColor");
             var inkColor = Ink.Of("SeleneInkColor");
-            var dust = new OffThread(sz => Dust(sz, accent, inkColor), "Selene dust");
+            var dust = new OffThread(sz => Dust(sz, accent, inkColor), "Selene dust", inline: true);
             dust.Resized = (el, sz) => { var c = el as Canvas; if (c != null) { c.Children.Clear(); FillParticles(c, sz, new Random(7), accent, inkColor); } };
             glow.Children.Add(dust);
             dusts.Add(dust);
@@ -679,7 +693,7 @@ namespace Selene
 
         private static Color WithAlpha(Color c, double alpha) { c.A = (byte)Math.Round(255 * alpha); return c; }
 
-        // the theme changed: the dust takes the new colors (on its thread)
+        // the theme changed: the dust takes the new colors
         private static void RecolorDust()
         {
             var accentNow = Ink.Of("GlyphColor");
@@ -703,11 +717,21 @@ namespace Selene
         // the video on Selene's own theme, the drawn backdrop on the others
         private static void ShowBackdropKind()
         {
+            if (HomeNav.Light)
+            {
+                foreach (var pair in backdrops)
+                {
+                    if (pair.Key != null) { pair.Key.Stop(); pair.Key.Close(); pair.Key.Source = null; pair.Key.Visibility = Visibility.Collapsed; }
+                    pair.Value.Visibility = Visibility.Collapsed;
+                }
+                foreach (var dust in dusts) dust.Stop();
+                return;
+            }
             var id = Application.Current.Resources["SeleneThemeId"] as string;
             bool seleneTheme = string.IsNullOrEmpty(id) || id == ThemePalettes.DefaultId;
             foreach (var pair in backdrops)
             {
-                bool useVideo = seleneTheme && pair.Key != null && videoAllowed;   // the drawn one until the login layer is up
+                bool useVideo = seleneTheme && pair.Key != null && pair.Key.Source != null && videoAllowed;   // the drawn one until the login layer is up
                 if (pair.Key != null) pair.Key.Visibility = useVideo ? Visibility.Visible : Visibility.Collapsed;
                 // the video starts with the logo intro, so the drawn backdrop never shows under it: the screen rises from the dark
                 // straight into the video (the drawn one showed for half a second at start, then gave way)
@@ -774,7 +798,7 @@ namespace Selene
                 double dur = 16 + rnd.NextDouble() * 18;
                 var begin = TimeSpan.FromSeconds(-rnd.NextDouble() * dur);
                 var drift = new DoubleAnimation(0, -size.Height * (0.10 + rnd.NextDouble() * 0.18), TimeSpan.FromSeconds(dur)) { RepeatBehavior = RepeatBehavior.Forever, BeginTime = begin };
-                Timeline.SetDesiredFrameRate(drift, 144);
+                Timeline.SetDesiredFrameRate(drift, Ui.FrameRate);
                 tr.BeginAnimation(TranslateTransform.YProperty, drift);
                 tr.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(-14, 14 + rnd.NextDouble() * 20, TimeSpan.FromSeconds(5 + rnd.NextDouble() * 6)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, BeginTime = begin, EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut } });
                 double peak = bokeh ? 0.25 + rnd.NextDouble() * 0.3 : 0.4 + rnd.NextDouble() * 0.6;

@@ -10,6 +10,7 @@ namespace Selene
     // Isolated collaborators: the production Lang.cs and BackgroundFit.cs are compiled unchanged.
     public static class Features { public static string Language = "auto", Fit = "fill"; public static string Value(string key) { return key == "language" ? Language : Fit; } public static bool On(string key) { return false; } }
     public static class HomeNav { public static void Log(string message) { } }
+    public static class NewsCard { public static void Refresh(bool force) { } }
     public static class Ui { public static bool PadCopy; public static bool PressFromPad; public static bool KeyIsPadCopy() { return PadCopy; } }
     public class GameControllerInputEventArgs : System.Windows.Input.KeyEventArgs
     {
@@ -46,6 +47,16 @@ namespace Selene
         [STAThread]
         public static int Main()
         {
+            Func<string, string, System.Collections.Generic.KeyValuePair<string, string>> candidate = (id, title) => new System.Collections.Generic.KeyValuePair<string, string>(id, title);
+            Equal("870780", GameTitleMatch.Select("Control", new[] { candidate("3669870", "CONTROL Resonant"), candidate("870780", "CONTROL Ultimate Edition") }), "Control resolves to its edition, never its sequel");
+            Equal("base", GameTitleMatch.Select("Control", new[] { candidate("sequel", "Control Resonant"), candidate("edition", "Control Ultimate Edition"), candidate("base", "CONTROL") }), "Exact title wins over every edition regardless of result order");
+            Equal(null, GameTitleMatch.Select("Control", new[] { candidate("sequel", "Control Resonant") }), "A prefix alone is never a match");
+            Equal(null, GameTitleMatch.Select("Control Resonant", new[] { candidate("base", "Control") }), "A longer requested title never matches its prefix");
+            Equal(null, GameTitleMatch.Select("Game", new[] { candidate("demo", "Game Demo"), candidate("dlc", "Game Soundtrack"), candidate("sequel", "Game 2") }), "Demos, soundtracks and numbered sequels are rejected");
+            Equal(null, GameTitleMatch.Select("Game", new[] { candidate("one", "Game Complete Edition"), candidate("two", "Game Deluxe Edition") }), "Ambiguous editions are left unmatched");
+            Equal(null, GameTitleMatch.Select("", new[] { candidate("one", "A Game") }), "Empty titles never match");
+            Equal("one", GameTitleMatch.Select("大神", new[] { candidate("two", "別のゲーム"), candidate("one", "大神") }), "Non-Latin titles retain their identity");
+            Equal("one", GameTitleMatch.Select("Game™: Title", new[] { candidate("one", "GAME - Title") }), "Case, trademark and punctuation differences are harmless");
             SelenePaths.Root = Path.Combine(Path.GetTempPath(), "selene-localization-check-" + Guid.NewGuid().ToString("N"));
             try
             {

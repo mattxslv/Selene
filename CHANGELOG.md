@@ -4,6 +4,24 @@ Selene (theme) and Selene Core (add-on) share one version number and are release
 
 ## Unreleased
 
+## 1.4.0 - 2026-10-29
+
+- The admin helper (SeleneHelper.exe) is gone. Older versions set it up through a scheduled task with admin rights, and it had real security problems, so it's out for good. Updating replaces it with a dummy file that does nothing. We never confirmed exactly why Defender flagged 1.3.1, so if you still get a warning on this version, please open an issue.
+- If you used the helper before, go to Selene settings > Advanced > Old administrator tasks to remove the leftover tasks (it asks first). Games that launched through it get their normal Play action back, and the old setup is backed up first.
+- Because of that, Guide can't pause, close or restart games that run as admin anymore. Alt+Tab still works.
+- Big smoothness fix: Selene was stuck at 30 fps on 60 Hz screens (TVs especially). It runs at the full refresh rate now.
+- Scrolling is smoother. Covers load in the background and fade in, and holding left or right in Spotlight moves at a steady pace the row can keep up with (Spotlight > Steady hold scrolling). Quick taps still move right away.
+- Game songs wait until you stop on a game, so holding a direction doesn't freeze for a moment at every game (Sound & music > Songs wait until you stop).
+- The View button switches between Spotlight and Collection instantly. It used to take a couple of seconds on 4K.
+- Less memory: screenshots take a lot less space, and there's Advanced > Reduce memory use if you want to go further.
+- New Look > Performance mode for slower PCs. It turns off the moving background and trailer previews but keeps the animations.
+- Settings are easier to get around: Search finds any setting, Changed shows what you've changed, the big groups have sections, and settings open where you left off.
+- Downloads are opt-in now, including when you update. Trailers, screenshots, logos, songs and missing details each ask first and tell you where they'll be saved. "Games I'm looking at" really only downloads for those games now.
+- Steam art matching is stricter, so sequels and other editions don't steal a game's logo or background anymore. Wrong art from before gets replaced. Your own custom art is left alone.
+- Lots of smaller fixes: music fades instead of cutting off, the left stick doesn't skip two steps, dialogs answer to A and Enter, sharper dialog text, clearer setting names, and notification cards stay up long enough to read.
+- The Controller battery card is gone.
+- Releases now ship with SHA256SUMS and a BUILDINFO.txt so you can check the files.
+
 ## 1.3.1 - 2026-10-27
 
 - UniPlaySong stayed silent (or showed Now playing with no sound) in other themes after using Selene: Selene's music hold was saved in the add-on's own settings. It is put back when Playnite closes, and at the next start in any theme, so it also repairs installs already left that way.

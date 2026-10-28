@@ -14,7 +14,7 @@ namespace Selene
         public static Dialog Restart(Panel root, Action dismissed, Action later)
         {
             var dialog = new Dialog("\uE72C", "Restart Playnite?", "Restart now to apply the selected language?", "Restart now", "Later",
-                () => { dismissed(); if (!AddonBatch.RestartPlaynite()) { Ui.Notice("Couldn't restart Playnite. Please restart it to apply your language.", 7000); later(); } },
+                () => { dismissed(); if (!AddonBatch.RestartPlaynite()) { Ui.Notice("Couldn't restart Playnite. Restart it to change the language.", 7000); later(); } },
                 () => { dismissed(); later(); }, false).StartOnYes();
             dialog.Open(root); return dialog;
         }

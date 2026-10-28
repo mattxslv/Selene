@@ -41,7 +41,7 @@ namespace Selene
             res["Selene" + name + "About"] = about;
             Strip s;
             if (!strips.TryGetValue(card, out s)) { s = new Strip { Card = card, Panel = "Selene" + name + "Showcase" }; strips[card] = s; }
-            s.Entries = Features.On("cardpictures") && entries != null ? entries : new List<Entry>();   // the Pictures under the cards switch
+            s.Entries = Features.On("cardpictures") && entries != null ? entries : new List<Entry>();   // the Pictures under cards switch
             if (ReferenceEquals(active, s)) Leave();
             Fill(s);
         }

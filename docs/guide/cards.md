@@ -4,7 +4,7 @@
 
 Each card shows a headline and a strip of pictures under it (the latest captures, the games you played last, a few
 ideas). Down goes into the strip, A opens the picture. Each card has a switch under **Spotlight** in Selene
-settings; *Pictures under the cards* switches the strips.
+settings; *Pictures under cards* switches the strips.
 
 ## Captures
 
@@ -28,5 +28,5 @@ What you've been playing: this week's and all-time numbers as cards, your top ga
 Playnite's own numbers for games the profile hasn't played yet.
 
 ## Surprise me
-Covers flick past and stop on a game to play. LB / RB (or *Surprise me picks from* in settings) choose the pool:
+Covers flick past and stop on a game to play. LB / RB (or *Surprise me games* in settings) choose the pool:
 installed, not played yet, or all. A plays it, X shows it on Spotlight.

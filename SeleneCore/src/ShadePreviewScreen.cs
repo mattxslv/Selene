@@ -25,7 +25,7 @@ namespace Selene
             var line = new DockPanel();
             DockPanel.SetDock(slider.Root, Dock.Right);
             line.Children.Add(slider.Root);
-            line.Children.Add(new TextBlock { Text = "Shade over the art", FontSize = 22, FontWeight = FontWeights.SemiBold, FontFamily = Ui.Display, Foreground = Ink.Brush("SeleneInkColor"), VerticalAlignment = VerticalAlignment.Center });
+            line.Children.Add(new TextBlock { Text = "Background shade", FontSize = 22, FontWeight = FontWeights.SemiBold, FontFamily = Ui.Display, Foreground = Ink.Brush("SeleneInkColor"), VerticalAlignment = VerticalAlignment.Center });
             card = new Border
             {
                 Child = line, Width = 620, CornerRadius = new CornerRadius(20), Padding = new Thickness(28, 24, 28, 24),

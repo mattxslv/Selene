@@ -20,13 +20,17 @@ namespace Selene
             }
         }
 
-        public static bool Any { get { return Songs || Art || Achievements; } }
+        // old administrator tasks still on the PC: the dot stays until they are removed
+        public static bool OldTasks { get { try { return LegacyTasks.Any; } catch { return false; } } }
+
+        public static bool Any { get { return Songs || Art || Achievements || OldTasks; } }
 
         public static bool ForGroup(string group)
         {
             if (group == "Sound & music") return Songs;
             if (group == "Spotlight") return Art;
             if (group == "Games") return Achievements;
+            if (group == "Advanced") return OldTasks;
             return false;
         }
 
@@ -36,6 +40,7 @@ namespace Selene
             if (key == "songsetup") return Songs;
             if (key == "trailerdownload" || key == "artdownload") return Art;
             if (key == "achievements") return Achievements;
+            if (key == "legacytasks") return OldTasks;
             return false;
         }
 

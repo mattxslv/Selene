@@ -12,7 +12,10 @@
                         <Image x:Name="PART_ImageCover"
                                RenderOptions.BitmapScalingMode="Fant" StretchDirection="Both"
                                VerticalAlignment="Center" HorizontalAlignment="Center"
-                               Stretch="{Settings CoverArtStretch}" />
+                               Stretch="{Settings CoverArtStretch}">
+                            <!-- (a Loaded trigger: Selene Core then loads the cover off the UI thread) -->
+                            <Image.Triggers><EventTrigger RoutedEvent="FrameworkElement.Loaded"><BeginStoryboard><Storyboard><DoubleAnimation Storyboard.TargetProperty="Opacity" To="1" Duration="0" FillBehavior="Stop"/></Storyboard></BeginStoryboard></EventTrigger></Image.Triggers>
+                        </Image>
                         <Border Background="{DynamicResource SeleneScrim65Brush}" x:Name="BorderDarken" Visibility="Collapsed" />
                         <TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis"
                                    Visibility="{Settings Fullscreen.ShowGameTitles}"

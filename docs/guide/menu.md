@@ -11,7 +11,7 @@ a GitHub issue.
 
 **Playnite's settings** open as a Selene screen: General, Visuals, Audio, Layout, Menus and Input as sections, their
 settings as Selene's switches and choices, saved straight into Playnite. A row opens Playnite's own pages for the
-monitor and the theme. (*Playnite settings, Selene's way* off: Playnite's own pages.)
+monitor and the theme. (*Selene Playnite settings* off: Playnite's own pages.)
 
 Playnite's dialogs (a yes / no question, an add-on install), its progress window and a game's options menu wear
 Selene's look too: glass cards with rounded corners, pill buttons, Selene's mark breathing instead of a loading bar.

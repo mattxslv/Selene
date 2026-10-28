@@ -30,7 +30,7 @@ namespace Selene
         // a note's or task's card: a compact strip as a console's (a 48 px icon, two lines), as wide as its words between these;
         // the session card alone is a panel
         private const double CardWidth = 520, CardMinWidth = 240, CardHeight = 84, Edge = 28, ShadowRoom = 24, Drift = 26;
-        private const int MinShownMs = 2600, AfterDoneMs = 1100, InMs = 260, OutMs = 220;
+        private const int MinShownMs = 3000, AfterDoneMs = 1100, InMs = 260, OutMs = 220;
         private static Window hiddenProgress;   // Playnite's own window, kept out of sight
         private static DateTime busyUntil = DateTime.MinValue;
 
@@ -235,6 +235,10 @@ namespace Selene
         private static DateTime noteHeldUntil = DateTime.MinValue;
         private static int NoteHoldLeft { get { return displayed is string && layer != null && layer.Visibility == Visibility.Visible && !leaving ? (int)(noteHeldUntil - DateTime.Now).TotalMilliseconds : 0; } }
 
+        // a task's card stays long enough to be read before the next one takes its place (quick steps at start-up: "Library
+        // update - Finished", then "Downloading logos" for half a second)
+        private static int TaskHoldLeft { get { return !(displayed is string) && layer != null && layer.Visibility == Visibility.Visible && !leaving ? MinShownMs - (int)(DateTime.Now - shownAt).TotalMilliseconds : 0; } }
+
         private static void Show(Window main, object vm)
         {
             bool swap = layer != null && layer.Visibility == Visibility.Visible && !leaving && displayed != null && !ReferenceEquals(displayed, vm);
@@ -243,6 +247,17 @@ namespace Selene
             if (layer == null) Build();
             if (!Ready) { HomeNav.Log("card: held for the start-up (" + TaskText(vm) + ")"); WhenReady(() => { if (ReferenceEquals(source, vm)) Show(main, vm); else HomeNav.Log("card: done before the start-up was over"); }); return; }
             if (swap && NoteHoldLeft > 0) { int wait = NoteHoldLeft; HomeNav.Log("card: " + TaskText(vm) + " waits for the note (" + wait + " ms)"); Later(wait + 50, () => { if (ReferenceEquals(source, vm)) Show(main, vm); }); return; }
+            if (swap && TaskHoldLeft > 0)
+            {
+                int wait = TaskHoldLeft;
+                HomeNav.Log("card: " + TaskText(vm) + " waits for the card up (" + wait + " ms)");
+                Later(wait + 50, () =>
+                {
+                    if (ReferenceEquals(source, vm)) Show(main, vm);
+                    else if (source == null && layer.Visibility == Visibility.Visible && !leaving && !(displayed is string) && (leaveTimer == null || !leaveTimer.IsEnabled)) Leave();   // (done while it waited: the card up goes)
+                });
+                return;
+            }
             if (swap) { HomeNav.Log("card: swapping for " + TaskText(vm)); SwapOut(() => { if (ReferenceEquals(source, vm)) Present(main, vm, true); }); return; }
             Present(main, vm, layer.Visibility != Visibility.Visible || leaving);
         }
@@ -475,6 +490,7 @@ namespace Selene
                     // going up (22/40, 23/40) changes in place
                     if (shownText != null && Kind(text) != Kind(shownText) && !swapping && !leaving && !(source is Status))   // (the library update: one card for all its steps)
                     {
+                        if (TaskHoldLeft > 0) return;   // (the message up stays readable; looked at again on the next poll)
                         var vm = source;
                         shownText = text;
                         SwapOut(() => { if (ReferenceEquals(source, vm)) Present(Application.Current.MainWindow, vm, true, false); });   // (the same task: no new sound)
@@ -714,7 +730,7 @@ namespace Selene
             if (main == null || game == null) return;
             // a Steam game without its logo or cover here: Steam's are fetched first (kept for next time), then the card shows
             var appId = SteamAppId(game);
-            if (!fetched && appId != null && (!System.IO.File.Exists(SteamFile(appId, "logo.png")) || !System.IO.File.Exists(SteamFile(appId, "library_hero.jpg"))))
+            if (!fetched && appId != null && DownloadConsent.Allowed("artdownload") && (!System.IO.File.Exists(SteamFile(appId, "logo.png")) || !System.IO.File.Exists(SteamFile(appId, "library_hero.jpg"))))
             {
                 var ui = main.Dispatcher;
                 System.Threading.Tasks.Task.Factory.StartNew(() =>
@@ -882,6 +898,7 @@ namespace Selene
 
         private static void Fetch(string appId, string name)
         {
+            if (!DownloadConsent.Allowed("artdownload")) return;
             var file = SteamFile(appId, name);
             if (System.IO.File.Exists(file)) return;
             try

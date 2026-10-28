@@ -45,7 +45,16 @@ namespace Selene
                 return lite.Value;
             }
         }
+        // Performance mode (Look) or a streamed session: no moving background, no trailer previews, smaller preloaded
+        // screenshots; motion, slides and art stay. Read once at start (the background is built then)
+        private static bool? light;
+        public static bool Light { get { if (light == null) light = Lite || Features.On("perfmode"); return light.Value; } }
         public static string LastError;
+        public static void ApplyPerformanceMode()
+        {
+            GameMedia.ApplyPerformanceMode();
+            Log("memory mode: " + (Features.On("lightweight") ? "smaller screenshot cache and nearby preloading" : "standard cache"));
+        }
         public static Playnite.SDK.IPlayniteAPI Api;
         internal static bool StartupReady { get { return !launching && !guideSwitching && !DialogUp(); } }
 
@@ -68,12 +77,16 @@ namespace Selene
             StartupWork.AfterHome("missing game details", GameInfo.CompleteLater);
             StartupWork.AfterHome("trim logos", TrailerFetch.TrimAllLogos);
             StartupWork.AfterHome("achievement setup", AchievementsData.SetUpLater);
+            // Playnite re-filters the whole library when the preset changes (over a second on a big one): done once after
+            // start-up, not on the first press of View
+            StartupWork.AfterHome("collection filter", ApplyCollectionFilter);
             IdleScreen.Install();  // the idle screen's clock
             Ui.DevFrameLog();   // %TEMP%\selene-dev-frames: frames per second in the log
             Ui.StartupFrameLog();   // the first seconds: long frames in the log (the intro must not stutter)
             EventManager.RegisterClassHandler(typeof(ListBox), FrameworkElement.LoadedEvent, new RoutedEventHandler(OnListLoaded));
             EventManager.RegisterClassHandler(typeof(TextBlock), FrameworkElement.LoadedEvent, new RoutedEventHandler(OnTextLoaded));
             CoverCrop.Install();   // the home tiles' covers cropped where the detail is
+            TileCovers.Install();   // Spotlight's and Collection's covers decoded off the UI thread
             var tvBackup = System.IO.Path.Combine(SelenePaths.PlayniteConfig, "fullscreenConfig.tv.json");
             RowMode = System.IO.File.Exists(tvBackup) ? "all" : "tv";
             var app = Application.Current;
@@ -85,7 +98,6 @@ namespace Selene
                 StartGuideWatcher,
                 () => StartupWork.AfterHome("Guide shield warm-up", WarmShield),
                 () => { StartBlankWatch(); StartDeviceModeWatch(); Microsoft.Win32.SystemEvents.PowerModeChanged += OnPowerModeChanged; },
-                StartBatteryPolling,
                 () => { if (Features.On("tray")) CloseToTray.Install(); });
         }
 
@@ -95,6 +107,11 @@ namespace Selene
         {
             try
             {
+                // a dialog without the focus (raised in the middle of a game start): Enter and Escape are its, not the home's behind it
+                if (DialogLook.IsOpen && !Ui.KeyIsPadCopy() && e.GetType().Name != "GameControllerInputEventArgs" && ReferenceEquals(sender, Application.Current.MainWindow) && (e.Key == Key.Enter || e.Key == Key.Space || e.Key == Key.Escape))
+                {
+                    if (e.Key == Key.Escape ? DialogLook.Back() : DialogLook.Take("A")) { e.Handled = true; return; }
+                }
                 // Collection with no games, keyboard: Escape / Backspace back to Spotlight, the game keys do nothing
                 if (!LoginScene.IsActive && SeleneShell.CollectionActive && CollectionEmpty() && !Ui.KeyIsPadCopy())
                 {
@@ -112,7 +129,7 @@ namespace Selene
                 // layer's, and moved the home row behind the menu)
                 if (LoginScene.IsActive) return;
                 // the keyboard copy of a pad press Selene already handled (it moved things a second time)
-                if (Ui.KeyIsPadCopy() && (e.Key == Key.Left || e.Key == Key.Right || e.Key == Key.Up || e.Key == Key.Down || e.Key == Key.Enter || e.Key == Key.Escape)) { e.Handled = true; return; }
+                if (Ui.KeyIsPadCopy(e.Key == Key.Left ? "DPadLeft" : e.Key == Key.Right ? "DPadRight" : e.Key == Key.Up ? "DPadUp" : e.Key == Key.Down ? "DPadDown" : null) && (e.Key == Key.Left || e.Key == Key.Right || e.Key == Key.Up || e.Key == Key.Down || e.Key == Key.Enter || e.Key == Key.Escape)) { e.Handled = true; return; }
                 // the cards are still flying in: nothing moves yet
                 if (IntroRunning && (e.Key == Key.Left || e.Key == Key.Right || e.Key == Key.Up || e.Key == Key.Down || e.Key == Key.Enter || e.Key == Key.Space) && FocusOnHome()) { e.Handled = true; return; }
                 // the Store card's game pictures (Down from the card goes into them)
@@ -476,7 +493,7 @@ namespace Selene
             CompositionTarget.Rendering += OnGlideFrame;
             // WPF renders at 60 fps unless an animation asks for more: keep a dummy one running at the screen refresh rate
             var clock = new DoubleAnimation(0, 1, TimeSpan.FromSeconds(1)) { RepeatBehavior = RepeatBehavior.Forever };
-            Timeline.SetDesiredFrameRate(clock, 144);
+            Timeline.SetDesiredFrameRate(clock, Ui.FrameRate);
             glideClock.BeginAnimation(TranslateTransform.XProperty, clock);
         }
 
@@ -485,7 +502,7 @@ namespace Selene
             var shift = glideShift;
             var now = ((RenderingEventArgs)e).RenderingTime;
             if (now == glideLast) return;           // Rendering can fire more than once per frame
-            double dt = glideLast == TimeSpan.Zero ? 1.0 / 144 : Math.Min(0.05, (now - glideLast).TotalSeconds);
+            double dt = glideLast == TimeSpan.Zero ? 1.0 / Ui.FrameRate : Math.Min(0.05, (now - glideLast).TotalSeconds);
             glideLast = now;
             if (shift == null) { StopGlide(); return; }
             // exact critically damped step: x(t) = (x0 + (v0 + w x0) t) e^-wt, around the rest
@@ -1473,6 +1490,7 @@ namespace Selene
         private static bool fetchingSample;
         public static void FetchSample(Action ready)
         {
+            if (!DownloadConsent.Allowed("artdownload")) return;
             if (fetchingSample) return;
             fetchingSample = true;
             var ui = Application.Current.Dispatcher;
@@ -1488,6 +1506,7 @@ namespace Selene
                     if (System.IO.File.Exists(file)) continue;
                     try
                     {
+                        if (!DownloadConsent.Allowed("artdownload")) break;
                         using (var web = new System.Net.WebClient()) web.DownloadFile("https://cdn.akamai.steamstatic.com/steam/apps/" + w[0] + "/" + pair[0], file + ".part");
                         System.IO.File.Move(file + ".part", file);
                     }
@@ -1501,12 +1520,14 @@ namespace Selene
             var file = System.IO.Path.Combine(SelenePaths.Media("Sample"), "expedition33-hero.jpg");
             if (samplePic == null && System.IO.File.Exists(file)) samplePic = Wallpapers.Load(file);   // decoded once, kept
             if (samplePic != null) { PutPreviewArt(art, samplePic, true); return true; }
+            if (!DownloadConsent.Allowed("artdownload")) return false;
             var ui = Application.Current.Dispatcher;
             System.Threading.Tasks.Task.Factory.StartNew(() =>
             {
                 try
                 {
                     try { System.Net.ServicePointManager.SecurityProtocol |= System.Net.SecurityProtocolType.Tls12; } catch { }
+                    if (!DownloadConsent.Allowed("artdownload")) return;
                     using (var web = new System.Net.WebClient()) web.DownloadFile(SampleUrl, file + ".part");
                     if (System.IO.File.Exists(file)) System.IO.File.Delete(file);
                     System.IO.File.Move(file + ".part", file);
@@ -2018,7 +2039,7 @@ namespace Selene
 
         private static void ArmPreview(ListBox row)
         {
-            if (Lite || launching) return;  // no trailer cards in a streamed session, nor under a loading screen
+            if (Light || launching) return;  // no trailer cards in a streamed session or performance mode, nor under a loading screen
             if (previewArm == null)
             {
                 previewArm = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(2.5) };
@@ -2026,7 +2047,7 @@ namespace Selene
             }
             previewArm.Stop();
             previewArm.Tag = row;
-            double after = Features.Number("trailerdelay");   // the Trailer cards after setting (0: never)
+            double after = Features.Number("trailerdelay");   // the Trailer delay setting (0: never)
             if (after <= 0) return;
             previewArm.Interval = TimeSpan.FromSeconds(after);
             if (row.SelectedItem != null && !(row.SelectedItem is string)) previewArm.Start();
@@ -2239,13 +2260,21 @@ namespace Selene
 
         public static void SetMusic(string mode)
         {
-            if (musicMode == mode) return;
+            bool changed = musicMode != mode;
             musicMode = mode;
+            // With background music off, UniPlaySong owns the selected game's song. Opening a muted trailer
+            // must not remove/reapply pauses or rewrite its override: either can restart the current playback.
+            if (!Features.On("music"))
+            {
+                ApplyVideoPause();
+                if (changed) LogUpsStateLater();
+                return;
+            }
             SetUpsSetting("ForceDefaultMusicOverride", WantDefault);
             ApplyVideoPause();
             if (musicHeldForLaunch) SetUpsVideoPlaying(true);
-            LogUpsStateLater();
-            EmptyLibraryMusic();   // the add-on starts the song over when the override flips: paused again
+            if (changed) LogUpsStateLater();
+            if (changed || (WantDefault && !musicHeldForLaunch)) EmptyLibraryMusic();   // retry after a startup hold, even when the mode itself did not change
             // UniPlaySong can switch to a game's song on its own when Playnite's selection changes: like the legacy theme,
             // the wanted state is checked 4x a second and put back
             if (musicGuard == null)
@@ -2302,13 +2331,14 @@ namespace Selene
         // home and the login stayed silent. It's asked for the default track with a stand-in game (one with no songs).
         private static DateTime emptyMusicAt = DateTime.MinValue;
         private static Playnite.SDK.Models.Game musicStandIn;
+        private static DateTime idleMusicLoggedAt = DateTime.MinValue;
         private static void EmptyLibraryMusic()
         {
             emptyMusicAt = DateTime.Now;
             try
             {
                 if (Api == null || !WantDefault || !Features.On("music") || musicHeldForLaunch || videoPause == true) return;
-                if (Api.Database.Games.Count > 0) return;
+                if (quietUntilSelection || (quietWatch != null && quietWatch.IsEnabled)) return;   // (a hold of Selene's own is on)
                 var settings = LiveUps();
                 var plugin = Api.Addons.Plugins.FirstOrDefault(pl => pl.Id == UniPlaySongId);
                 if (settings == null || plugin == null) return;
@@ -2317,11 +2347,19 @@ namespace Selene
                 if (service == null) return;
                 var playing = service.GetType().GetProperty("IsPlayingDefaultMusic");
                 if (playing != null && Equals(playing.GetValue(service, null), true)) return;
+                // with games too: a start-up hold left it with nothing loaded (its first song was cut short), and it only tried again
+                // when the selection moved, so the login and the home stayed silent. Only when it is idle: nothing playing, nothing
+                // pausing it (a game's song, a video, a pause of its own are left alone)
+                var isPlaying = service.GetType().GetProperty("IsPlaying");
+                if (isPlaying != null && Equals(isPlaying.GetValue(service, null), true)) return;
+                var sources = service.GetType().GetField("_activePauseSources", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                var paused = sources != null ? sources.GetValue(service) as System.Collections.IEnumerable : null;
+                if (paused != null && paused.Cast<object>().Any()) return;
                 var interim = service.GetType().GetMethod("PlayDefaultMusicInterim");
                 if (interim == null) return;
                 if (musicStandIn == null) musicStandIn = new Playnite.SDK.Models.Game("Selene") { IsInstalled = true };
                 interim.Invoke(service, new object[] { musicStandIn, settings });
-                Log("UPS: no games, default track asked for");
+                if ((DateTime.Now - idleMusicLoggedAt).TotalSeconds > 60) { idleMusicLoggedAt = DateTime.Now; Log("UPS: idle, default track asked for"); }
             }
             catch (Exception ex) { Log("UPS empty-library music: " + ex.Message); }
         }
@@ -2338,20 +2376,56 @@ namespace Selene
         private static object upsPlayer;
         private static System.Windows.Threading.DispatcherTimer quietWatch;
         private static bool pausedManually;
+        private static bool hushedEarly;
+        public static bool HushedAtStart { get { return hushedEarly; } }
+
+        private static object FindUpsPlayer(Playnite.SDK.IPlayniteAPI api)
+        {
+            var plugin = api != null ? api.Addons.Plugins.FirstOrDefault(pl => pl.Id == UniPlaySongId) : null;
+            for (var t = plugin != null ? plugin.GetType() : null; t != null; t = t.BaseType)
+            {
+                var f = t.GetField("_playbackService", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+                if (f != null) return f.GetValue(plugin);
+            }
+            return null;
+        }
+
+        // UniPlaySong starts the song of the game selected when Playnite last closed as soon as Playnite selects it, before the
+        // login's hold: Selene is loaded first, so its handler for that first selection (or for the start, whichever comes first)
+        // holds the music already. The login's hold takes over and lets it go; one that never comes lets it go after 20 s.
+        public static void HushAtStart(Playnite.SDK.IPlayniteAPI api)
+        {
+            if (hushedEarly) return;
+            hushedEarly = true;
+            if (!Features.On("music")) return;
+            try
+            {
+                if (upsPlayer == null) upsPlayer = FindUpsPlayer(api);
+                if (upsPlayer == null) return;
+                // before it starts: the default track only (none at start-up) and "a video is playing", as it was left before
+                // 1.3.1 put its settings back on exit. A pause or no volume alone didn't stop its fade-in of the game's song.
+                var plugin = api.Addons.Plugins.FirstOrDefault(pl => pl.Id == UniPlaySongId);
+                var live = plugin != null ? FindSettingsWith(plugin, "ForceDefaultMusicOverride", 3) : null;
+                if (live != null)
+                    foreach (var name in new[] { "ForceDefaultMusicOverride", "VideoIsPlaying" })
+                    {
+                        var prop = live.GetType().GetProperty(name);
+                        if (prop != null && prop.CanWrite && prop.PropertyType == typeof(bool)) prop.SetValue(live, true, null);
+                    }
+                Log("start-up: early hold at the first selection" + (live == null ? " (settings not found)" : ""));
+                QuietStartup(true);
+                var fallback = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(20) };
+                fallback.Tick += (s, e) => { fallback.Stop(); if (hushedEarly && !LoginScene.StartingUp && quietWatch != null && quietWatch.IsEnabled) { Log("start-up: early hold not taken over"); QuietStartup(false); videoPause = null; ApplyVideoPause(); if (musicMode != null) SetMusic(musicMode); else SetUpsSetting("ForceDefaultMusicOverride", false); } };
+                fallback.Start();
+            }
+            catch (Exception ex) { Log("start-up early hold: " + ex.Message); }
+        }
 
         public static void QuietStartup(bool on)
         {
             try
             {
-                if (upsPlayer == null && Api != null)
-                {
-                    var plugin = Api.Addons.Plugins.FirstOrDefault(pl => pl.Id == UniPlaySongId);
-                    for (var t = plugin != null ? plugin.GetType() : null; t != null && upsPlayer == null; t = t.BaseType)
-                    {
-                        var f = t.GetField("_playbackService", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
-                        if (f != null) upsPlayer = f.GetValue(plugin);
-                    }
-                }
+                if (upsPlayer == null) upsPlayer = FindUpsPlayer(Api);
                 if (upsPlayer == null) return;
                 var type = upsPlayer.GetType();
                 var add = type.GetMethod("AddPauseSourceImmediate");
@@ -2404,11 +2478,54 @@ namespace Selene
         {
             if (musicHeldForLaunch == on) return;
             musicHeldForLaunch = on;
-            ApplyVideoPause();
+            if (on)
+            {
+                CancelMusicOffFade();
+                FadeLaunchMusic(0, 350, ApplyVideoPause);
+            }
+            else
+            {
+                ApplyVideoPause();
+                FadeLaunchMusic(1, 250, null);
+            }
+            if (!on) SetMusic(musicMode ?? "home");   // startup can set the mode while held; reapply it when the hold lifts
+        }
+
+        private static System.Windows.Threading.DispatcherTimer launchMusicFade;
+        private static double launchMusicLevel = 1;
+        private static void FadeLaunchMusic(double target, int milliseconds, Action done)
+        {
+            if (launchMusicFade != null) { launchMusicFade.Stop(); launchMusicFade = null; }
+            try
+            {
+                if (upsPlayer == null) upsPlayer = FindUpsPlayer(Api);
+                var player = upsPlayer;
+                var volume = player != null ? player.GetType().GetMethod("SetVolumeMultiplier") : null;
+                if (volume == null) { if (done != null) done(); return; }
+                var from = launchMusicLevel;
+                var elapsed = System.Diagnostics.Stopwatch.StartNew();
+                launchMusicFade = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(20) };
+                launchMusicFade.Tick += (s, e) =>
+                {
+                    try
+                    {
+                        double progress = Math.Min(1, elapsed.Elapsed.TotalMilliseconds / milliseconds);
+                        launchMusicLevel = from + (target - from) * progress;
+                        volume.Invoke(player, new object[] { launchMusicLevel });
+                        if (progress < 1) return;
+                    }
+                    catch (Exception ex) { Log("loading music fade: " + ex.Message); }
+                    launchMusicFade.Stop(); launchMusicFade = null;
+                    if (done != null) done();
+                };
+                launchMusicFade.Start();
+            }
+            catch (Exception ex) { Log("loading music fade: " + ex.Message); if (done != null) done(); }
         }
 
         private static void ApplyVideoPause()
         {
+            if (musicHeldForLaunch && launchMusicFade != null) return;   // fade the current song before pausing it
             bool want = (previewShowing && previewSound) || musicHeldForLaunch || libraryTrailerSound || clipPlaying;
             if (videoPause == want) return;
             videoPause = want;
@@ -2432,9 +2549,96 @@ namespace Selene
             return upsSettings;
         }
 
+        // Turning background music off fades the current track; the next game selection releases that hold.
+        // UniPlaySong then plays the game's song continuously, including when its muted trailer opens.
+        private static bool quietUntilSelection;
+        private static System.Windows.Threading.DispatcherTimer musicOffFade;
+        private static void CancelMusicOffFade()
+        {
+            if (musicOffFade == null) return;
+            musicOffFade.Stop(); musicOffFade = null;
+            try
+            {
+                var volume = upsPlayer != null ? upsPlayer.GetType().GetMethod("SetVolumeMultiplier") : null;
+                if (volume != null) volume.Invoke(upsPlayer, new object[] { 1.0 });
+            }
+            catch (Exception ex) { Log("music fade reset: " + ex.Message); }
+        }
+        public static void ReleaseMusicQuietly()
+        {
+            try
+            {
+                if (upsPlayer == null) upsPlayer = FindUpsPlayer(Api);
+                var volume = upsPlayer != null ? upsPlayer.GetType().GetMethod("SetVolumeMultiplier") : null;
+                if (volume != null && !previewShowing && !(quietWatch != null && quietWatch.IsEnabled))
+                {
+                    if (musicOffFade != null) return;
+                    var started = System.Diagnostics.Stopwatch.StartNew();
+                    musicOffFade = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(20) };
+                    musicOffFade.Tick += (s, e) =>
+                    {
+                        try
+                        {
+                            if (Features.On("music")) { CancelMusicOffFade(); return; }
+                            var progress = Math.Min(1, started.Elapsed.TotalMilliseconds / 450);
+                            volume.Invoke(upsPlayer, new object[] { 1 - progress });
+                            if (progress < 1) return;
+                        }
+                        catch (Exception ex) { Log("music fade: " + ex.Message); }
+                        // Pause before restoring the multiplier, so the next song keeps its normal volume.
+                        musicOffFade.Stop(); musicOffFade = null;
+                        SongsOnlyWithTrailer(false);
+                        ReleaseMusic();
+                        try { volume.Invoke(upsPlayer, new object[] { 1.0 }); } catch { }
+                    };
+                    musicOffFade.Start();
+                    return;
+                }
+            }
+            catch (Exception ex) { Log("music fade: " + ex.Message); }
+            SongsOnlyWithTrailer(previewShowing);
+            ReleaseMusic();
+        }
+
+        private static void SongsOnlyWithTrailer(bool trailer)
+        {
+            if (musicOffFade != null)
+            {
+                if (!trailer) return;
+                CancelMusicOffFade();
+            }
+            try
+            {
+                if (quietWatch != null && quietWatch.IsEnabled) return;   // (the start-up hold is on: it lets go by itself)
+                if (upsPlayer == null) upsPlayer = FindUpsPlayer(Api);
+                var type = upsPlayer != null ? upsPlayer.GetType() : null;
+                if (type == null) return;
+                if (trailer == !quietUntilSelection) return;   // already so
+                var add = type.GetMethod("AddPauseSourceImmediate");
+                var remove = type.GetMethod("RemovePauseSource");
+                if (add == null || remove == null) return;
+                var source = Enum.Parse(add.GetParameters()[0].ParameterType, "Settings");
+                if (trailer) remove.Invoke(upsPlayer, new[] { source }); else add.Invoke(upsPlayer, new[] { source });
+                quietUntilSelection = !trailer;
+                Log("music off: " + (trailer ? "selected game's song released" : "quiet until another game is selected"));
+            }
+            catch (Exception ex) { Log("music off: " + ex.Message); }
+        }
+
+        // the music back on (or the add-on gone from the picture): the quiet from switching it off ends
+        public static void LetMusicGo() { SongsOnlyWithTrailer(true); }
+
         // music control switched off: every pause Selene set on the music add-on is let go now
         public static void ReleaseMusic()
         {
+            if (launchMusicFade != null) { launchMusicFade.Stop(); launchMusicFade = null; }
+            if (launchMusicLevel != 1)
+            {
+                try { var volume = upsPlayer != null ? upsPlayer.GetType().GetMethod("SetVolumeMultiplier") : null; if (volume != null) volume.Invoke(upsPlayer, new object[] { 1.0 }); }
+                catch (Exception ex) { Log("loading music reset: " + ex.Message); }
+                launchMusicLevel = 1;
+            }
+            CancelMusicOffFade();
             if (musicGuard != null) { musicGuard.Stop(); musicGuard = null; }
             musicMode = null;
             videoPause = null;
@@ -2493,7 +2697,7 @@ namespace Selene
                 var settings = LiveUps();
                 if (settings == null) return;
                 var prop = settings.GetType().GetProperty("VideoIsPlaying");
-                if (!Features.On("music")) playing = false;
+                // Loading screens, audible trailers and captures pause game songs even with background music off.
                 if (prop != null && prop.CanWrite) prop.SetValue(settings, playing, null);
                 Log("UPS VideoIsPlaying=" + playing + (prop == null ? " (property not found on " + settings.GetType().Name + ")" : ""));
             }
@@ -3231,10 +3435,88 @@ namespace Selene
         private static string lastPadButton, lastPadRaw;
         private static DateTime lastPadAt;
 
+        // Steady hold scrolling: a held Left / Right on Spotlight's row repeats every 85 ms from Playnite (measured), faster than
+        // the row can follow on a 4K TV (50-57 fps then; smooth from ~120 ms). Its repeats are dropped and the row steps at its
+        // own steady pace while the button stays down; the first press still moves at once. Switch: Spotlight > Steady hold scrolling.
+        private const int SteadyStepMs = 120;
+        private static System.Windows.Threading.DispatcherTimer steady;
+        private static string steadyButton;
+        private static DateTime steadyHeardAt;
+        private static bool steadyReleased;   // a release came: unless another repeat follows at once, the hold is over
+        private static bool steadyStepping;
+        private static bool padLetGo = true;   // the last pressed button was released since (the next press is a new one)   // one of the steady steps is going through (not a repeat to drop)
+
+        private static bool SteadyRepeat(string button)
+        {
+            if (!Features.On("steadyhold") || (button != "DPadLeft" && button != "DPadRight")) return false;
+            var f = Keyboard.FocusedElement as DependencyObject;
+            if (f == null || !IsInRow(f)) { StopSteady(); return false; }
+            steadyHeardAt = DateTime.Now;   // Playnite still repeating: the button is still down
+            steadyReleased = false;
+            if (steady != null && steady.IsEnabled && steadyButton == button) return true;
+            steadyButton = button;
+            if (steady == null)
+            {
+                steady = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.Input) { Interval = TimeSpan.FromMilliseconds(SteadyStepMs) };
+                steady.Tick += (s, e) =>
+                {
+                    // let go without a release reaching us (focus moved, a dialog): stop when Playnite's repeats stop
+                    var focused = Keyboard.FocusedElement as UIElement;
+                    double quiet = (DateTime.Now - steadyHeardAt).TotalMilliseconds;
+                    if ((steadyReleased && quiet > 95) || quiet > 300 || focused == null || !IsInRow(focused)) { StopSteady(); return; }
+                    // the step: the row's own move (as a press ends up doing), so the selection keeps its slot and the row slides
+                    if (!StepRow(steadyButton == "DPadLeft" ? -1 : 1)) StopSteady();
+                    if (Ui.DevFrames)
+                    {
+                        var row = ItemsControl.ItemsControlFromItemContainer(Keyboard.FocusedElement as DependencyObject ?? focused) as ListBox;
+                        var sv = row != null ? FindChild<ScrollViewer>(row) : null;
+                        Log("steady step " + steadyButton + " -> " + (row != null ? row.SelectedIndex.ToString() : "?") + " offset " + (sv != null ? sv.HorizontalOffset.ToString("0") : "?"));
+                    }
+                };
+            }
+            steady.Start();
+            return true;
+        }
+
+        private static void StopSteady() { if (steady != null) steady.Stop(); }
+
+        // one move along Spotlight's row from the focused tile (what Left / Right on the row does): false at its end or off the row
+        private static bool StepRow(int dir)
+        {
+            var focused = Keyboard.FocusedElement as DependencyObject;
+            ListBox row = null;
+            ListBoxItem item = null;
+            for (var d = focused; d != null; d = GetParent(d))
+            {
+                if (item == null && d is ListBoxItem) item = (ListBoxItem)d;
+                var lb = d as ListBox;
+                if (lb != null && lb.Name == "SeleneGameRow") { row = lb; break; }
+            }
+            if (row == null || movingCard != null || movingGame != null) return false;
+            int cur = item != null ? row.ItemContainerGenerator.IndexFromContainer(item) : -1;
+            if (cur < 0) cur = Math.Max(0, row.SelectedIndex);
+            for (int i = cur + dir; i >= 0 && i < row.Items.Count; i += dir)
+                if (IsShown(row.Items[i])) { MoveTo(row, cur, i); return true; }
+            return false;
+        }
+
+        // developer (selene-dev-frames): how a held direction's repeats arrive, every 2 s while one is held (the gaps between presses)
+        private static readonly List<int> devGaps = new List<int>();
+        private static DateTime devGapsAt = DateTime.MinValue;
+        private static void DevRepeat(string button, DateTime now)
+        {
+            if (button != lastPadButton || (now - lastPadAt).TotalMilliseconds > 600) { devGaps.Clear(); devGapsAt = now; return; }
+            devGaps.Add((int)(now - lastPadAt).TotalMilliseconds);
+            if ((now - devGapsAt).TotalSeconds < 2) return;
+            Log("pad repeats " + button + ": " + string.Join(" ", devGaps));
+            devGaps.Clear(); devGapsAt = now;
+        }
+
         private static void OnPreProcessInput(object sender, PreProcessInputEventArgs e)
         {
             if (!(e.StagingItem.Input is MouseEventArgs) || DateTime.Now >= ignoreMouseUntil) InputHints.Observe(e.StagingItem.Input);
             bool fromPad = false;
+            string padPressed = null;
             try
             {
                 var ke = e.StagingItem.Input as KeyEventArgs;
@@ -3289,7 +3571,7 @@ namespace Selene
                 {
                     var relProp = ke.GetType().GetProperty("Button");
                     var rel = relProp != null ? relProp.GetValue(ke, null) : null;
-                    if (rel != null) { Ui.Released(Ui.Normalize(rel.ToString())); padHeld.Remove(rel.ToString()); }
+                    if (rel != null) { Ui.Released(Ui.Normalize(rel.ToString())); padHeld.Remove(rel.ToString()); steadyReleased = true; padLetGo = true; }
                 }
                 else Ui.PadPressAt = DateTime.Now;
                 // Start / View released: a short press does its usual thing (a hold already did its own)
@@ -3308,14 +3590,22 @@ namespace Selene
                 // the same press arriving twice (one pad seen as two devices, or stick and d-pad together) moved two
                 // items at a time: a second identical direction within a moment is dropped
                 var same = Ui.Normalize(pressed);
+                padPressed = pressed;
                 var now = DateTime.Now;
-                if (same == lastPadButton && (now - lastPadAt).TotalMilliseconds < 60)
+                if (!steadyStepping && same == lastPadButton && (now - lastPadAt).TotalMilliseconds < 60)
                 {
                     Log("pad: dropped double " + pressed + " (" + (int)(now - lastPadAt).TotalMilliseconds + " ms after " + lastPadRaw + ")");
                     e.Cancel();
                     return;
                 }
+                if (Ui.DevFrames) DevRepeat(same, now);
+                // a held button's repeat: the same direction again with no release in between (quick taps always have one, and
+                // each is a move of its own, at once)
+                bool repeat = !steadyStepping && !padLetGo && same == lastPadButton && (now - lastPadAt).TotalMilliseconds < 400;
+                padLetGo = false;
+                if (!repeat) StopSteady();
                 lastPadButton = same; lastPadRaw = pressed; lastPadAt = now;
+                if (repeat && SteadyRepeat(same)) { e.Cancel(); return; }
                 HideCursorForController();
                 // both sticks clicked together: Report a problem, with a picture of the screen as it is (View + Start is often
                 // taken: Steam and others put the PC to sleep with it)
@@ -3329,11 +3619,13 @@ namespace Selene
                 padHeld.Add(pressed);
                 // one of Playnite's dialogs is up (a yes / no box, an add-on install): the press is the dialog's alone (it moved
                 // the screen behind too)
-                if (DialogUp())
+                if (DialogUp() || DialogLook.IsOpen)
                 {
                     Log("pad: " + pressed + " went to a window over Playnite (" + ActiveWindowWho() + ")");
+                    var answer = Ui.Normalize(pressed);
                     // B answers it the safe way (No / Cancel); Playnite's own dialogs did nothing on B
-                    if (Ui.Normalize(pressed) == "B" && DialogLook.Back()) e.Cancel();
+                    if (answer == "B" && DialogLook.Back()) e.Cancel();
+                    else if (DialogLook.Take(answer)) e.Cancel();   // (a dialog without the focus: the press is still its own)
                     return;
                 }
                 if (LoginScene.HandleButton(pressed)) { e.Cancel(); return; }
@@ -3553,7 +3845,7 @@ namespace Selene
                 e.Cancel();
             }
             catch (Exception ex) { Log("Y: " + ex.Message); }
-            finally { if (fromPad && e.Canceled) Ui.PadHandled(); }   // handled here: its keyboard copy is dropped
+            finally { if (fromPad && e.Canceled) { Ui.PadHandled(); Ui.PadWent(padPressed); } }   // handled here: its keyboard copy is dropped (Playnite moves on the others from it)
         }
 
         // ---- Play / Details pills under the logo (SelenePlayBtn / SeleneDetailsBtn in the home block) ----
@@ -4907,41 +5199,6 @@ namespace Selene
             catch (Exception ex) { Log("apply card order: " + ex.Message); }
         }
 
-        // Controller battery (PadPower: the pad's own report, Bluetooth's figure, Gaming Input, XInput's buckets), read off the UI
-        // thread every 30 s. DynamicResource "SelenePadBattery" = "none" | "wired" | "0".."3" for the theme; the cards from PadBattery.
-        private static System.Windows.Threading.DispatcherTimer batteryTimer;
-        private static bool batteryBusy;
-
-        private static void StartBatteryPolling()
-        {
-            UpdateBattery();
-            batteryTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
-            batteryTimer.Tick += (s, e) => UpdateBattery();
-            batteryTimer.Start();
-        }
-
-        private static void UpdateBattery()
-        {
-            if (batteryBusy) return;
-            batteryBusy = true;
-            var dispatcher = Application.Current.Dispatcher;
-            System.Threading.Tasks.Task.Factory.StartNew(() =>
-            {
-                PadPower.Reading r;
-                try { r = PadPower.Best(); } catch (Exception ex) { LastError = ex.ToString(); r = new PadPower.Reading(); }
-                dispatcher.BeginInvoke(new Action(() =>
-                {
-                    batteryBusy = false;
-                    string value = !r.Present ? "none" : r.Wired && r.Percent < 0 ? "wired" : Math.Max(0, r.Level).ToString();
-                    var res = Application.Current.Resources;
-                    if (!Equals(res["SelenePadBattery"], value)) { res["SelenePadBattery"] = value; Log("battery: " + r); }
-                    PadBattery.Show(r);
-                }));
-            });
-        }
-
-        public static void RefreshBattery() { UpdateBattery(); }
-
         // ---- Guide (ring) button = home, from anywhere ----
         // Playnite's own GuideButtonFocus never fired for some controllers (its Guide shows up only through the hidden
         // XInputGetStateEx, on whichever slot the pad has), so poll all four slots ourselves.
@@ -5006,7 +5263,7 @@ namespace Selene
         // The press takes a picture of the screen (the game as it is). That picture covers the screen at once (no cut to
         // black), Selene comes forward under it, and then the game's picture shrinks a little and fades while the home settles
         // in from a slight zoom. A game in exclusive fullscreen can't be pictured (the copy comes back black): then the
-        // old fade from black. Switch: Look > "Home over a game".
+        // old fade from black. Switch: Look > "Fade in over a game".
         [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr h);
         [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr h, IntPtr dc);
         [System.Runtime.InteropServices.DllImport("gdi32.dll")] private static extern IntPtr CreateCompatibleDC(IntPtr dc);
@@ -5301,12 +5558,8 @@ namespace Selene
                     Log("pause skipped: " + (name == null ? "no game running" : proc));
                     return;
                 }
-                // a game run as administrator: frozen by Selene's helper (Selene itself may not minimize or suspend it)
-                if (Features.On("freeze") && LocalGames.IsElevated((int)pid) && (LocalGames.HelperReady || !string.IsNullOrWhiteSpace(SelenePaths.HelperTask)))
-                {
-                    GamePause.PauseViaHelper((int)pid, name ?? "", gameWindow);
-                    return;
-                }
+                // Elevated games are outside Selene's process-control scope until a protected broker exists.
+                if (LocalGames.IsElevated((int)pid)) { Log("pause skipped: game runs as administrator"); return; }
                 // freezing switched off: every game is treated like an online one (only muted)
                 bool online = !Features.On("freeze") || GamePause.IsOnline((int)pid);
                 if (!online) ShowWindow(gameWindow, 7);  // SW_SHOWMINNOACTIVE: parked, so Windows will not ghost it once frozen
@@ -5348,26 +5601,29 @@ namespace Selene
                 if (!(id is Guid) || Api == null) return;
                 var g0 = Api.Database.Games.Get((Guid)id);
                 var name = Convert.ToString(Prop(game, "Name"));
+                // Check every target before sending any close message or starting the closing screen.
+                var pids = new System.Collections.Generic.HashSet<int>();
+                if (gameWindow != IntPtr.Zero) { uint wp; GetWindowThreadProcessId(gameWindow, out wp); if (wp != 0) pids.Add((int)wp); }
+                foreach (var pid in LocalGames.ProcessesInGameFolder(g0)) pids.Add(pid);
+                if (pids.Any(pid => LocalGames.IsElevated(pid)))
+                {
+                    Api.Dialogs.ShowMessage("Close this administrator game from its own menu. Selene's elevated game controls are currently unavailable.", "Close game");
+                    return;
+                }
                 var main = Application.Current.MainWindow;
                 ShowClosingScreen(main, g0, name);
                 GamePause.Resume();
-                // the game's processes: its window if we know it, else everything running from its folder
-                var pids = new System.Collections.Generic.HashSet<int>();
-                if (gameWindow != IntPtr.Zero) { uint wp; GetWindowThreadProcessId(gameWindow, out wp); if (wp != 0) pids.Add((int)wp); PostMessage(gameWindow, 0x0010, IntPtr.Zero, IntPtr.Zero); }
-                foreach (var pid in LocalGames.ProcessesInGameFolder(g0)) pids.Add(pid);
-                var adminPids = new System.Collections.Generic.List<string>();
+                if (gameWindow != IntPtr.Zero) PostMessage(gameWindow, 0x0010 /* WM_CLOSE */, IntPtr.Zero, IntPtr.Zero);
                 foreach (var pid in pids)
                 {
                     try
                     {
                         var pr = System.Diagnostics.Process.GetProcessById(pid);
-                        try { var gone = pr.HasExited; } catch { adminPids.Add("close " + pid); continue; }  // runs as admin
                         if (pr.MainWindowHandle != IntPtr.Zero) pr.CloseMainWindow();
                     }
                     catch { }
                 }
-                if (adminPids.Count > 0) RequestElevated(adminPids.ToArray());
-                Log("close game: " + name + " (" + pids.Count + " process(es)" + (adminPids.Count > 0 ? ", " + adminPids.Count + " via the admin helper" : "") + ")");
+                Log("close game: " + name + " (" + pids.Count + " process(es))");
                 var started = DateTime.Now;
                 bool killed = false;
                 var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
@@ -5407,27 +5663,6 @@ namespace Selene
             System.Diagnostics.Process pr;
             try { pr = System.Diagnostics.Process.GetProcessById(pid); } catch { return false; }
             try { return !pr.HasExited; } catch { return true; }
-        }
-
-        // Games running as administrator can't be focused or closed by a normal program: a helper with admin rights does it,
-        // started through a scheduled task. Selene's own (SeleneHelper.exe, task Selene\Helper, set up by LocalGames after such a
-        // game's first run) reads the requests ("focus <hwnd>", "close <pid>") from %LOCALAPPDATA%\Selene\elevated.txt; a custom
-        // task from the add-on settings takes its place and reads %TEMP%\selene-elevated.txt. False when no helper is set up.
-        public static bool RequestElevated(params string[] lines)
-        {
-            try
-            {
-                string task = SelenePaths.HelperTask, file;
-                if (!string.IsNullOrWhiteSpace(task)) file = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "selene-elevated.txt");
-                else if (LocalGames.HelperReady) { task = LocalGames.HelperTaskName; file = LocalGames.RequestFile; }
-                else { Log("admin helper: none set up (" + string.Join(", ", lines) + ")"); return false; }
-                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(file));
-                System.IO.File.AppendAllLines(file, lines);
-                var psi = new System.Diagnostics.ProcessStartInfo(System.IO.Path.Combine(Environment.SystemDirectory, "schtasks.exe"), "/run /tn \"" + task + "\"") { UseShellExecute = false, CreateNoWindow = true };
-                System.Diagnostics.Process.Start(psi);
-                return true;
-            }
-            catch (Exception ex) { Log("admin helper request failed: " + ex.Message); return false; }
         }
 
         // the window in front belongs to a program running as administrator (Playnite can't take the screen back from it alone)
@@ -5563,12 +5798,17 @@ namespace Selene
                 var id = Prop(game, "Id");
                 if (!(id is Guid) || Api == null) return;
                 var name = Convert.ToString(Prop(game, "Name"));
-                var answer = Api.Dialogs.ShowMessage("Close " + name + " and start it again?" + Environment.NewLine + "Unsaved progress will be lost.", "Restart game",
-                    MessageBoxButton.YesNo, MessageBoxImage.Question);
-                if (answer != MessageBoxResult.Yes) return;
                 var target = gameWindow;
                 uint pid;
                 GetWindowThreadProcessId(target, out pid);
+                if (pid == 0 || LocalGames.IsElevated((int)pid))
+                {
+                    Api.Dialogs.ShowMessage("Close this administrator game from its own menu, then start it again. Selene's elevated game controls are currently unavailable.", "Restart game");
+                    return;
+                }
+                var answer = Api.Dialogs.ShowMessage("Close " + name + " and start it again?" + Environment.NewLine + "Unsaved progress will be lost.", "Restart game",
+                    MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (answer != MessageBoxResult.Yes) return;
                 GamePause.Resume();
                 PostMessage(target, 0x0010 /* WM_CLOSE */, IntPtr.Zero, IntPtr.Zero);
                 Log("restart: closing " + name + " (pid " + pid + ")");
@@ -5656,19 +5896,17 @@ namespace Selene
                     if (mh != IntPtr.Zero && IsIconic(mh)) { ShowWindow(mh, 9 /* SW_RESTORE */); w.Activate(); }
                     var pids = new List<int>();
                     foreach (var pid in LocalGames.ProcessesInGameFolder(g)) if (attempt.CanCloseProcess(pid)) pids.Add(pid);
-                    var admin = new List<string>();
                     foreach (var pid in pids)
                     {
                         try
                         {
+                            if (LocalGames.IsElevated(pid)) continue;
                             var pr = System.Diagnostics.Process.GetProcessById(pid);
-                            try { var gone = pr.HasExited; } catch { admin.Add("close " + pid); continue; }
                             if (asked.Add(pid)) { if (pr.MainWindowHandle != IntPtr.Zero) pr.CloseMainWindow(); }
                             else if (secs > 1.5) pr.Kill();
                         }
                         catch { }
                     }
-                    if (admin.Count > 0) RequestElevated(admin.ToArray());
                     if (pids.Count > 0) { quiet = 0; return; }
                     if (g.IsRunning && LocalGames.IsMarkedRunning(g.Id)) { g.IsRunning = false; Api.Database.Games.Update(g); }
                     // nothing left, and Playnite no longer waits for the game to start
@@ -5744,7 +5982,7 @@ namespace Selene
                             var mh = new System.Windows.Interop.WindowInteropHelper(main).Handle;
                             SetCloak(mh, false);
                             // back in front the way Guide does it (the window that got the screen may be a game run as admin)
-                            ForceForegroundAsync(mh, () => { main.Activate(); if (!PlayniteInFront()) RequestElevated("focus " + mh.ToInt64()); });
+                            ForceForegroundAsync(mh, () => main.Activate());
                             var r = main.Content as UIElement;
                             if (r != null && r.Opacity < 0.99) FadeInRoot(r);
                         }
@@ -6775,7 +7013,7 @@ namespace Selene
                 {
                     attempt++;
                     bool ok = GetForegroundWindow() == target;
-                    if (!ok && attempt == 1) { ForceForeground(target); RequestElevated("focus " + target.ToInt64()); return; }
+                    if (!ok && attempt == 1) { ForceForeground(target); return; }
                     if (!ok && attempt < 4) return;
                     verify.Stop();
                     if (snapAdorner == ad) RemoveSnapAdorner();
@@ -6793,7 +7031,7 @@ namespace Selene
             var root = w.Content as FrameworkElement;
             CloseSnapWindow(); RemoveSnapAdorner();
             if (root != null && target != IntPtr.Zero && lastGameSnap != null && GamePause.Frozen && Features.On("guidefade")) { ReturnWithCrossfade(w, root, target); return; }
-            GamePause.Resume();   // at once: the game wakes (and a helper-frozen one comes back) while Selene fades
+            GamePause.Resume();   // at once: the game wakes while Selene fades
             StopStealGuard(w);  // the user asked for the game
             HidePreview();
             Action go = () =>
@@ -7166,7 +7404,12 @@ namespace Selene
                 var key = RowFilters[RowFilter];
                 var id = IsPresetTab(key) ? PresetOf(key) : CollectionPresets.For(key);
                 if (Api == null || id == Guid.Empty) return;
-                if (Api.MainView.GetActiveFilterPreset() != id) { Api.MainView.ApplyFilterPreset(id); Log("collection filter -> " + RowFilters[RowFilter]); }
+                if (Api.MainView.GetActiveFilterPreset() != id)
+                {
+                    var took = System.Diagnostics.Stopwatch.StartNew();
+                    Api.MainView.ApplyFilterPreset(id);
+                    Log("collection filter -> " + RowFilters[RowFilter] + " (" + took.ElapsedMilliseconds + " ms)");
+                }
             }
             catch (Exception ex) { Log("collection filter: " + ex.Message); }
         }
@@ -7233,11 +7476,21 @@ namespace Selene
                 if (guideAtHome && CanReturnToGame()) { guideAtHome = false; guideSeq++; ReturnToGame(w); return; }
                 bool wasBehind = GetForegroundWindow() != hwnd;
                 if (!wasBehind && CanReturnToGame()) { ReturnToGame(w); return; }  // like the PS button: toggle back
-                if (wasBehind && ForegroundIsAdmin() && string.IsNullOrWhiteSpace(SelenePaths.HelperTask) && !LocalGames.HelperReady)
+                if (wasBehind && ForegroundIsAdmin())
                 {
-                    // nothing here can take the screen from a game running as administrator (the helper is set up after its
-                    // first run): no black cover that would only flicker over the game
-                    Log("guide: the game runs as administrator and no admin helper is set up yet -> stays on the game");
+                    // Ordinary window switching only. Never cover or freeze an elevated game on the assumption
+                    // that focus was acquired: Windows can refuse this request.
+                    var elevatedWindow = GetForegroundWindow();
+                    ForceForegroundAsync(hwnd, () =>
+                    {
+                        if (!PlayniteInFront()) { Log("guide: ordinary focus request declined for administrator game; use Alt+Tab"); return; }
+                        if (AnyGameRunning()) { gameWindow = elevatedWindow; guideAtHome = true; }
+                        var content = w.Content as UIElement;
+                        if (content != null) FadeInRoot(content);
+                        FocusRowSoon(0);
+                        Ui.Notice("Administrator game is still running. Pause it from its own menu.", 6000);
+                        Log("guide: ordinary window switch from administrator game; no process control");
+                    });
                     return;
                 }
                 if (wasBehind)
@@ -7246,7 +7499,6 @@ namespace Selene
                     var seq = ++guideSeq;
                     guideSwitching = true;
                     // the game's picture over everything at once (or black when it can't be pictured): no desktop, no taskbar
-                    bool adminGame = ForegroundIsAdmin();
                     var snap = Features.On("guidefade") ? SnapScreen(hwnd) : null;
                     lastGameSnap = snap;
                     if (snap != null) ShowSnapWindow(w, snap);
@@ -7265,19 +7517,6 @@ namespace Selene
                     SetForegroundWindow(hwnd);
                     if (attached) AttachThreadInput(me, fg, false);
                     w.Activate();
-                    bool helperAsked = false;
-                    if (adminGame && !PlayniteInFront()) { helperAsked = RequestElevated("focus " + hwnd.ToInt64()); if (helperAsked) Log("guide: the game runs as administrator -> admin helper asked at once"); }
-                    var focusCheck = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
-                    focusCheck.Tick += (sf, ef) =>
-                    {
-                        focusCheck.Stop();
-                        if (PlayniteInFront() || helperAsked || seq != guideSeq) return;
-                        // Windows won't let a normal program take the focus from one running as administrator: Playnite was
-                        // on screen but deaf to the controller until the mouse was clicked
-                        Log("guide: focus refused (game running as admin?) -> admin helper");
-                        RequestElevated("focus " + hwnd.ToInt64());
-                    };
-                    focusCheck.Start();
                     // never left on a black screen (the game's music-less home playing behind black): whatever happened
                     // above, once Playnite is in front it is visible
                     var neverBlack = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(2700) };   // (after the reveal wait and its crossfade)
@@ -7373,6 +7612,7 @@ namespace Selene
 
         public static void Log(string s)
         {
+            PerformanceRecorder.FromLog(s);
             try { System.IO.File.AppendAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "selene.log"), DateTime.Now.ToString("HH:mm:ss.fff ") + s + Environment.NewLine); } catch { }
         }
 

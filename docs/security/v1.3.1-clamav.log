@@ -1,0 +1,16 @@
+/tmp/selene-v1.3.1-audit/SeleneHelper.exe: OK
+/tmp/selene-v1.3.1-audit/SeleneCore.dll: OK
+/tmp/selene-v1.3.1-audit/SeleneCore.pext: OK
+/tmp/selene-v1.3.1-audit/Selene.pthm: Heuristics.Limits.Exceeded.MaxScanTime FOUND
+
+----------- SCAN SUMMARY -----------
+Known viruses: 3628193
+Engine version: 1.5.4
+Scanned directories: 0
+Scanned files: 4
+Infected files: 1
+Data scanned: 124.72 MiB
+Data read: 133.24 MiB (ratio 0.94:1)
+Time: 132.146 sec (2 m 12 s)
+Start Date: 2026:10:28 10:43:30
+End Date:   2026:10:28 10:45:42

@@ -16,6 +16,19 @@ namespace Selene
     // row, or Collection); X erases, Y types a space, Start opens the first result, B closes.
     public class SearchScreen : Screen
     {
+        // one match: how its tile looks and what A on it does (games: a cover that opens the game; settings: a card)
+        public sealed class Hit { public Func<Tile> Build; public Action Open; }
+
+        // what is searched: the words around the field and the matches for a query (the games by default)
+        public sealed class Finder
+        {
+            public string Title, Placeholder, EmptyNote, NoneNote;
+            public Func<string, List<Hit>> Find;
+            public Action Back;   // B (null: back to where the search was opened from)
+            public int Max = MaxResults;   // how many matches show (they sit in one row: as many as fit the screen)
+            public Brush Shade;   // the shade over what's behind (null: the usual one)
+        }
+
         public override bool MenuOnStart { get { return false; } }   // (Start is its own here)
         private static readonly string[] Rows = { "1234567890", "qwertyuiop", "asdfghjkl'", "zxcvbnm-." };
         private const int MaxLength = 30, MaxResults = 8;
@@ -28,17 +41,22 @@ namespace Selene
         private readonly StackPanel resultsPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Height = 196 };
         private readonly TextBlock resultsNote;
         private readonly List<Tile> resultTiles = new List<Tile>();
-        private readonly List<Playnite.SDK.Models.Game> results = new List<Playnite.SDK.Models.Game>();
+        private readonly List<Hit> results = new List<Hit>();
+        private readonly Finder finder;
         private readonly DispatcherTimer later = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
         private string query = "";
         private int row = 1, col, result = -1;   // result >= 0: the focus is on the results
 
         public override bool Overlay { get { return true; } }
+        public override Brush OverlayShade { get { return finder.Shade; } }
 
-        public SearchScreen()
+        public SearchScreen() : this(Games()) { }
+
+        public SearchScreen(Finder finder)
         {
+            this.finder = finder;
             var layout = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 90, 0, 0) };
-            layout.Children.Add(new TextBlock { Text = "Find a game", FontSize = 40, FontFamily = Ui.Display, Foreground = Ink.Brush("SeleneInkColor"), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 24) });
+            layout.Children.Add(new TextBlock { Text = finder.Title, FontSize = 40, FontFamily = Ui.Display, Foreground = Ink.Brush("SeleneInkColor"), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 24) });
             var caret = new Rectangle { Width = 2, Height = 30, Fill = Ink.Brush("GlyphColor"), Margin = new Thickness(3, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
             caret.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimationUsingKeyFrames
             {
@@ -51,7 +69,7 @@ namespace Selene
             typed.Children.Add(letters);
             typed.Children.Add(caret);
             line.Children.Add(typed);
-            placeholder = new TextBlock { Text = "Type a game's name", FontSize = 24, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.4), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(40, 0, 0, 0), IsHitTestVisible = false };
+            placeholder = new TextBlock { Text = finder.Placeholder, FontSize = 24, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.4), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(40, 0, 0, 0), IsHitTestVisible = false };
             line.Children.Add(placeholder);
             field = new Border
             {
@@ -172,7 +190,6 @@ namespace Selene
             later.Start();
         }
 
-        // ---- the matching games: the name starting with it first, then installed ones, then the rest ----
         private void Search()
         {
             results.Clear();
@@ -180,31 +197,55 @@ namespace Selene
             resultsPanel.Children.Clear();
             if (result >= 0) result = -1;
             var q = query.Trim();
-            if (HomeNav.Api != null && q.Length > 0)
-            {
-                var key = StoreData.Key(q);
-                var found = HomeNav.Api.Database.Games
-                    .Where(g => !g.Hidden && !string.IsNullOrEmpty(g.Name) && (g.Name.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0 || (key.Length > 0 && StoreData.Key(g.Name).Contains(key))))
-                    .OrderBy(g => g.Name.StartsWith(q, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
-                    .ThenBy(g => g.IsInstalled ? 0 : 1)
-                    .ThenBy(g => g.Name)
-                    .Take(MaxResults).ToList();
-                results.AddRange(found);
-            }
+            if (q.Length > 0) results.AddRange(finder.Find(q).Take(finder.Max));
             for (int i = 0; i < results.Count; i++)
             {
-                var g = results[i];
-                var t = new Tile(140, 186, 12, 4) { FocusScale = 1.06 };
+                var t = results[i].Build();
                 t.Root.Margin = new Thickness(8, 0, 8, 0);
-                var cover = Cover(g);
-                if (cover != null) t.Face.Background = new ImageBrush(cover) { Stretch = Stretch.UniformToFill };
-                else t.Face.Child = new TextBlock { Text = g.Name, FontSize = 15, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor"), TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, Margin = new Thickness(10), VerticalAlignment = VerticalAlignment.Center };
                 resultsPanel.Children.Add(t.Root);
                 resultTiles.Add(t);
                 Ui.Rise(t.Root, i * 30, 10, 220);
             }
-            resultsNote.Text = q.Length == 0 ? "Your games show here as you type." : results.Count == 0 ? "No game called that." : "";
+            resultsNote.Text = q.Length == 0 ? finder.EmptyNote : results.Count == 0 ? finder.NoneNote : "";
             ShowFocus();
+        }
+
+        // ---- the matching games: the name starting with it first, then installed ones, then the rest ----
+        private static Finder Games()
+        {
+            return new Finder
+            {
+                Title = "Find a game", Placeholder = "Type a game's name", EmptyNote = "Your games show here as you type.", NoneNote = "No game called that.",
+                Find = q =>
+                {
+                    if (HomeNav.Api == null) return new List<Hit>();
+                    var key = StoreData.Key(q);
+                    return HomeNav.Api.Database.Games
+                        .Where(g => !g.Hidden && !string.IsNullOrEmpty(g.Name) && (g.Name.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0 || (key.Length > 0 && StoreData.Key(g.Name).Contains(key))))
+                        .OrderBy(g => g.Name.StartsWith(q, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                        .ThenBy(g => g.IsInstalled ? 0 : 1)
+                        .ThenBy(g => g.Name)
+                        .Take(MaxResults)
+                        .Select(g => new Hit { Build = () => GameTile(g), Open = () => OpenGame(g) })
+                        .ToList();
+                }
+            };
+        }
+
+        private static Tile GameTile(Playnite.SDK.Models.Game g)
+        {
+            var t = new Tile(140, 186, 12, 4) { FocusScale = 1.06 };
+            var cover = Cover(g);
+            if (cover != null) t.Face.Background = new ImageBrush(cover) { Stretch = Stretch.UniformToFill };
+            else t.Face.Child = new TextBlock { Text = g.Name, FontSize = 15, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor"), TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, Margin = new Thickness(10), VerticalAlignment = VerticalAlignment.Center };
+            return t;
+        }
+
+        private static void OpenGame(Playnite.SDK.Models.Game g)
+        {
+            LoginScene.ForgetReturnFocus();   // the pick gets the focus, not what had it before the search
+            var id = g.Id;
+            LoginScene.FinishThen(() => HomeNav.ShowGame(id));
         }
 
         private static ImageSource Cover(Playnite.SDK.Models.Game g)
@@ -268,16 +309,13 @@ namespace Selene
         private void Open(int i)
         {
             if (i < 0 || i >= results.Count) { Ui.Shake(field); return; }
-            var g = results[i];
             Ui.Confirm();
-            LoginScene.ForgetReturnFocus();   // the pick gets the focus, not what had it before the search
-            var id = g.Id;
-            LoginScene.FinishThen(() => HomeNav.ShowGame(id));
+            results[i].Open();
         }
 
         public override void Handle(string b)
         {
-            if (b == "B") { Ui.Back(); LoginScene.Finish(); return; }
+            if (b == "B") { Ui.Back(); if (finder.Back != null) finder.Back(); else LoginScene.Finish(); return; }
             if (b.StartsWith("DPad")) { Move(b); return; }
             if (b == "X") { Erase(); return; }
             if (b == "Y") { Type(" "); return; }   // the space bar

@@ -39,7 +39,7 @@ namespace Selene
             if (preset != null && pool == 0 && !preset.IsInstalled) pool = 2;
             if (pool < 0)
             {
-                var from = Features.Value("surprisepool");   // the Surprise me picks from setting
+                var from = Features.Value("surprisepool");   // the Surprise me games setting
                 pool = from == "fresh" ? 1 : from == "all" ? 2 : all.Any(g => g.IsInstalled) ? 0 : 2;
             }
             var dark = new Border();

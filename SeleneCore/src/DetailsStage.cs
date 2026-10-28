@@ -403,7 +403,7 @@ namespace Selene
             // the last band (tall covers) rises further, so the whole covers sit above the hints
             double to = zone <= 1 ? 0 : -(zone - 1) * BandPitch - (zone == 3 ? 100 : 0);
             var glide = new DoubleAnimation(to, TimeSpan.FromMilliseconds(320)) { EasingFunction = Ui.Out() };
-            Timeline.SetDesiredFrameRate(glide, 144);   // the page is big: at WPF's 60 steps a second the move looked choppy on a fast screen
+            Timeline.SetDesiredFrameRate(glide, Ui.FrameRate);   // the page is big: at WPF's 60 steps a second the move looked choppy on a fast screen
             shift.BeginAnimation(TranslateTransform.YProperty, glide);
             Blur(true);
             Ui.MeasureFrames("details glide to zone " + zone, 420);   // the next band sharpens and brightens as it rises, with the glide (the store's rows do the same)

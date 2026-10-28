@@ -42,14 +42,21 @@ namespace Selene
         public static string WallpapersFolder { get { return settings != null ? settings.WallpapersFolder ?? "" : ""; } }
 
         // optional companion program (TV/controller helper with admin rights); empty = those features are off
-        public static string Helper { get { return settings != null ? settings.HelperPath ?? "" : ""; } }
+        // the companion program from the settings; never Selene's own retired helper (it refuses every request)
+        public static string Helper
+        {
+            get
+            {
+                var path = settings != null ? settings.HelperPath ?? "" : "";
+                return LegacyElevation.IsRetiredHelper(path) ? "" : path;
+            }
+        }
 
         // optional: game-streaming host logs (a connected streaming client changes some behaviour); empty = off
         public static string StreamLogs { get { return settings != null ? settings.StreamLogsFolder ?? "" : ""; } }
 
         public static string StreamClientMatch { get { return settings != null ? settings.StreamClientMatch ?? "" : ""; } }
         public static string StreamCredentials { get { return settings != null ? settings.StreamCredentialsFile ?? "" : ""; } }
-        public static string HelperTask { get { return settings != null ? settings.HelperTask ?? "" : ""; } }
 
         public static string SteamUserdata
         {

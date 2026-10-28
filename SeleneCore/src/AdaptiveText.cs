@@ -2,7 +2,7 @@
 // picture right behind it (the wallpaper or the game art, cropped as the screen shows it): where it reads fine nothing is
 // added; where the picture is bright, a soft dark glow is painted behind its lines (in the text's own background, so the
 // words stay sharp; stronger over a bright spot) and quiet grey text comes up toward white. Measured again whenever the background changes.
-// Part of the "Readable text" switch; text elsewhere (menus, login) keeps the plain light halo.
+// Part of the "Text shadow" switch; text elsewhere (menus, login) keeps the plain light halo.
 using System;
 using System.Collections.Generic;
 using System.Linq;

@@ -71,23 +71,6 @@ namespace Selene
 
         private static int pausedPid;
         private static bool suspended, lowered;
-        private static IntPtr helperWindow;   // frozen by the admin helper (a game run as administrator): thawed by it too
-
-        // a game run as administrator: Selene may not minimize or suspend it; Selene's helper (admin rights) does both
-        public static bool PauseViaHelper(int pid, string gameName, IntPtr hwnd)
-        {
-            if (pid <= 0) return false;
-            Resume();
-            pausedPid = pid;
-            SetProcessMute(pid, true);
-            if (IsOnline(pid)) { lowered = SetPriority(pid, false); HomeNav.Log("pause: " + gameName + " (pid " + pid + ") muted, online: not frozen"); return true; }
-            if (!HomeNav.RequestElevated("freeze " + pid + " " + hwnd.ToInt64())) { HomeNav.Log("pause: " + gameName + " (pid " + pid + ") muted, runs as administrator and no helper: not frozen"); return true; }
-            suspended = true;
-            helperWindow = hwnd;
-            HomeNav.Log("pause: " + gameName + " (pid " + pid + ") muted, frozen by the admin helper");
-            return true;
-        }
-
         private static readonly Dictionary<int, bool> onlineCache = new Dictionary<int, bool>();
 
         public static bool IsOnline(int pid)
@@ -126,13 +109,12 @@ namespace Selene
 
         public static void Resume() { Resume(true); }
 
-        // bringBack=false: a game frozen by the helper is woken and restored behind Selene (Selene animates, then hands it the screen)
+        // Kept for existing animation callers; no elevated helper is involved.
         public static void Resume(bool bringBack)
         {
             if (pausedPid == 0) return;
             int pid = pausedPid;
             pausedPid = 0;
-            if (suspended && helperWindow != IntPtr.Zero) { HomeNav.RequestElevated("thaw " + pid + " " + helperWindow.ToInt64() + (bringBack ? "" : " behind")); helperWindow = IntPtr.Zero; suspended = false; }
             if (suspended) { Suspend(pid, false); suspended = false; }
             if (lowered) { SetPriority(pid, true); lowered = false; }
             SetProcessMute(pid, false);

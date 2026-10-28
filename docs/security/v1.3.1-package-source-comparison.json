@@ -1,0 +1,71 @@
+{
+  "Selene.pthm": {
+    "matching_tag_files": 523,
+    "different_tag_files": [
+      "theme.yaml",
+      "Constants.xaml",
+      "DescriptionView.html",
+      "Media.xaml",
+      "CustomControls/FilterPresetSelector.xaml",
+      "DefaultControls/Button.xaml",
+      "DefaultControls/CheckBox.xaml",
+      "DefaultControls/ComboBox.xaml",
+      "DefaultControls/ProgressBar.xaml",
+      "DerivedStyles/ListGameItemStyle.xaml",
+      "DerivedStyles/ListGameItemTemplate.xaml",
+      "Localization/de.txt",
+      "Localization/es.txt",
+      "Localization/fil.txt",
+      "Localization/fr.txt",
+      "Localization/ja.txt",
+      "Localization/pt_BR.txt",
+      "Localization/README.txt",
+      "Localization/zh_CN.txt",
+      "Palettes/catppuccin-latte.xaml",
+      "Palettes/catppuccin.xaml",
+      "Palettes/ethereal.xaml",
+      "Palettes/everforest.xaml",
+      "Palettes/flexoki-light.xaml",
+      "Palettes/gruvbox.xaml",
+      "Palettes/hackerman.xaml",
+      "Palettes/kanagawa.xaml",
+      "Palettes/last-horizon.xaml",
+      "Palettes/lumon.xaml",
+      "Palettes/lupine.xaml",
+      "Palettes/matte-black.xaml",
+      "Palettes/miasma.xaml",
+      "Palettes/nord.xaml",
+      "Palettes/osaka-jade.xaml",
+      "Palettes/palettes.json",
+      "Palettes/retro-82.xaml",
+      "Palettes/ristretto.xaml",
+      "Palettes/rose-pine.xaml",
+      "Palettes/selene.xaml",
+      "Palettes/solitude.xaml",
+      "Palettes/tokyo-night.xaml",
+      "Palettes/vantablack.xaml",
+      "Palettes/white.xaml",
+      "Views/GameDetails.xaml",
+      "Views/GameMenu.xaml",
+      "Views/GameStatus.xaml",
+      "Views/ItemSelection.xaml",
+      "Views/MainMenu.xaml",
+      "Views/MessageBox.xaml",
+      "Views/SettingsMenus.xaml",
+      "Fonts/Lato-OFL.txt",
+      "Fonts/MaterialIcons-LICENSE.txt"
+    ],
+    "no_matching_tag_path": []
+  },
+  "SeleneCore.pext": {
+    "matching_tag_files": 1,
+    "different_tag_files": [
+      "extension.yaml",
+      "Localization/en_US.xaml"
+    ],
+    "no_matching_tag_path": [
+      "SeleneCore.dll",
+      "SeleneHelper.exe"
+    ]
+  }
+}

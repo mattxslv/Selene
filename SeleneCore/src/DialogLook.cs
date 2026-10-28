@@ -80,8 +80,25 @@ namespace Selene
             card.Background = Ink.Brush("SeleneGlassColor", 0.96);   // a touch see-through, like Selene's own dialogs
             card.Child = null;
             var inside = new Grid();
-            // the shadow as on Selene's own dialogs
-            card.Effect = new System.Windows.Media.Effects.DropShadowEffect { ShadowDepth = 0, BlurRadius = 60, Opacity = 0.55, Color = Colors.Black };
+            // the shadow as on Selene's own dialogs, on a twin behind the card: an Effect on the card itself drew its words and
+            // round edges soft and jagged
+            card.Effect = null;
+            var host = card.Parent as Panel;
+            if (host != null)
+            {
+                var twin = Ui.ShadowOf(card, 60, 0.55);
+                twin.HorizontalAlignment = card.HorizontalAlignment;
+                twin.VerticalAlignment = card.VerticalAlignment;
+                twin.Margin = card.Margin;
+                Grid.SetRow(twin, Grid.GetRow(card)); Grid.SetColumn(twin, Grid.GetColumn(card));
+                Grid.SetRowSpan(twin, Grid.GetRowSpan(card)); Grid.SetColumnSpan(twin, Grid.GetColumnSpan(card));
+                twin.SetBinding(UIElement.OpacityProperty, new System.Windows.Data.Binding("Opacity") { Source = card });
+                twin.SetBinding(UIElement.RenderTransformProperty, new System.Windows.Data.Binding("RenderTransform") { Source = card });
+                twin.SetBinding(UIElement.RenderTransformOriginProperty, new System.Windows.Data.Binding("RenderTransformOrigin") { Source = card });
+                host.Children.Insert(host.Children.IndexOf(card), twin);
+            }
+            else card.Effect = new System.Windows.Media.Effects.DropShadowEffect { ShadowDepth = 0, BlurRadius = 60, Opacity = 0.55, Color = Colors.Black };
+            card.UseLayoutRounding = true;
             panel.Margin = new Thickness(40, 40, 40, 36);
             inside.Children.Add(panel);
             card.Child = inside;
@@ -214,6 +231,35 @@ namespace Selene
             var w = open;
             if (w == null || !w.IsVisible) return false;
             return Back(w);
+        }
+
+        public static bool IsOpen { get { var w = open; return w != null && w.IsVisible; } }
+
+        // A pad press while a dialog is up that doesn't have the focus (one raised in the middle of a game start, under Selene's
+        // loading screen): it is the dialog's, not the home behind it (A started the game again). The dialog is brought forward;
+        // A answers it with its default button, the other buttons do nothing. False when the dialog has the focus itself (its
+        // own handling takes the press).
+        public static bool Take(string button)
+        {
+            var w = open;
+            if (w == null || !w.IsVisible || w.IsActive) return false;
+            try { w.Activate(); w.Focus(); } catch { }
+            if (button != "A") return true;
+            System.Windows.Controls.Primitives.ButtonBase target = null;
+            var focused = System.Windows.Input.Keyboard.FocusedElement as DependencyObject;
+            for (var d = focused; d != null && target == null; d = System.Windows.Media.VisualTreeHelper.GetParent(d))
+                target = d as System.Windows.Controls.Primitives.ButtonBase;
+            if (target == null || !target.IsVisible)
+                foreach (var name in new[] { "ButtonOK", "ButtonYes" })
+                {
+                    var b = w.FindName(name) as System.Windows.Controls.Primitives.ButtonBase;
+                    if (b != null && b.Visibility == Visibility.Visible && b.IsEnabled) { target = b; break; }
+                }
+            if (target == null) return true;
+            HomeNav.Log("dialog look: A -> " + (target.Name ?? "button") + " (the dialog had no focus)");
+            Ui.Confirm();
+            target.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent, target));
+            return true;
         }
 
         // the safe answer: No, else Cancel, else OK (a note with only OK just goes)

@@ -435,7 +435,7 @@ namespace Selene
             Stop(moved);
             if (arm == null || !library.IsVisible) return;
             arm.Stop();
-            // the same wait as Spotlight's trailer cards (the Trailer cards after setting; never = none here either)
+            // the same wait as Spotlight's trailer cards (the Trailer delay setting; never = none here either)
             double after = Features.Number("trailerdelay");
             if (after <= 0) return;
             arm.Interval = TimeSpan.FromSeconds(after);
@@ -446,7 +446,7 @@ namespace Selene
         {
             try
             {
-                if (!library.IsVisible || !Features.On("librarytrailer")) return;
+                if (!library.IsVisible || !Features.On("librarytrailer") || HomeNav.Light) return;
                 var w = Window.GetWindow(library);
                 var details = w != null ? HomeNav.FindByName(w, "PART_ElemGameDetails") : null;
                 if (details != null && details.IsVisible) return;

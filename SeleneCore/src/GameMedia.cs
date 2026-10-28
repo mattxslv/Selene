@@ -25,14 +25,18 @@ namespace Selene
     {
         private const string SteamPlugin = "cb91dfc9-b977-43bf-8e70-55f46e410fab";
         private const string EmlData = "705fdbca-e1fc-4004-b839-1d040b8b4429";
-        private static string CacheRoot { get { return SelenePaths.Media("Screenshots"); } }
+        private static string CacheRoot { get { return SelenePaths.Media("Screenshots-v2"); } }
         private const int MaxShots = 6;
 
         private static readonly Dictionary<Guid, List<ShotItem>> cache = new Dictionary<Guid, List<ShotItem>>();
+        internal static int CachedGameCount { get { return cache.Count; } }
+        internal static int CachedImageCount { get { return cache.Values.Sum(items => items.Count); } }
+        internal static int PendingGameCount { get { return loading.Count; } }
         private static System.Windows.Threading.DispatcherTimer debounce;
         private static object pending;
         private static System.Collections.IList pendingNeighbours;
         private static Guid shown;
+        private static int downloadGeneration;
 
         public static void OnSelected(object game, System.Collections.IList neighbours)
         {
@@ -41,7 +45,6 @@ namespace Selene
             pendingNeighbours = neighbours;
             if (debounce == null)
             {
-                StartPrefetch();
                 Application.Current.Resources["SeleneShotsNone"] = Visibility.Collapsed;  // no "none" text before the first load
                 for (int i = 0; i < Tiles; i++) Application.Current.Resources["SeleneShot" + i + "Vis"] = Visibility.Collapsed;
                 // only once the selection has settled: stepping card by card with short pauses used to load (and animate) the
@@ -50,7 +53,10 @@ namespace Selene
                 debounce.Tick += (s, e) => { debounce.Stop(); if (HomeNav.SigningIn) return; Load(pending); Preload(pendingNeighbours); };
             }
             var g = AsGame(game);
+            if (g != null) PerformanceRecorder.Mark("selection", g.Id + " " + g.Name);
             if (g == null || g.Id != shown) FadeOut();
+            if (g != null && !cache.ContainsKey(g.Id)) ShowLoading();
+            else HideLoading(false);
             debounce.Stop();
             debounce.Start();
         }
@@ -112,17 +118,22 @@ namespace Selene
             List<ShotItem> items;
             if (cache.TryGetValue(g.Id, out items)) { Apply(g.Id, items); return; }
             Clear();  // never leave the previous game's pictures up while this one loads
+            ShowLoading();
             Fetch(g);
         }
 
         // the next games along the row are decoded ahead, so moving onto them is instant
         private static void Preload(System.Collections.IList neighbours)
         {
+            if (HomeNav.Lite) return;
             if (neighbours == null) return;
-            foreach (var o in neighbours)
+            bool light = HomeNav.Light;
+            var selected = AsGame(pending);
+            foreach (var g in neighbours.Cast<object>().Select(AsGame)
+                .Where(g => g != null && (selected == null || g.Id != selected.Id) && !cache.ContainsKey(g.Id) && !loading.Contains(g.Id) && Known(System.IO.Path.Combine(CacheRoot, g.Id.ToString())))
+                .Take(Features.On("lightweight") || light ? 1 : int.MaxValue))
             {
-                var g = AsGame(o);
-                if (g != null && !cache.ContainsKey(g.Id)) Fetch(g);
+                Fetch(g);
             }
         }
 
@@ -133,21 +144,31 @@ namespace Selene
             loading.Add(id);
             string name = g.Name, pluginId = g.PluginId.ToString(), gameId = g.GameId;
             string background = Background(g);
+            var selected = AsGame(pending);
+            bool mayDownload = selected != null && selected.Id == id;
+            int generation = downloadGeneration;
+            int decodeWidth = HomeNav.Light ? 480 : 720;
             System.Threading.Tasks.Task.Run(() =>
             {
                 var paths = new List<string>();
-                try { lock (diskLock) paths = CachedFiles(id, name, pluginId, gameId); }
+                try { lock (diskLock) paths = CachedFiles(id, name, pluginId, gameId, mayDownload); }
                 catch (Exception ex) { HomeNav.Log("screenshots " + name + " failed: " + ex.Message); }
                 if (paths.Count == 0 && background != null) paths.Add(background);
                 var list = new List<ShotItem>();
                 foreach (var p in paths)
                 {
-                    var bi = LoadImage(p, 720);
+                    var bi = LoadImage(p, decodeWidth);
                     if (bi != null) list.Add(new ShotItem { Thumb = bi, Path = p });
                 }
                 Application.Current.Dispatcher.BeginInvoke(new Action(() =>
                 {
                     loading.Remove(id);
+                    if (generation != downloadGeneration)
+                    {
+                        var selectedNow = AsGame(pending);
+                        if (selectedNow != null && selectedNow.Id == id) Fetch(selectedNow);
+                        return;
+                    }
                     Remember(id, list);
                     var still = AsGame(pending);
                     if (still != null && still.Id == id) Apply(id, list);
@@ -155,7 +176,8 @@ namespace Selene
             });
         }
 
-        // decoded pictures are ~2 MB each: keep the last 40 games in memory, the rest reload from disk
+        // decoded pictures are ~1 MB each (720 px wide): keep the last 16 games in memory (about 100 MB; Playnite is a 32-bit
+        // process), the rest reload from disk
         private static readonly LinkedList<Guid> recent = new LinkedList<Guid>();
 
         private static void Remember(Guid id, List<ShotItem> list)
@@ -163,38 +185,25 @@ namespace Selene
             cache[id] = list;
             recent.Remove(id);
             recent.AddFirst(id);
-            while (recent.Count > 40) { cache.Remove(recent.Last.Value); recent.RemoveLast(); }
+            while (recent.Count > (HomeNav.Lite || Features.On("lightweight") ? 8 : 16)) { cache.Remove(recent.Last.Value); recent.RemoveLast(); }
+        }
+
+        public static void ApplyPerformanceMode()
+        {
+            // Release our decoded references; no forced collection or deletion of downloaded files.
+            cache.Clear(); recent.Clear();
+            if (shown != Guid.Empty && current.Count > 0) Remember(shown, current);
         }
 
         // ---- background download of every game's screenshots (one game at a time, from Playnite start) ----
         private static readonly object diskLock = new object();
-        private static bool prefetchStarted;
-
-        private static void StartPrefetch()
+        public static void DownloadSettingsChanged()
         {
-            if (prefetchStarted || HomeNav.Api == null) return;
-            prefetchStarted = true;
-            var games = HomeNav.Api.Database.Games.Where(x => !x.Hidden).OrderByDescending(x => x.LastActivity ?? DateTime.MinValue)
-                .Select(x => new { x.Id, x.Name, PluginId = x.PluginId.ToString(), x.GameId }).ToList();
-            var th = new System.Threading.Thread(() =>
-            {
-                System.Threading.Thread.Sleep(15000);  // let start-up settle first
-                int fetched = 0;
-                foreach (var x in games)
-                {
-                    try
-                    {
-                        if (Known(System.IO.Path.Combine(CacheRoot, x.Id.ToString()))) continue;
-                        lock (diskLock) CachedFiles(x.Id, x.Name, x.PluginId, x.GameId);
-                        fetched++;
-                        System.Threading.Thread.Sleep(300);
-                    }
-                    catch (Exception ex) { HomeNav.Log("screenshot prefetch " + x.Name + " failed: " + ex.Message); }
-                }
-                HomeNav.Log("screenshot prefetch done: " + fetched + " game(s) fetched, " + games.Count + " checked");
-            }) { IsBackground = true, Priority = System.Threading.ThreadPriority.BelowNormal };
-            th.Start();
+            downloadGeneration++; cache.Clear(); recent.Clear(); shown = Guid.Empty;
+            var selected = AsGame(pending);
+            if (selected != null) Load(selected);
         }
+        public static void KickDownloads() { TrailerFetch.Want(pending, null); }
 
         // done.txt = cached; none.txt = nothing found (look again after a week)
         private static bool Known(string dir)
@@ -208,13 +217,16 @@ namespace Selene
 
         private static void Clear()
         {
+            HideLoading(false);
             shown = Guid.Empty;
+            current = new List<ShotItem>();
             FadeOut();
             Application.Current.Resources["SeleneShotsNone"] = Visibility.Collapsed;
         }
 
         private static void Apply(Guid id, List<ShotItem> items)
         {
+            HideLoading(true);
             shown = id;
             current = items;
             var res = Application.Current.Resources;
@@ -234,6 +246,55 @@ namespace Selene
                 lastAnimatedId = id; lastAnimatedAt = DateTime.Now;
                 AnimateIn();
             }
+        }
+
+        private static Grid skeleton;
+        private static readonly List<System.Windows.Shapes.Rectangle> shine = new List<System.Windows.Shapes.Rectangle>();
+
+        private static void ShowLoading()
+        {
+            if (!Features.On("screenshotskeleton")) return;
+            var host = Application.Current.MainWindow != null ? HomeNav.FindByName(Application.Current.MainWindow, "HubBottomCards") as Grid : null;
+            if (host == null) return;
+            if (skeleton == null || skeleton.Parent != host)
+            {
+                HideLoading(false);
+                shine.Clear();
+                skeleton = new Grid { Width = 1788, Height = 252, HorizontalAlignment = HorizontalAlignment.Left,
+                    VerticalAlignment = VerticalAlignment.Top, ClipToBounds = true, IsHitTestVisible = false };
+                var row = new StackPanel { Orientation = Orientation.Horizontal };
+                for (int i = 0; i < 4; i++)
+                {
+                    var card = new Grid { Width = 448, Height = 252, ClipToBounds = true, Margin = new Thickness(0, 0, 22, 0) };
+                    var background = new Border { CornerRadius = new CornerRadius(14), Opacity = 0.65 };
+                    background.SetResourceReference(Border.BackgroundProperty, "SeleneGlassSolidBrush");
+                    card.Children.Add(background);
+                    var glint = new System.Windows.Shapes.Rectangle { Width = 200, Height = 252, HorizontalAlignment = HorizontalAlignment.Left,
+                        Opacity = 0.12, RenderTransform = new TranslateTransform(-220, 0),
+                        OpacityMask = new LinearGradientBrush(new GradientStopCollection { new GradientStop(Colors.Transparent, 0), new GradientStop(Colors.White, 0.5), new GradientStop(Colors.Transparent, 1) }, 0) };
+                    glint.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, "SeleneInkBrush");
+                    card.Children.Add(glint); shine.Add(glint); row.Children.Add(card);
+                }
+                skeleton.Children.Add(row);
+                var ownedShine = shine.ToArray();
+                skeleton.Unloaded += (s, e) => { foreach (var glint in ownedShine) glint.RenderTransform.BeginAnimation(TranslateTransform.XProperty, null); };
+                Panel.SetZIndex(skeleton, 2); host.Children.Add(skeleton);
+            }
+            if (skeleton.Visibility == Visibility.Visible && skeleton.Opacity > 0 && shine.Count > 0 && shine[0].RenderTransform.HasAnimatedProperties) return;
+            skeleton.Visibility = Visibility.Visible;
+            skeleton.BeginAnimation(UIElement.OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(160)));
+            for (int i = 0; i < shine.Count; i++)
+                shine[i].RenderTransform.BeginAnimation(TranslateTransform.XProperty,
+                    new System.Windows.Media.Animation.DoubleAnimation(-220, 470, TimeSpan.FromMilliseconds(1300))
+                    { BeginTime = TimeSpan.FromMilliseconds(i * 90), RepeatBehavior = System.Windows.Media.Animation.RepeatBehavior.Forever });
+        }
+
+        private static void HideLoading(bool fade)
+        {
+            if (skeleton == null) return;
+            foreach (var glint in shine) glint.RenderTransform.BeginAnimation(TranslateTransform.XProperty, null);
+            // A held zero opacity can be replaced safely if another game starts loading during this fade.
+            skeleton.BeginAnimation(UIElement.OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(0, TimeSpan.FromMilliseconds(fade ? 220 : 0)));
         }
 
         // tiles fade in and rise one after another (50 ms apart) once the new screenshots are laid out
@@ -273,20 +334,24 @@ namespace Selene
 
         // ---- finding + caching the screenshot files (background thread) ----
 
-        private static List<string> CachedFiles(Guid id, string name, string pluginId, string gameId)
+        private static List<string> CachedFiles(Guid id, string name, string pluginId, string gameId, bool mayDownload)
         {
             string dir = System.IO.Path.Combine(CacheRoot, id.ToString());
             string done = System.IO.Path.Combine(dir, "done.txt");
             if (Known(dir))
                 return System.IO.Directory.GetFiles(dir, "*.jpg").OrderBy(f => f).ToList();
 
+            if (!mayDownload || !DownloadConsent.Allowed("screenshotsdownload"))
+                return System.IO.Directory.Exists(dir) ? System.IO.Directory.GetFiles(dir, "*.jpg").OrderBy(f => f).ToList() : new List<string>();
+
             var urls = ScreenshotUrls(id, name, pluginId, gameId);
             System.IO.Directory.CreateDirectory(dir);
             var files = new List<string>();
             for (int i = 0; i < urls.Count && files.Count < MaxShots; i++)
             {
+                if (!DownloadConsent.Allowed("screenshotsdownload")) break;
                 string f = System.IO.Path.Combine(dir, i.ToString("00") + ".jpg");
-                try { using (var wc = Client()) wc.DownloadFile(urls[i], f); files.Add(f); }
+                try { using (var wc = Client()) wc.DownloadFile(urls[i], f); files.Add(f); PerformanceRecorder.Mark("download", "screenshots game=" + id + " bytes=" + new System.IO.FileInfo(f).Length + " trigger=cache-fill"); }
                 catch { try { System.IO.File.Delete(f); } catch { } }
             }
             System.IO.File.WriteAllText(files.Count > 0 ? done : System.IO.Path.Combine(dir, "none.txt"), string.Join(Environment.NewLine, urls));
@@ -315,8 +380,22 @@ namespace Selene
             var eml = System.IO.Path.Combine(SelenePaths.PlayniteConfig, "ExtensionsData", EmlData, id + "_SteamAppDetails.json");
             if (System.IO.File.Exists(eml))
             {
-                var fromEml = ParseScreenshots(System.IO.File.ReadAllText(eml));
-                if (fromEml.Count > 0) return fromEml;
+                var json = System.IO.File.ReadAllText(eml);
+                var root = Json(json);
+                var candidates = new List<KeyValuePair<string, string>>();
+                if (root != null) foreach (var entry in root)
+                {
+                    var app = entry.Value as Dictionary<string, object>;
+                    object data, title;
+                    var details = app != null && app.TryGetValue("data", out data) ? data as Dictionary<string, object> : null;
+                    if (details != null && details.TryGetValue("name", out title)) candidates.Add(new KeyValuePair<string, string>(entry.Key, Convert.ToString(title)));
+                }
+                var matched = GameTitleMatch.Select(name, candidates);
+                if (matched != null && (pluginId != SteamPlugin || matched == gameId))
+                {
+                    var fromEml = ParseScreenshots(json);
+                    if (fromEml.Count > 0) return fromEml;
+                }
             }
             string appId = pluginId == SteamPlugin && Regex.IsMatch(gameId ?? "", @"^\d+$") ? gameId : SearchAppId(name);
             var urls = appId == null ? new List<string>() : ParseScreenshots(Download("https://store.steampowered.com/api/appdetails?appids=" + appId + "&filters=screenshots"));
@@ -383,20 +462,30 @@ namespace Selene
 
         private static string SearchAppId(string name)
         {
+            string legacy;
+            return SearchAppId(name, out legacy);
+        }
+
+        internal static string SearchAppId(string name, out string legacy)
+        {
+            legacy = null;
             if (string.IsNullOrWhiteSpace(name)) return null;
             var json = Download("https://store.steampowered.com/api/storesearch/?l=english&cc=US&term=" + Uri.EscapeDataString(name));
             var root = Json(json);
             object items;
             if (root == null || !root.TryGetValue("items", out items)) return null;
             string want = Norm(name);
+            var candidates = new List<KeyValuePair<string, string>>();
             foreach (var o in (object[])items)
             {
                 var d = o as Dictionary<string, object>;
                 if (d == null) continue;
                 string n = Norm(Convert.ToString(d["name"]));
-                if (n == want || n.StartsWith(want) || want.StartsWith(n)) return Convert.ToString(d["id"]);
+                var id = Convert.ToString(d["id"]);
+                candidates.Add(new KeyValuePair<string, string>(id, Convert.ToString(d["name"])));
+                if (legacy == null && (n == want || n.StartsWith(want) || want.StartsWith(n))) legacy = id;
             }
-            return null;
+            return GameTitleMatch.Select(name, candidates);
         }
 
         private static string Norm(string s) { return Regex.Replace((s ?? "").ToLowerInvariant(), @"[^a-z0-9]", ""); }
@@ -453,8 +542,10 @@ namespace Selene
                 var bi = new BitmapImage();
                 bi.BeginInit();
                 bi.CacheOption = BitmapCacheOption.OnLoad;
-                bi.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
-                bi.StreamSource = new System.IO.MemoryStream(System.IO.File.ReadAllBytes(path));
+                // read from the file and closed once decoded (a MemoryStream source stayed referenced by the frozen picture,
+                // so every cached screenshot also kept its whole file in memory); no shared WPF cache, a replaced file reloads
+                bi.CreateOptions = BitmapCreateOptions.IgnoreColorProfile | BitmapCreateOptions.IgnoreImageCache;
+                bi.UriSource = new Uri(path);
                 if (width > 0) bi.DecodePixelWidth = width;
                 bi.EndInit();
                 bi.Freeze();

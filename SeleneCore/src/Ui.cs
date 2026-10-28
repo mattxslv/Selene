@@ -290,8 +290,10 @@ namespace Selene
         // ---------------- motion ----------------
         public static IEasingFunction Out() { return new CubicEase { EasingMode = EasingMode.EaseOut }; }
 
-        // at the screen's own speed (WPF caps an animation near 60 frames a second unless told otherwise; the TV runs at 120 / 144)
-        public static T Fast<T>(T t) where T : Timeline { Timeline.SetDesiredFrameRate(t, 144); return t; }
+        // at the screen's own speed (WPF caps an animation near 60 frames a second unless told otherwise; a monitor may run at
+        // 120 / 144). Exactly the screen's rate: asking 144 on a 60 Hz TV ticked animations ~2x per refresh, unevenly (judder)
+        public static T Fast<T>(T t) where T : Timeline { Timeline.SetDesiredFrameRate(t, FrameRate); return t; }
+        public static int FrameRate { get { int r = ScreenRate(); return r >= 48 && r <= 360 ? r : 60; } }
 
         public static void Fade(UIElement el, double to, int ms, int delay = 0, Action done = null)
         {
@@ -371,7 +373,31 @@ namespace Selene
 
         // moving and confirming go through Playnite's own player (same sound, same volume as its views); the file is the fallback
         // a short note at the top of the screen (a glass pill): rises in, stays a few seconds, fades; one at a time
-        private static Border notice;
+        // A card with a soft shadow that stays sharp. An Effect turns the element it sits on, and everything inside it, into a
+        // bitmap: soft text and rough round edges. So the shadow goes on a twin of the card's shape behind it, and the card and
+        // its words are drawn as they are, on whole pixels. Animate the returned Grid (its Rise, fade or scale carries both).
+        public static Grid Lifted(Border card, double blur, double opacity)
+        {
+            card.Effect = null;
+            var lifted = new Grid { HorizontalAlignment = card.HorizontalAlignment, VerticalAlignment = card.VerticalAlignment, Margin = card.Margin, UseLayoutRounding = true, IsHitTestVisible = card.IsHitTestVisible };
+            card.Margin = new Thickness(0);
+            lifted.Children.Add(ShadowOf(card, blur, opacity));
+            lifted.Children.Add(card);
+            TextOptions.SetTextFormattingMode(card, TextFormattingMode.Display);
+            return lifted;
+        }
+
+        // the twin: the card's shape, size and fill, with the shadow (the card covers it)
+        public static Border ShadowOf(Border card, double blur, double opacity)
+        {
+            var twin = new Border { CornerRadius = card.CornerRadius, Background = card.Background ?? Brushes.Black, IsHitTestVisible = false, Effect = new DropShadowEffect { ShadowDepth = 0, BlurRadius = blur, Opacity = opacity, Color = Colors.Black } };
+            twin.SetBinding(FrameworkElement.WidthProperty, new System.Windows.Data.Binding("ActualWidth") { Source = card });
+            twin.SetBinding(FrameworkElement.HeightProperty, new System.Windows.Data.Binding("ActualHeight") { Source = card });
+            twin.SetBinding(UIElement.VisibilityProperty, new System.Windows.Data.Binding("Visibility") { Source = card });
+            return twin;
+        }
+
+        private static FrameworkElement notice;
         public static void Notice(string text, int ms = 5000)
         {
             try
@@ -380,15 +406,14 @@ namespace Selene
                 var host = w != null ? HomeNav.FindByName(w, "PART_MainHost") as Grid : null;
                 if (host == null) return;
                 if (notice != null) { host.Children.Remove(notice); notice = null; }
-                var pill = new Border
+                var pill = Lifted(new Border
                 {
                     CornerRadius = new CornerRadius(22), Padding = new Thickness(26, 11, 26, 13), MaxWidth = 900,
                     Background = Ink.Brush("SeleneGlassColor", 0.94), BorderBrush = Ink.Brush("SeleneInkColor", 0.18), BorderThickness = new Thickness(1),
-                    HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 26, 0, 0),
+                    HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, LegacyTasks.BannerUp ? 112 : 26, 0, 0),   // (under the old-tasks banner)
                     Child = new TextBlock { Text = text, FontSize = 19, FontFamily = Body, Foreground = Ink.Brush("SeleneInkColor"), TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center },
-                    Effect = new DropShadowEffect { ShadowDepth = 0, BlurRadius = 30, Opacity = 0.45, Color = Colors.Black },
                     IsHitTestVisible = false
-                };
+                }, 30, 0.45);
                 Grid.SetRowSpan(pill, 99); Grid.SetColumnSpan(pill, 99);
                 Panel.SetZIndex(pill, 9999);
                 host.Children.Add(pill);
@@ -445,7 +470,7 @@ namespace Selene
             FullRateChanged();
         }
 
-        // the screen's refresh rate (the main display; asked again every 10 s, a TV can change mode)
+        // The display containing Playnite, not necessarily the primary monitor (the TV may have a different rate).
         [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential, CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
         private struct DevMode
         {
@@ -459,11 +484,19 @@ namespace Selene
         }
         [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)] private static extern bool EnumDisplaySettings(string device, int mode, ref DevMode dm);
         private static int screenRate; private static DateTime screenRateAt = DateTime.MinValue;
+        private static string screenDevice;
         public static int ScreenRate()
         {
-            if ((DateTime.Now - screenRateAt).TotalSeconds < 10) return screenRate;
-            screenRateAt = DateTime.Now;
-            try { var dm = new DevMode(); dm.dmSize = (short)System.Runtime.InteropServices.Marshal.SizeOf(typeof(DevMode)); if (EnumDisplaySettings(null, -1, ref dm)) screenRate = dm.dmDisplayFrequency; }
+            try
+            {
+                var main = Application.Current != null ? Application.Current.MainWindow : null;
+                var handle = main != null ? new System.Windows.Interop.WindowInteropHelper(main).Handle : IntPtr.Zero;
+                var device = handle != IntPtr.Zero ? System.Windows.Forms.Screen.FromHandle(handle).DeviceName : null;
+                if ((DateTime.Now - screenRateAt).TotalSeconds < 10 && device == screenDevice) return screenRate;
+                screenRateAt = DateTime.Now; screenDevice = device; screenRate = 0;
+                var dm = new DevMode(); dm.dmSize = (short)System.Runtime.InteropServices.Marshal.SizeOf(typeof(DevMode));
+                if (EnumDisplaySettings(device, -1, ref dm)) screenRate = dm.dmDisplayFrequency;
+            }
             catch { }
             return screenRate;
         }
@@ -497,24 +530,120 @@ namespace Selene
             System.Windows.Media.CompositionTarget.Rendering += tick;
         }
 
+        // a controller press (or release) exactly as Playnite's controller manager sends it: a GameControllerInputEventArgs through the
+        // InputManager, so Selene's pad handling and the lists treat it as a real press (held-direction steps, automated runs)
+        private static Type padArgs, padInput, padState;
+        public static bool SendPad(string button, bool down)
+        {
+            try
+            {
+                if (padArgs == null || padInput == null || padState == null)
+                    foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+                    {
+                        if (!asm.GetName().Name.StartsWith("Playnite")) continue;
+                        Type[] types;
+                        try { types = asm.GetTypes(); } catch (System.Reflection.ReflectionTypeLoadException ex) { types = ex.Types.Where(t => t != null).ToArray(); }
+                        if (padArgs == null) padArgs = types.FirstOrDefault(t => t.Name == "GameControllerInputEventArgs");
+                        if (padInput == null) padInput = types.FirstOrDefault(t => t.IsEnum && t.Name == "ControllerInput");
+                        if (padState == null) padState = types.FirstOrDefault(t => t.IsEnum && t.Name == "ControllerInputState");
+                    }
+                if (padArgs == null || padInput == null || padState == null) { HomeNav.Log("pad: Playnite's controller types not found"); return false; }
+                var key = button == "DPadLeft" ? System.Windows.Input.Key.Left : button == "DPadRight" ? System.Windows.Input.Key.Right : button == "DPadUp" ? System.Windows.Input.Key.Up
+                    : button == "DPadDown" ? System.Windows.Input.Key.Down : button == "A" ? System.Windows.Input.Key.Enter : System.Windows.Input.Key.Escape;
+                var names = Enum.GetNames(padState);
+                var state = Enum.Parse(padState, down ? (names.FirstOrDefault(n => n.IndexOf("Press", StringComparison.OrdinalIgnoreCase) >= 0) ?? names[0])
+                                                      : (names.FirstOrDefault(n => n.IndexOf("Releas", StringComparison.OrdinalIgnoreCase) >= 0) ?? names[names.Length - 1]));
+                // both stages, each its own event, as Playnite sends them: Selene's row moves on the Preview, its pad handling
+                // (repeats, holds) reads the KeyDown
+                foreach (var stage in down ? new[] { System.Windows.Input.Keyboard.PreviewKeyDownEvent, System.Windows.Input.Keyboard.KeyDownEvent }
+                                           : new[] { System.Windows.Input.Keyboard.PreviewKeyUpEvent, System.Windows.Input.Keyboard.KeyUpEvent })
+                {
+                    var e = (System.Windows.Input.KeyEventArgs)Activator.CreateInstance(padArgs, key, state, Enum.Parse(padInput, button));
+                    e.RoutedEvent = stage;
+                    System.Windows.Input.InputManager.Current.ProcessInput(e);
+                }
+                return true;
+            }
+            catch (Exception ex) { HomeNav.Log("pad: " + (ex.InnerException ?? ex).Message); return false; }
+        }
+
+        public static readonly bool DevFrames = System.IO.File.Exists(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "selene-dev-frames"));
         public static void DevFrameLog()
         {
             if (!System.IO.File.Exists(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "selene-dev-frames"))) return;
+            DevSampler();
             var sw = System.Diagnostics.Stopwatch.StartNew();
             double last = 0, worst = 0, second = 0; int n = 0;
+            double frameAt = -1; int unique = 0, late = 0;
             WatchSlowJobs(sw, 14, 0);
             System.Windows.Media.CompositionTarget.Rendering += (s, e) =>
             {
                 double t = sw.Elapsed.TotalMilliseconds;
+                // frames really drawn (WPF can call this more than once per frame) and the ones that came late (> 1.25 refreshes)
+                var re = e as System.Windows.Media.RenderingEventArgs;
+                double ft = re != null ? re.RenderingTime.TotalMilliseconds : t;
+                if (ft != frameAt) { if (frameAt >= 0 && ft - frameAt > 1250.0 / FrameRate) late++; frameAt = ft; unique++; }
                 if (n > 0 && t - last > 60) HomeNav.Log("frame gap " + (t - last).ToString("0") + " ms");
                 if (n > 0) worst = Math.Max(worst, t - last);
                 last = t; n++;
                 if (t - second >= 1000)
                 {
-                    HomeNav.Log("fps " + n + ", worst gap " + worst.ToString("0") + " ms" + (ProgressToast.Busy ? " (notification up)" : ""));
-                    second = t; n = 0; worst = 0;
+                    HomeNav.Log("fps " + n + ", worst gap " + worst.ToString("0") + " ms, frames " + unique + ", late " + late + (ProgressToast.Busy ? " (notification up)" : ""));
+                    second = t; n = 0; worst = 0; unique = 0; late = 0;
                 }
             };
+        }
+
+        // developer switch: %TEMP%\selene-dev-sample (with selene-dev-frames) samples the UI thread's stack every 4 ms while
+        // one job runs past 10 ms, and logs the methods found most often every 15 s (what a stutter is spent in)
+        private static void DevSampler()
+        {
+            if (!System.IO.File.Exists(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "selene-dev-sample"))) return;
+            var ui = System.Threading.Thread.CurrentThread;
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            long busySince = -1;
+            var hooks = Application.Current.Dispatcher.Hooks;
+            hooks.OperationStarted += (s, e) => System.Threading.Interlocked.Exchange(ref busySince, clock.ElapsedMilliseconds);
+            hooks.OperationCompleted += (s, e) => System.Threading.Interlocked.Exchange(ref busySince, -1);
+            var counts = new Dictionary<string, int>();
+            int samples = 0;
+            var t = new System.Threading.Thread(() =>
+            {
+                long lastReport = clock.ElapsedMilliseconds;
+                while (true)
+                {
+                    System.Threading.Thread.Sleep(4);
+                    long since = System.Threading.Interlocked.Read(ref busySince);
+                    if (since >= 0 && clock.ElapsedMilliseconds - since > 10)
+                    {
+                        System.Diagnostics.StackTrace st = null;
+#pragma warning disable 618
+                        try { ui.Suspend(); try { st = new System.Diagnostics.StackTrace(ui, false); } finally { ui.Resume(); } } catch { }
+#pragma warning restore 618
+                        if (st != null)
+                        {
+                            samples++;
+                            var seen = new HashSet<string>();
+                            foreach (var f in st.GetFrames() ?? new System.Diagnostics.StackFrame[0])
+                            {
+                                var m = f.GetMethod();
+                                if (m == null) continue;
+                                var name = (m.DeclaringType != null ? m.DeclaringType.FullName : "?") + "." + m.Name;
+                                if (seen.Add(name)) { int c; counts.TryGetValue(name, out c); counts[name] = c + 1; }
+                            }
+                        }
+                    }
+                    if (clock.ElapsedMilliseconds - lastReport > 15000 && samples > 0)
+                    {
+                        lastReport = clock.ElapsedMilliseconds;
+                        var top = counts.Where(kv => !kv.Key.StartsWith("System.Windows.Threading.") && !kv.Key.StartsWith("MS.Internal.Threading") && !kv.Key.StartsWith("System.Threading.ExecutionContext"))
+                            .OrderByDescending(kv => kv.Value).Take(45).Select(kv => kv.Value * 100 / samples + "% " + kv.Key);
+                        HomeNav.Log("sampler (" + samples + " samples while busy): " + string.Join(" | ", top));
+                        counts.Clear(); samples = 0;
+                    }
+                }
+            }) { IsBackground = true, Name = "Selene dev sampler" };
+            t.Start();
         }
 
         // every UI-thread job longer than 'threshold' ms goes to the log by name (for 'forMs' ms, 0 = for good)
@@ -667,6 +796,14 @@ namespace Selene
         public static event Action<string> ButtonReleased;
         public static void Released(string button) { var h = ButtonReleased; if (h != null) h(button); }
         public static bool KeyIsPadCopy() { return (DateTime.Now - padHandledAt).TotalMilliseconds < 120; }
+
+        // the copy of a stick push can come later than that (126-136 ms seen, so the stick moved two groups in Selene settings):
+        // an arrow key in the direction the pad last went, within a quarter second, is that copy too (no one presses the same
+        // way on the pad and the keyboard that close together)
+        private static string padDirection;
+        private static DateTime padDirectionAt = DateTime.MinValue;
+        public static void PadWent(string button) { var b = Normalize(button); if (b.StartsWith("DPad")) { padDirection = b; padDirectionAt = DateTime.Now; } }
+        public static bool KeyIsPadCopy(string direction) { return KeyIsPadCopy() || (direction != null && direction == padDirection && (DateTime.Now - padDirectionAt).TotalMilliseconds < 250); }
 
         public static void Pressed(string button)
         {
@@ -874,9 +1011,10 @@ namespace Selene
         private bool onYesButton, done;
         private readonly FrameworkElement panel;
         private readonly bool warning;
+        private readonly ScrollViewer bodyScroll;
 
         // warning: a red badge and a red Yes (Remove...); otherwise the theme's accent (Install all, Restart)
-        public Dialog(string icon, string title, string text, string yesLabel, string noLabel, Action onYes, Action onNo, bool warning = true, bool material = false)
+        public Dialog(string icon, string title, string text, string yesLabel, string noLabel, Action onYes, Action onNo, bool warning = true, bool material = false, double maxBodyHeight = 0)
         {
             this.onYes = onYes;
             this.onNo = onNo;
@@ -891,7 +1029,13 @@ namespace Selene
             badge.Children.Add(glyph);
             col.Children.Add(badge);
             col.Children.Add(new TextBlock { Text = title, FontSize = 34, FontWeight = FontWeights.SemiBold, FontFamily = Ui.Display, Foreground = Ink.Brush("SeleneInkColor"), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 22, 0, 0) });
-            col.Children.Add(new TextBlock { Text = text, FontSize = 19, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.75), HorizontalAlignment = HorizontalAlignment.Center, TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap, MaxWidth = 520, Margin = new Thickness(0, 10, 0, 0) });
+            var body = new TextBlock { Text = text, FontSize = 19, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.75), HorizontalAlignment = HorizontalAlignment.Center, TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap, MaxWidth = 520, Margin = new Thickness(0, 10, 0, 0) };
+            if (maxBodyHeight > 0)
+            {
+                bodyScroll = new ScrollViewer { MaxHeight = maxBodyHeight, Content = body, Focusable = false, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+                col.Children.Add(bodyScroll);
+            }
+            else col.Children.Add(body);
             var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 34, 0, 0) };
             no = new Pill(noLabel, 190);
             yes = new Pill(yesLabel, 190);
@@ -900,13 +1044,12 @@ namespace Selene
             buttons.Children.Add(no.Root);
             buttons.Children.Add(yes.Root);
             col.Children.Add(buttons);
-            panel = new Border
+            panel = Ui.Lifted(new Border
             {
                 Child = col, Width = 640, CornerRadius = new CornerRadius(28), Padding = new Thickness(40, 40, 40, 36),
                 Background = Ink.Brush("SeleneGlassColor", 0.96), BorderBrush = Ink.Brush("SeleneInkColor", 0.16), BorderThickness = new Thickness(1),
-                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
-                Effect = new System.Windows.Media.Effects.DropShadowEffect { ShadowDepth = 0, BlurRadius = 60, Opacity = 0.55, Color = Colors.Black }
-            };
+                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
+            }, 60, 0.55);   // (the shadow behind it: an Effect on the card blurred its words)
             Root.Children.Add(panel);
             ShowFocus();
         }
@@ -928,7 +1071,7 @@ namespace Selene
             no.Focus(!onYesButton);
             yes.Focus(onYesButton);
             // the destructive answer turns red when chosen
-            if (onYesButton && warning) { yes.Root.SetResourceReference(Border.BackgroundProperty, "WarningBrush"); yes.Root.SetResourceReference(Border.BorderBrushProperty, "WarningBrush"); }
+            if (onYesButton && warning) { yes.Face.SetResourceReference(Border.BackgroundProperty, "WarningBrush"); yes.Face.SetResourceReference(Border.BorderBrushProperty, "WarningBrush"); }
         }
 
         // starts on Yes (for a question whose Yes is the usual answer)
@@ -937,6 +1080,7 @@ namespace Selene
         public void Handle(string b)
         {
             if (done) return;
+            if (bodyScroll != null && (b == "DPadDown" || b == "DPadUp")) { bodyScroll.ScrollToVerticalOffset(bodyScroll.VerticalOffset + (b == "DPadDown" ? 60 : -60)); return; }
             if ((b == "DPadLeft" && onYesButton) || (b == "DPadRight" && !onYesButton)) { onYesButton = !onYesButton; Ui.Tick(); ShowFocus(); return; }
             if (b == "A") Answer(onYesButton);
             else if (b == "B") Answer(false);
@@ -1013,19 +1157,31 @@ namespace Selene
     // A rounded button: glass at rest, filled with the focus color (and its text color) when focused
     public class Pill
     {
-        public readonly Border Root;
+        // Root is what goes in a layout (and scales): the face with its words, and behind it, only while focused, a twin of its
+        // shape that carries the glow. A glow on the face itself drew its words soft.
+        public readonly Grid Root;
+        public readonly Border Face;
+        private readonly Border halo;
         private readonly TextBlock label;
         public bool Focused { get; private set; }
 
         public Pill(string text, double minWidth = 200)
         {
             label = new TextBlock { Text = text, FontSize = 21, FontFamily = Ui.Display, Foreground = Ink.Brush("SeleneInkColor"), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-            Root = new Border
+            Face = new Border
             {
                 Child = label, CornerRadius = new CornerRadius(27), Height = 54, MinWidth = minWidth, Padding = new Thickness(34, 0, 34, 2),
                 Background = Ink.Brush("SeleneGlassColor", 0.72), BorderBrush = Ink.Brush("SeleneInkColor", 0.22), BorderThickness = new Thickness(1),   // glass that reads over art
-                Margin = new Thickness(8, 0, 8, 0)
+                UseLayoutRounding = true
             };
+            TextOptions.SetTextFormattingMode(Face, TextFormattingMode.Display);
+            halo = new Border { CornerRadius = Face.CornerRadius, Visibility = Visibility.Collapsed, IsHitTestVisible = false };
+            halo.SetBinding(Border.BackgroundProperty, new System.Windows.Data.Binding("Background") { Source = Face });
+            halo.SetBinding(FrameworkElement.WidthProperty, new System.Windows.Data.Binding("ActualWidth") { Source = Face });
+            halo.SetBinding(FrameworkElement.HeightProperty, new System.Windows.Data.Binding("ActualHeight") { Source = Face });
+            Root = new Grid { Margin = new Thickness(8, 0, 8, 0) };
+            Root.Children.Add(halo);
+            Root.Children.Add(Face);
         }
 
         public string Text { get { return label.Text; } set { label.Text = value; } }
@@ -1034,10 +1190,11 @@ namespace Selene
         {
             if (on == Focused) return;
             Focused = on;
-            Root.Background = on ? Ink.Brush("SeleneFocusColor") : Ink.Brush("SeleneInkColor", 0.14);
-            Root.BorderBrush = on ? Ink.Brush("SeleneFocusColor") : Ink.Brush("SeleneInkColor", 0.22);
+            Face.Background = on ? Ink.Brush("SeleneFocusColor") : Ink.Brush("SeleneInkColor", 0.14);
+            Face.BorderBrush = on ? Ink.Brush("SeleneFocusColor") : Ink.Brush("SeleneInkColor", 0.22);
             label.Foreground = on ? Ink.Brush("SeleneOnFocusColor") : Ink.Brush("SeleneInkColor");
-            Root.Effect = on ? Ink.Track(new DropShadowEffect { ShadowDepth = 0, BlurRadius = 22, Opacity = 0.4 }, DropShadowEffect.ColorProperty, "SeleneFocusColor") : null;
+            halo.Effect = on ? Ink.Track(new DropShadowEffect { ShadowDepth = 0, BlurRadius = 22, Opacity = 0.4 }, DropShadowEffect.ColorProperty, "SeleneFocusColor") : null;
+            halo.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
             Ui.ScaleTo(Root, on ? 1.06 : 1, 160);
         }
     }

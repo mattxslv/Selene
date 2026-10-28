@@ -121,7 +121,7 @@ namespace Selene
                             else foreach (var f in feeds) if (string.Equals(f.Url, url, StringComparison.OrdinalIgnoreCase)) f.Enabled = true;
                             NewsFeeds.Save(feeds);   // (refreshes the card)
                             Ui.Chime();
-                            Ui.Notice("Following " + name + ".");
+                            Ui.Notice("Now following " + name + ".");
                         }
                         catch (Exception ex) { HomeNav.Log("news card: " + ex.Message); }
                     }

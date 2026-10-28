@@ -121,7 +121,7 @@ namespace Selene
         }
 
         // backups without the question: the add-on asks "Back up save data?" after every game unless told not to. Selene
-        // sets it to just do it (its live settings when it's running, its file otherwise). The Quiet save backups switch.
+        // sets it to just do it (its live settings when it's running, its file otherwise). The Automatic save backups switch.
         public static void Quiet(IPlayniteAPI api)
         {
             var quiet = new[] { "AskBackupOnGameStopped", "AskPlatformBackupOnNonPcGameStopped" };

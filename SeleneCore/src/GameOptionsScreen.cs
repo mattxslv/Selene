@@ -125,8 +125,8 @@ namespace Selene
                 Run = () => LoginScene.Show(new MediaIdScreen("IGDB game ID", "The game's IGDB number. Leave it empty for automatic.", MediaSource.Get(id).IgdbId,
                     v => { var c = MediaSource.Get(id); c.IgdbId = v.Length == 0 ? null : v; if (v.Length > 0 && c.Source == "steam" && string.IsNullOrEmpty(c.SteamId)) c.Source = "igdb"; MediaSource.Set(id, c); GameMedia.Refresh(g); },
                     () => new GameOptionsScreen(g, mv, true)), 1) });
-            l.Entries.Add(new Entry { Label = "Refresh screenshots", Sub = "Fetch this game's screenshots again.", Icon = 0xe5d5, Run = () => { GameMedia.Refresh(g); Ui.Notice("Fetching the screenshots of " + g.Name + " again."); } });
-            l.Entries.Add(new Entry { Label = "Back to automatic", Sub = "Forget your choices for this game.", Icon = 0xe8b3, Run = () => { MediaSource.Set(id, new MediaChoice()); GameMedia.Refresh(g); Ui.Notice("Back to automatic for " + g.Name + "."); } });
+            l.Entries.Add(new Entry { Label = "Refresh screenshots", Sub = "Fetch this game's screenshots again.", Icon = 0xe5d5, Run = () => { GameMedia.Refresh(g); Ui.Notice("Getting screenshots for " + g.Name + " again."); } });
+            l.Entries.Add(new Entry { Label = "Back to automatic", Sub = "Forget your choices for this game.", Icon = 0xe8b3, Run = () => { MediaSource.Set(id, new MediaChoice()); GameMedia.Refresh(g); Ui.Notice("Screenshots for " + g.Name + " are automatic again."); } });
             return l;
         }
 

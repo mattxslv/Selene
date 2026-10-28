@@ -254,7 +254,7 @@ namespace Selene
                 // at the top nothing fades; scrolled, the row above melts away under the title like the bottom does
                 topSolid.BeginAnimation(GradientStop.OffsetProperty, new DoubleAnimation(y < 0 ? 140 / height : 0, TimeSpan.FromMilliseconds(220)) { EasingFunction = Ui.Out() });
                 var glide = new DoubleAnimation(y, TimeSpan.FromMilliseconds(220)) { EasingFunction = Ui.Out() };
-                Timeline.SetDesiredFrameRate(glide, 144);
+                Timeline.SetDesiredFrameRate(glide, Ui.FrameRate);
                 shift.BeginAnimation(TranslateTransform.YProperty, glide);
                 Ui.MeasureFrames("profile grid glide", 320);
             }

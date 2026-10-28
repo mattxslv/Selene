@@ -443,9 +443,9 @@ namespace Selene
                 }
                 Clipboard.SetText(sb.ToString());
                 Ui.Confirm();
-                Ui.Notice("Logs copied. Paste them into a GitHub issue (github.com/mattxslv/Selene/issues).");
+                Ui.Notice("Log copied. Paste it into a GitHub issue.");
             }
-            catch (Exception ex) { HomeNav.Log("copy log: " + ex.Message); Ui.Notice("Couldn't read the logs: " + ex.Message); }
+            catch (Exception ex) { HomeNav.Log("copy log: " + ex.Message); Ui.Notice("Couldn't copy the log."); }
         }
 
         private void Later(Action run)

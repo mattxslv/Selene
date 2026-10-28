@@ -80,17 +80,17 @@ namespace Selene
             if (!pretend && !IsNewer(newest)) return;
             Available = newest; Notes = notes; Preview = pretend;
             if (!pretend && newest == told) return;   // (told once; the menu's Update item stays)
-            ProgressToast.ShowNote("Selene " + newest, "Update ready", 0xE923 /* update */, true);   // (before any task's card; the menu's Update item carries the dot)
+            ProgressToast.ShowNote("Selene " + newest, "Update available", 0xE923 /* update */, true);   // (before any task's card; the menu's Update item carries the dot)
         }
 
         // Selene settings > Check for updates: looks now; the Update screen when there's one, else a note
         public static void CheckNow(Func<Screen> back)
         {
-            Ui.Notice("Looking for a newer Selene…", 3000);
+            Ui.Notice("Checking for updates…", 3000);
             Fetch((newest, notes) =>
             {
-                if (newest == null) { Ui.Notice("Couldn't reach GitHub. Try again in a moment.", 5000); return; }
-                if (!IsNewer(newest)) { Ui.Notice("Selene is up to date (" + Brand.Version + ").", 5000); return; }
+                if (newest == null) { Ui.Notice("Couldn't check for updates. Try again later.", 5000); return; }
+                if (!IsNewer(newest)) { Ui.Notice("Selene is up to date.", 5000); return; }
                 Available = newest; Notes = notes; Preview = false;
                 LoginScene.Show(new UpdateScreen(back), 1);
             });

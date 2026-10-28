@@ -257,26 +257,16 @@ namespace Selene
                 var item = list.ItemContainerGenerator.ContainerFromIndex(Math.Max(0, list.SelectedIndex)) as UIElement;
                 if (item != null) item.Focus(); else list.Focus();
             }), System.Windows.Threading.DispatcherPriority.Loaded);
-            // a crossfade: a still of Spotlight lies on top and melts away over Collection
-            if (Crossfade(home, 200, 60))   // held a moment: Collection's covers load under it (a longer hold read as a delay)
-            {
-                home.BeginAnimation(UIElement.OpacityProperty, null);
-                home.Visibility = Visibility.Collapsed;
-                library.Opacity = 1;
-                HomeNav.Log("shell: library");
-                return;
-            }
-            // (no still to be had: Spotlight fades to black first, then Collection fades in)
-            library.Opacity = 0;
-            var fadeOut = new DoubleAnimation(0, TimeSpan.FromMilliseconds(200)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn } };
+            // a crossfade of the live screens: Collection is already there under Spotlight, which melts away over it (a still
+            // of Spotlight was drawn by WPF in software: 2-4 s on a 4K TV)
+            library.BeginAnimation(UIElement.OpacityProperty, null);
+            library.Opacity = 1;
+            var fadeOut = new DoubleAnimation(0, TimeSpan.FromMilliseconds(200)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
             fadeOut.Completed += (s, e) =>
             {
                 if (mine != switchCount) return;
                 home.Visibility = Visibility.Collapsed;
                 home.BeginAnimation(UIElement.OpacityProperty, null);
-                var fadeIn = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(240)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
-                fadeIn.Completed += (s2, e2) => { if (mine == switchCount) { library.BeginAnimation(UIElement.OpacityProperty, null); library.Opacity = 1; } };
-                library.BeginAnimation(UIElement.OpacityProperty, fadeIn);
             };
             home.BeginAnimation(UIElement.OpacityProperty, fadeOut);
             HomeNav.Log("shell: library");
@@ -307,7 +297,7 @@ namespace Selene
                         bool missing = false;
                         try { foreach (var a in SetupCheck.MissingIncluded(api)) if (a.Id.StartsWith("ExtraMetadataLoader")) missing = true; }
                         catch (Exception ex) { HomeNav.Log("add-on hint: " + ex.Message); }
-                        if (missing) ui.BeginInvoke(new Action(() => Ui.Notice("Logos and trailers come with the Extra Metadata add-on. Menu, Setup check installs it.", 9000)));
+                        if (missing) ui.BeginInvoke(new Action(() => Ui.Notice("Logos and trailers need the Extra Metadata add-on. Install it from Setup check in the menu.", 9000)));
                     });
                 }
                 catch (Exception ex) { HomeNav.Log("add-on hint: " + ex.Message); }
@@ -337,36 +327,35 @@ namespace Selene
                 HomeNav.Log("shell: home (instant)");
                 return;
             }
-            // a still of Collection lies on top while everything changes under it, then melts away over Spotlight: Collection
-            // itself goes at once (setting Spotlight's "no game" made its list jump to its first game: the 007 flash)
-            // (held until Spotlight's art is back, at most 700 ms)
-            bool still = library != null && library.IsVisible && !LibraryStage.Playing && Crossfade(library, 220, -1);
-            if (library != null) { library.BeginAnimation(UIElement.OpacityProperty, null); library.Visibility = Visibility.Collapsed; }
-            var held = crossfadeStill;
-            HomeNav.SyncSelectionForHome(() => { if (still) ReleaseStill(held); });   // Spotlight's own selection
-            if (still)
-            {
-                var cap = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
-                cap.Tick += (s, e) => { cap.Stop(); ReleaseStill(held); };
-                cap.Start();
-            }
+            // Spotlight comes back unseen over Collection, gets its own selection and art (setting its "no game" made its list
+            // jump to its first game: the 007 flash), then fades in over Collection, which goes once it's covered (at most
+            // 400 ms wait). Live screens, no still: WPF draws a still in software, seconds on a 4K TV.
+            bool over = library != null && library.IsVisible && !LibraryStage.Playing;
+            if (!over && library != null) { library.BeginAnimation(UIElement.OpacityProperty, null); library.Visibility = Visibility.Collapsed; }
+            home.BeginAnimation(UIElement.OpacityProperty, null);
+            home.Opacity = 0;
             home.Visibility = Visibility.Visible;
-            if (still)
+            bool revealed = false;
+            System.Windows.Threading.DispatcherTimer cap = null;
+            Action reveal = () =>
             {
-                home.BeginAnimation(UIElement.OpacityProperty, null);
-                home.Opacity = 1;
-                HomeNav.Log("shell: home");
-                return;
-            }
-            // Spotlight fades in over Collection, which goes once it's covered
-            var fade = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(280)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut } };
-            fade.Completed += (s, e) =>
-            {
-                if (mine != switchCount) return;
-                home.BeginAnimation(UIElement.OpacityProperty, null);
-                if (library != null) library.Visibility = Visibility.Collapsed;
+                if (revealed || mine != switchCount) return;
+                revealed = true;
+                if (cap != null) cap.Stop();
+                var fade = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(over ? 220 : 280)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
+                fade.Completed += (s, e) =>
+                {
+                    if (mine != switchCount) return;
+                    home.BeginAnimation(UIElement.OpacityProperty, null);
+                    home.Opacity = 1;
+                    if (library != null) { library.BeginAnimation(UIElement.OpacityProperty, null); library.Visibility = Visibility.Collapsed; }
+                };
+                home.BeginAnimation(UIElement.OpacityProperty, fade);
             };
-            home.BeginAnimation(UIElement.OpacityProperty, fade);
+            cap = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
+            cap.Tick += (s, e) => reveal();
+            cap.Start();
+            HomeNav.SyncSelectionForHome(reveal);   // Spotlight's own selection
             HomeNav.Log("shell: home");
         }
 

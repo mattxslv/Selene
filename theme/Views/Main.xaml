@@ -539,9 +539,12 @@
                                                                             <DropShadowEffect BlurRadius="18" ShadowDepth="0" Opacity="0.55" Color="Black"/>
                                                                         </Border.Effect>
                                                                         <Grid>
+                                                                            <!-- the cover and the square art are filled by Selene Core (TileCovers), decoded off the UI thread -->
                                                                             <Border x:Name="SeleneCoverFace" CornerRadius="12">
+                                                                                <!-- (a Loaded trigger: WPF tells only elements listening in XAML that they loaded, and Selene Core waits for it) -->
+                                                                                <Border.Triggers><EventTrigger RoutedEvent="FrameworkElement.Loaded"><BeginStoryboard><Storyboard><DoubleAnimation Storyboard.TargetProperty="Opacity" To="1" Duration="0" FillBehavior="Stop"/></Storyboard></BeginStoryboard></EventTrigger></Border.Triggers>
                                                                                 <Border.Background>
-                                                                                    <ImageBrush ImageSource="{Binding CoverImage, Converter={StaticResource ImageStringToImageConverterCached}}" Stretch="UniformToFill" AlignmentY="Top"/>
+                                                                                    <ImageBrush Stretch="UniformToFill" AlignmentY="Top"/>
                                                                                 </Border.Background>
                                                                             </Border>
                                                                             <!-- square tile art from Selene's media folder; the cover stays underneath as the fallback -->
@@ -564,9 +567,10 @@
                                                                                     </Style>
                                                                                 </TextBlock.Style>
                                                                             </TextBlock>
-                                                                            <Border CornerRadius="12">
+                                                                            <Border x:Name="SeleneSquareFace" CornerRadius="12">
+                                                                                <Border.Triggers><EventTrigger RoutedEvent="FrameworkElement.Loaded"><BeginStoryboard><Storyboard><DoubleAnimation Storyboard.TargetProperty="Opacity" To="1" Duration="0" FillBehavior="Stop"/></Storyboard></BeginStoryboard></EventTrigger></Border.Triggers>
                                                                                 <Border.Background>
-                                                                                    <ImageBrush ImageSource="{Binding Text, ElementName=SquarePath, Converter={StaticResource ImageStringToImageConverterCached}}" Stretch="UniformToFill"/>
+                                                                                    <ImageBrush Stretch="UniformToFill"/>
                                                                                 </Border.Background>
                                                                             </Border>
                                                                             <!-- Selene Core plays the selected tile's trailer here -->

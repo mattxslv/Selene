@@ -9,15 +9,19 @@ is really showing something (its window is up *and* it's making sound), then fad
 the game fades in out of the black. Nothing plays under it (*Quiet loading screen*). Games that aren't installed are
 installed instead.
 
-**Guide** takes you back to the home while a game runs. Offline games pause there (*Freeze on Guide*); games with
+**Guide** takes you back to the home while a game runs. Offline games pause there (*Pause games on Guide*); games with
 anti-cheat or an internet connection are only muted. Guide again goes back into the game. **Close Game** on the home
 ends it, with a closing screen.
 
-**Save backups.** With Ludusavi installed, a game's saves are backed up after playing, quietly (*Quiet save backups*).
+**Administrator games.** Elevated Guide, freeze, close and restart controls are unavailable until a protected
+Windows broker is implemented. Close those games from their own menus. Selene settings > Advanced > Old administrator tasks offers removal of legacy tasks with Windows consent.
+Selene no longer creates no-prompt
+administrator launchers or uses custom elevated helper tasks. If an older Selene launcher is blocked, edit the
+game's Play action to launch its original executable directly. See [Windows migration and validation](../security/windows-validation.md).
+
+**Save backups.** With Ludusavi installed, a game's saves are backed up after playing, quietly (*Automatic save backups*).
 
 ## On its own, for every game
-- Games that need administrator rights get a no-prompt launcher after their first run: one Windows prompt, once
-  (*No-prompt launchers*).
 - A wrong or generic game folder (Downloads, Desktop...) is corrected from where the game actually runs.
 - Games in your own folders (set on the add-on page) are added; installers and downloads are ignored; games whose
   folder is gone are marked not installed.

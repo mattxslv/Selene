@@ -24,7 +24,7 @@ namespace Selene
 
         public static void CompleteLater()
         {
-            if (!Features.On("metadatacomplete")) return;
+            if (!DownloadConsent.Allowed("metadatacomplete")) return;
             var t = new DispatcherTimer { Interval = TimeSpan.FromSeconds(75) };
             t.Tick += (s, e) => { t.Stop(); Start(); };
             t.Start();
@@ -39,6 +39,7 @@ namespace Selene
 
         private static void Start()
         {
+            if (!DownloadConsent.Allowed("metadatacomplete")) return;
             try
             {
                 var api = HomeNav.Api;
@@ -59,6 +60,7 @@ namespace Selene
                     int filled = 0;
                     foreach (var id in due)
                     {
+                        if (!DownloadConsent.Allowed("metadatacomplete")) break;
                         Game game = null;
                         ui.Invoke(new Action(() => game = api.Database.Games.Get(id)));
                         if (game == null) continue;

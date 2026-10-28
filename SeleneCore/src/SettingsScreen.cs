@@ -13,7 +13,10 @@ namespace Selene
     // flips one (saved straight away); Left or B goes back to the groups; B there goes back to the menu.
     public class SettingsScreen : Screen
     {
-        private static readonly int[] GroupIcons = { 0xEB9B /* power */, 0xE88A /* home */, 0xE8F1 /* grid */, 0xE7F4 /* notifications */, 0xE050 /* volume */, 0xE40A /* palette */, 0xE338 /* games */, 0xE869 /* build */ };
+        // Search and Changed come first, then Selene's groups
+        private const string SearchGroup = "Search", ChangedGroup = "Changed";
+        private static readonly string[] Listed = new[] { SearchGroup, ChangedGroup }.Concat(Features.Groups).ToArray();
+        private static readonly int[] GroupIcons = { 0xE8B6 /* search */, 0xE889 /* history */, 0xEB9B /* power */, 0xE88A /* home */, 0xE8F1 /* grid */, 0xE7F4 /* notifications */, 0xE050 /* volume */, 0xE40A /* palette */, 0xE338 /* games */, 0xE869 /* build */ };
 
         private readonly List<Border> groupRows = new List<Border>();
         private readonly StackPanel optionList = new StackPanel();
@@ -33,6 +36,58 @@ namespace Selene
         private List<Features.Option> options = new List<Features.Option>();
         private int group, index;
         private bool inOptions;
+        private string GroupName { get { return Listed[group]; } }
+
+        // the big groups in sections, in this order (a row not listed goes under "More")
+        private static readonly Dictionary<string, string[][]> Sections = new Dictionary<string, string[][]>
+        {
+            { "Spotlight", new[] {
+                new[] { "Row", "steadyhold", "pickscroll", "rowedges", "filtertabs", "shade", "idle" },
+                new[] { "Cards", "cardactivity", "activitysessions", "cardcaptures", "cardachievements", "cardsurprise", "cardnews", "newsfeeds", "cardpictures" },
+                new[] { "Trailers and downloads", "trailerdelay", "trailersound", "trailerdownload", "artdownload", "screenshotsdownload" } } },
+            { "Games", new[] {
+                new[] { "Launching", "launchstyle", "launchmotion", "launchshade", "loadingscreen", "aftergame", "guidefocus" },
+                new[] { "While playing", "freeze", "powerconfirm", "tray", "quietbackups" },
+                new[] { "Game pages", "gameoptions", "achievements", "achcelebrate", "achsetup", "hltb", "hltbauto", "metadatacomplete", "metasource" },
+                new[] { "Store", "storepage", "storetrailers", "storetab", "storeregion" },
+                new[] { "Surprise me", "surprisepool", "surprisenorepeat" } } },
+            { "Look", new[] {
+                new[] { "Background", "homebackground", "glow", "backgroundfit", "guidefade", "smoothswitch", "perfmode" },
+                new[] { "Art", "trimlogos", "smartcrop", "screenshotskeleton" },
+                new[] { "Text and hints", "textshadow", "hints", "prompts", "dialogs", "topprofile", "language" } } },
+            { "Advanced", new[] {
+                new[] { "Help", "report", "setupcheck", "reportchord", "perflog" },
+                new[] { "Performance", "fullrate", "asynccovers", "lightweight" },
+                new[] { "Controls and Playnite", "viewswitch", "playnitesettings", "legacytasks" },
+                new[] { "Language", "translate", "translatecollect" },
+                new[] { "Reset", "reset" } } },
+        };
+
+        private static string SectionOf(Features.Option o)
+        {
+            string[][] list;
+            if (!Sections.TryGetValue(o.Group, out list)) return null;
+            foreach (var sec in list) if (Array.IndexOf(sec, o.Key, 1) > 0) return sec[0];
+            return "More";
+        }
+
+        private static int SectionPlace(Features.Option o)
+        {
+            string[][] list;
+            if (!Sections.TryGetValue(o.Group, out list)) return 0;
+            for (int i = 0; i < list.Length; i++) if (Array.IndexOf(list[i], o.Key, 1) > 0) return i;
+            return list.Length;
+        }
+
+        // changed from how Selene ships (another add-on's own setting and the rows that do something don't count)
+        private static bool IsChanged(Features.Option o)
+        {
+            if (o.Action != null || o.Get != null) return false;
+            return o.IsChoice ? Features.Value(o.Key) != o.Default : Features.On(o.Key) != o.DefaultOn;
+        }
+
+        // where the settings were left: opened again (from the menu or Start), they come back there
+        private static string lastGroup, lastKey;
 
         public override bool Overlay { get { return true; } }
 
@@ -48,9 +103,11 @@ namespace Selene
         public SettingsScreen(bool fromMenu = false, string startGroup = null, string startKey = null)
         {
             this.fromMenu = fromMenu;
+            if (startGroup == null && startKey == null) { startGroup = lastGroup; startKey = lastKey; }
             this.startKey = startKey;
             Root.UseLayoutRounding = true;   // whole pixels: at a fractional scroll offset some lines went soft
-            group = Math.Max(0, Array.IndexOf(Features.Groups, startGroup ?? ""));
+            group = Array.IndexOf(Listed, startGroup ?? "");
+            if (group < 0) group = Array.IndexOf(Listed, Features.Groups[0]);
             var layout = new Grid { Margin = new Thickness(120, 110, 120, 110) };
             layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(400) });
             layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -69,24 +126,27 @@ namespace Selene
                 head.Children.Add(words);
                 left.Children.Add(head);
             }
-            for (int i = 0; i < Features.Groups.Length; i++)
+            for (int i = 0; i < Listed.Length; i++)
             {
                 var line = new StackPanel { Orientation = Orientation.Horizontal };
                 line.Children.Add(new TextBlock { Text = Ui.Icon(GroupIcons[i]), FontFamily = Ui.Icons, FontSize = 24, Foreground = Ink.Brush("SeleneInkColor"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 16, 0) });
-                line.Children.Add(new TextBlock { Text = Features.Groups[i], FontSize = 21, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor"), VerticalAlignment = VerticalAlignment.Center });
+                line.Children.Add(new TextBlock { Text = Listed[i], FontSize = 21, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor"), VerticalAlignment = VerticalAlignment.Center });
                 // the dot: this group's work still running behind the scenes (songs, art, the achievements check)
                 var groupDot = Background.Dot();
-                groupDot.Visibility = Background.ForGroup(Features.Groups[i]) ? Visibility.Visible : Visibility.Collapsed;
+                groupDot.Visibility = i >= 2 && Background.ForGroup(Listed[i]) ? Visibility.Visible : Visibility.Collapsed;
                 line.Children.Add(groupDot);
                 groupDots.Add(groupDot);
                 var row = new Border { Child = line, CornerRadius = new CornerRadius(14), Padding = new Thickness(20, 14, 20, 14), Margin = new Thickness(0, 0, 24, 6) };
                 left.Children.Add(row);
                 groupRows.Add(row);
+                // a thin line under Changed: Search and Changed apart from the groups
+                if (i == 1) left.Children.Add(new Border { Height = 1, Background = Ink.Brush("SeleneInkColor", 0.16), Margin = new Thickness(20, 8, 44, 14), IsHitTestVisible = false });
                 int selectedGroup = i;
                 row.MouseLeftButtonUp += (s, e) =>
                 {
                     if (ask != null || (picker != null && picker.IsOpen)) return;
                     group = selectedGroup; index = 0; inOptions = false;
+                    if (GroupName == SearchGroup) { OpenSearch(); e.Handled = true; return; }
                     ShowGroup(false); scroller.ScrollToVerticalOffset(0); ShowFocus(); e.Handled = true;
                 };
             }
@@ -136,12 +196,33 @@ namespace Selene
 
         private void ShowGroup(bool animate)
         {
-            options = Features.All.Where(o => o.Group == Features.Groups[group] && (o.Available == null || o.Available())).ToList();
-            groupTitle.Text = Features.Groups[group].ToUpperInvariant();
+            var name = GroupName;
+            var available = Features.All.Where(o => o.Available == null || o.Available());
+            if (name == ChangedGroup) options = available.Where(IsChanged).OrderBy(o => Array.IndexOf(Features.Groups, o.Group)).ThenBy(SectionPlace).ToList();
+            else if (name == SearchGroup) options = new List<Features.Option>();
+            else options = available.Where(o => o.Group == name).OrderBy(SectionPlace).ToList();   // (stable: each section keeps its order)
+            groupTitle.Text = name.ToUpperInvariant();
             optionList.Children.Clear(); rows.Clear(); knobs.Clear(); tracks.Clear(); values.Clear(); sliders.Clear(); live.Clear();
+            if (options.Count == 0)
+            {
+                var note = name == SearchGroup ? "Press A to search every setting by name." : name == ChangedGroup ? "Nothing changed yet. Settings you change show up here." : "";
+                var empty = new TextBlock { Text = note, FontSize = 19, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.6), Margin = new Thickness(8, 4, 0, 0), TextWrapping = TextWrapping.Wrap };
+                optionList.Children.Add(empty);
+                if (animate) Ui.Rise(empty, 0, 10, 220);
+            }
+            string section = null;
             for (int i = 0; i < options.Count; i++)
             {
                 var f = options[i];
+                // a section's heading over its first row (Changed: the group each row is in)
+                var sectionNow = name == ChangedGroup ? f.Group : SectionOf(f);
+                if (sectionNow != null && sectionNow != section)
+                {
+                    var heading = new TextBlock { Text = sectionNow, FontSize = 17, FontWeight = FontWeights.SemiBold, FontFamily = Ui.Body, Foreground = Ink.Brush("GlyphColor"), Margin = new Thickness(8, section == null ? 0 : 18, 0, 10) };
+                    optionList.Children.Add(heading);
+                    if (animate) Ui.Rise(heading, i * 40, 10, 220);
+                }
+                section = sectionNow;
                 var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
                 var head = new StackPanel { Orientation = Orientation.Horizontal };
                 head.Children.Add(new TextBlock { Text = f.Label, FontSize = 21, FontWeight = FontWeights.SemiBold, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor") });
@@ -225,6 +306,8 @@ namespace Selene
 
         private void ShowFocus()
         {
+            lastGroup = GroupName == SearchGroup ? null : GroupName;
+            lastKey = inOptions && index < options.Count ? options[index].Key : null;
             for (int i = 0; i < groupRows.Count; i++)
             {
                 bool chosen = i == group;
@@ -271,8 +354,8 @@ namespace Selene
             try
             {
                 foreach (var r in live) Refresh(r);
-                for (int i = 0; i < groupDots.Count && i < Features.Groups.Length; i++)
-                    groupDots[i].Visibility = Background.ForGroup(Features.Groups[i]) ? Visibility.Visible : Visibility.Collapsed;
+                for (int i = 2; i < groupDots.Count && i < Listed.Length; i++)   // (not Search and Changed)
+                    groupDots[i].Visibility = Background.ForGroup(Listed[i]) ? Visibility.Visible : Visibility.Collapsed;
             }
             catch (Exception ex) { HomeNav.Log("settings: live: " + ex.Message); }
         }
@@ -289,6 +372,7 @@ namespace Selene
             public readonly DockPanel Root = new DockPanel { Margin = new Thickness(0, 9, 0, 2), Visibility = Visibility.Collapsed, LastChildFill = true };
             private readonly Grid bar;
             private readonly Border fill;
+            private readonly Border light;   // the band of light gliding along the fill
             private readonly TextBlock percent;
             private readonly TranslateTransform slide = new TranslateTransform(-1.2, 0);
             private bool running;
@@ -301,23 +385,34 @@ namespace Selene
                 percent = new TextBlock { FontSize = 13, FontWeight = FontWeights.SemiBold, FontFamily = Ui.Body, Foreground = Ink.Brush("GlyphColor"), VerticalAlignment = VerticalAlignment.Center, TextAlignment = TextAlignment.Right, MinWidth = 36, Margin = new Thickness(12, 0, 0, 3) };
                 DockPanel.SetDock(percent, Dock.Right);
                 Root.Children.Add(percent);
-                bar = new Grid { Height = 4, ClipToBounds = true, VerticalAlignment = VerticalAlignment.Center };
-                bar.Children.Add(new Border { CornerRadius = new CornerRadius(2), Background = Ink.Brush("SeleneInkColor", 0.14) });
-                fill = new Border { CornerRadius = new CornerRadius(2), Background = Ink.Brush("GlyphColor"), Width = 6, HorizontalAlignment = HorizontalAlignment.Left, ClipToBounds = true };
-                // the light: a soft band of white gliding along the filled part
-                fill.Child = new Border
+                bar = new Grid { Height = 6, ClipToBounds = true, VerticalAlignment = VerticalAlignment.Center };
+                bar.Children.Add(new Border { CornerRadius = new CornerRadius(3), Background = Ink.Brush("SeleneInkColor", 0.14) });
+                fill = new Border { CornerRadius = new CornerRadius(3), Background = Ink.Brush("GlyphColor"), Width = 6, HorizontalAlignment = HorizontalAlignment.Left, ClipToBounds = true };
+                // the light: a band gliding along the filled part, wide and strong, in the colour that stands out from the fill (white on
+                // a dark fill, dark on a light one: white on a light theme's cream fill was invisible)
+                light = new Border
                 {
-                    Background = Brushes.White, Opacity = 0.55, IsHitTestVisible = false,
+                    Opacity = 0.8, IsHitTestVisible = false,
                     OpacityMask = new LinearGradientBrush(new GradientStopCollection
                     {
-                        new GradientStop(Color.FromArgb(0x00, 255, 255, 255), 0.25), new GradientStop(Color.FromArgb(0xFF, 255, 255, 255), 0.5), new GradientStop(Color.FromArgb(0x00, 255, 255, 255), 0.75)
+                        new GradientStop(Color.FromArgb(0x00, 255, 255, 255), 0.05), new GradientStop(Color.FromArgb(0xFF, 255, 255, 255), 0.5), new GradientStop(Color.FromArgb(0x00, 255, 255, 255), 0.95)
                     }, new Point(0, 0.5), new Point(1, 0.5)) { RelativeTransform = slide }
                 };
+                Tone();
+                fill.Child = light;
                 bar.Children.Add(fill);
                 Root.Children.Add(bar);
                 bar.SizeChanged += (s, e) => Place(false);   // its width known (or changed): the fill set straight there
                 Root.Loaded += (s, e) => { if (Root.Visibility == Visibility.Visible) Start(); };
                 Root.Unloaded += (s, e) => Stop();   // (nothing ticking for a row gone)
+            }
+
+            private void Tone()
+            {
+                var c = Ink.Of("GlyphColor");
+                double luminance = (0.2126 * c.R + 0.7152 * c.G + 0.0722 * c.B) / 255;
+                light.Background = luminance > 0.5 ? Brushes.Black : Brushes.White;
+                light.Opacity = luminance > 0.5 ? 0.45 : 0.8;
             }
 
             // how far: 0..1 shows it so (the fill gliding on to it, the figure counting to it), below 0 takes it away
@@ -328,6 +423,7 @@ namespace Selene
                 bool first = share < 0 || Root.Visibility != Visibility.Visible;
                 share = next;
                 Root.Visibility = Visibility.Visible;
+                Tone();   // (the theme may have changed)
                 Place(!first);
                 Count((int)Math.Round(share * 100), !first);
                 if (Root.IsLoaded) Start();
@@ -387,6 +483,7 @@ namespace Selene
             if (!inOptions)
             {
                 if (b == "B") { Ui.Back(); if (fromMenu) LoginScene.Show(new MenuScreen(true), -1); else LoginScene.Finish(); return; }
+                if (b == "A" && GroupName == SearchGroup) { Ui.Confirm(); OpenSearch(); return; }
                 if ((b == "A" || b == "DPadRight") && options.Count > 0) { inOptions = true; index = Math.Min(index, options.Count - 1); Ui.Tick(); ShowFocus(); return; }   // (back on the row left)
                 int next = group + (b == "DPadDown" ? 1 : b == "DPadUp" ? -1 : 0);
                 if (next == group) return;
@@ -419,6 +516,7 @@ namespace Selene
                 picker = ChoiceList.Open(Root, tracks[row], names, Math.Max(0, Array.IndexOf(opt.Choices, Features.Value(opt.Key))), k =>
                 {
                     bool changed = Features.Value(opt.Key) != opt.Choices[k];
+                    if (changed && DownloadConsent.IsControlled(opt.Key)) DownloadConsent.Revoke(opt.Key);
                     Features.SetValue(opt.Key, opt.Choices[k]);
                     ShowSwitch(row, true);
                     if (changed) AfterChoice(opt);
@@ -435,6 +533,21 @@ namespace Selene
                 else if (opt.Key == "report") { bool back = fromMenu; LoginScene.Show(new ReportScreen(() => new SettingsScreen(back, "Advanced", "report")), 1); }
                 else if (opt.Key == "newsfeeds") LoginScene.Show(new NewsFeedsScreen(() => new SettingsScreen(fromMenu, "Spotlight", "newsfeeds")), 1);
                 else if (opt.Key == "storeregion") LoginScene.Show(new StoreCurrencyScreen(false, () => new SettingsScreen(true, "Games", "storeregion")), 1);
+                else if (opt.Key == "legacytasks")
+                {
+                    ask = new Dialog("\uE002", "Remove old administrator tasks?", "Windows will ask for permission for each task.",
+                        "Remove", "Not now", () =>
+                        {
+                            ask = null;
+                            LegacyTasks.Remove((removed, left) =>
+                            {
+                                if (left == 0) Ui.Play("Success.wav", 0.8);
+                                Ui.Notice(left == 0 ? "Old administrator tasks removed." : left + (left == 1 ? " task" : " tasks") + " couldn't be removed. Remove them in Task Scheduler.", 7000);
+                                try { ShowGroup(false); ShowFocus(); } catch (Exception ex) { HomeNav.Log("settings: refresh after removing old tasks: " + ex.Message); }
+                            });
+                        }, () => ask = null, true, true);
+                    ask.Open(Root);
+                }
                 else if (opt.Key == "reset")
                 {
                     ask = new Dialog("\uE5D5", "Reset Selene settings?", "Every switch and choice goes back to how Selene ships. Your profiles, theme and wallpaper stay.",
@@ -446,24 +559,75 @@ namespace Selene
             if (b == "A")
             {
                 var key = options[index].Key;
+                if (DownloadConsent.IsControlled(key) && !Features.On(key))
+                {
+                    ConfirmDownload(key, () => { Features.Set(key, true); DownloadConsent.Grant(key); DownloadConsent.Changed(key); ShowSwitch(index, true); });
+                    return;
+                }
                 Features.Set(key, !Features.On(key));
+                if (DownloadConsent.IsControlled(key) && !Features.On(key)) DownloadConsent.Revoke(key);
+                if (DownloadConsent.IsControlled(key)) DownloadConsent.Changed(key);
                 if (key == "brand") Brand.Apply();
                 if (key == "topprofile") TopProfile.Refresh();
-                if (key == "padbattery") HomeNav.RefreshBattery();
                 if (key == "hltb" || key == "achievements" || key == "rowedges" || key == "collectioninfo" || key == "collectionhints") SeleneShell.ApplyNowPlaying();
-                if (key == "translatecollect") { Lang.Collect(Features.On(key)); if (Features.On(key)) Ui.Notice("Phrases go to \"Selene phrases.txt\" on your Desktop as you move around Selene."); }
+                if (key == "translatecollect") { Lang.Collect(Features.On(key)); if (Features.On(key)) Ui.Notice("Phrases are saved to \"Selene phrases.txt\" on your Desktop."); }
                 Ui.Key();
                 ShowSwitch(index, true);
                 if (key == "hints") HomeHints.Update();
                 if (key == "fullrate") Ui.FullRateChanged();
+                if (key == "lightweight") HomeNav.ApplyPerformanceMode();
+                if (key == "perflog") { PerformanceRecorder.SetRecording(Features.On(key)); Ui.Notice(Features.On(key) ? "Performance recording started. Use Selene normally, then turn this off." : "Performance recording stopped.", 6000); }
                 if (key == "collectionglide") LibraryStage.ApplyNavigationSettings();
                 if (key == "glow") LoginScene.RefreshBackdrop();
-                if (key == "music" && !Features.On(key)) HomeNav.ReleaseMusic();
+                if (key == "songsettle") SongSetup.ApplySongSettle();
+                if (key == "perfmode") Ui.Notice("Restart Playnite to apply.");
+                if (key == "music")
+                {
+                    if (Features.On(key)) { HomeNav.LetMusicGo(); HomeNav.SetMusic(LoginScene.CoversHome ? "login" : "home"); }
+                    else HomeNav.ReleaseMusicQuietly();
+                }
                 if (key == "cardpictures") { GameFacts.CardStats(); CapturesScreen.CountInBackground(); }
                 HomeNav.Log("settings: " + key + " " + (Features.On(key) ? "on" : "off"));
                 return;
             }
             MoveRow(b);
+        }
+
+        // every setting by name, description, group or section: A on one opens its group with it focused
+        private void OpenSearch()
+        {
+            bool back = fromMenu;
+            var finder = new SearchScreen.Finder
+            {
+                Title = "Find a setting", Placeholder = "Type a setting's name", EmptyNote = "Settings show here as you type.", NoneNote = "No setting matches that.",
+                Back = () => LoginScene.Show(new SettingsScreen(back, SearchGroup), -1),
+                Max = 4, Shade = Ink.Brush("SeleneScrimColor", 0.94),   // four cards fit the screen's width; as dark as the settings
+                Find = q => Features.All
+                    .Where(o => (o.Available == null || o.Available()) && Matches(o, q))
+                    .OrderBy(o => o.Label.StartsWith(q, StringComparison.OrdinalIgnoreCase) ? 0 : o.Label.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0 ? 1 : 2)
+                    .Select(o => new SearchScreen.Hit { Build = () => SettingTile(o), Open = () => LoginScene.Show(new SettingsScreen(back, o.Group, o.Key), 1) })
+                    .ToList()
+            };
+            LoginScene.Show(new SearchScreen(finder), 1);
+        }
+
+        // every word typed is somewhere in the name, the description, the group or the section
+        private static bool Matches(Features.Option o, string q)
+        {
+            var hay = (o.Label + " " + o.About + " " + o.Group + " " + (SectionOf(o) ?? "")).ToLowerInvariant();
+            return q.ToLowerInvariant().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).All(w => hay.Contains(w));
+        }
+
+        private static Tile SettingTile(Features.Option o)
+        {
+            var t = new Tile(276, 132, 16, 4) { FocusScale = 1.06 };
+            var words = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(20, 0, 20, 0) };
+            words.Children.Add(new TextBlock { Text = o.Label, FontSize = 19, FontWeight = FontWeights.SemiBold, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor"), TextWrapping = TextWrapping.Wrap });
+            var where = SectionOf(o);
+            words.Children.Add(new TextBlock { Text = o.Group + (where != null ? " · " + where : ""), FontSize = 14, FontFamily = Ui.Body, Foreground = Ink.Brush("GlyphColor"), Margin = new Thickness(0, 6, 0, 0) });
+            t.Face.Background = Ink.Brush("SeleneGlassColor", 0.85);
+            t.Face.Child = words;
+            return t;
         }
 
         private void MoveRow(string b)
@@ -488,8 +652,22 @@ namespace Selene
         }
 
         // what a changed choice sets going at once
+        private void ConfirmDownload(string key, Action accepted, Action declined = null)
+        {
+            ask = new Dialog("\uE2C4", "Allow these downloads?", DownloadConsent.Details(key), "Allow downloads", "Not now",
+                () => { ask = null; accepted(); }, () => { ask = null; if (declined != null) declined(); }, false, true, 360);
+            ask.Open(Root);
+        }
+
         private void AfterChoice(Features.Option opt)
         {
+            if (opt.Key == "trailerdownload")
+            {
+                if (Features.Value(opt.Key) == "off") { DownloadConsent.Changed(opt.Key); return; }
+                if (!DownloadConsent.Allowed(opt.Key)) ConfirmDownload(opt.Key, () => { DownloadConsent.Grant(opt.Key); DownloadConsent.Changed(opt.Key); },
+                    () => { Features.SetValue(opt.Key, "off"); ShowSwitch(index, true); DownloadConsent.Changed(opt.Key); });
+                return;
+            }
             if (opt.Key == "language") ask = LanguageSetup.Restart(Root, () => ask = null, () => { });
             if (opt.Key == "trailersound") HomeNav.ApplyValueSettings();
             if (opt.Key == "shade") Contrast.Apply();

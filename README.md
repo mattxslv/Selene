@@ -22,17 +22,21 @@
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
-## Security notice: Downloads temporarily unavailable
-
-A potential security issue was identified in Selene's elevated helper. Downloadable packages for **v1.2.3, v1.3.0, and v1.3.1** have been removed while a fix is being tested.
-
-**If you already have Selene installed, avoid using it until a patched version is available.** Earlier versions have not been fully assessed. There is no confirmed exploitation at this time.
-
-See [Security notice #74](https://github.com/mattxslv/Selene/issues/74) for updates.
-
 ## Install
 
-**Installation is temporarily suspended while the security fix is validated.** Please do not install the affected releases. Installation instructions will return when a tested replacement is available.
+1. Download **both** `Selene.pthm` and `SeleneCore.pext` from the [latest release](../../releases/latest). The theme alone shows only a dark screen with a note.
+2. Open each file (or drag it onto Playnite) and confirm. Restart Playnite.
+3. Fullscreen mode → **Menu → Playnite settings → Appearance → Theme → Selene**. Selene walks you through the rest.
+
+Playnite 10 or newer, Windows 10 / 11, a controller recommended. Everything Selene adds can be switched off in
+**Selene settings**. The **[guide](docs/guide/README.md)** has every screen and button.
+
+**Coming from 1.2.3, 1.3.0 or 1.3.1?** Update to 1.4.0, it removes the old admin helper. Then go to
+**Selene settings > Advanced > Old administrator tasks** to clean up what it left behind. Details in
+[#74](https://github.com/mattxslv/Selene/issues/74).
+
+Heads up: games running as admin can't be paused or closed from the Guide anymore. Alt+Tab still works.
+Downloads (trailers, art, songs) are off until you turn them on, and Selene tells you where they go first.
 
 ## In motion
 

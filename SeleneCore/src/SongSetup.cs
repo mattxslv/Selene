@@ -22,6 +22,83 @@ namespace Selene
         private static string YtDlp { get { return Path.Combine(Tools, "yt-dlp.exe"); } }
         private static string Ffmpeg { get { return Path.Combine(Tools, "ffmpeg.exe"); } }
         private static bool started;
+        private static int generation;
+        private static int setupWorkers;
+        internal static bool DisableAutomaticTriggers(object settings)
+        {
+            bool changed = false;
+            foreach (var name in new[] { "AutoDownloadOnLibraryUpdate", "AutoDownloadOnGameInstall" })
+            {
+                var prop = settings != null ? settings.GetType().GetProperty(name) : null;
+                if (prop != null && prop.CanWrite && prop.PropertyType == typeof(bool) && Equals(prop.GetValue(settings, null), true))
+                { prop.SetValue(settings, false, null); changed = true; }
+            }
+            return changed;
+        }
+        public static void DisableManagedAutomaticDownloads()
+        {
+            try
+            {
+                var current = UpsSettings();
+                var path = current != null ? Prop(current, "YtDlpPath") as string : null;
+                if (string.IsNullOrEmpty(path) || !string.Equals(Path.GetFullPath(path), Path.GetFullPath(YtDlp), StringComparison.OrdinalIgnoreCase)) return;
+                if (UpdateUps(DisableAutomaticTriggers, "Selene download consent"))
+                    HomeNav.Log("songs: automatic library/install downloads disabled for Selene-managed tools; independent installations left unchanged");
+            }
+            catch (Exception ex) { HomeNav.Log("songs: managed download preferences: " + (ex.InnerException ?? ex).Message); }
+        }
+
+        // Songs wait until you stop: UniPlaySong switched song for every game passed while a direction was held, and each
+        // switch (fade, open, decode) ran on Playnite's UI thread: up to 0.7 s frozen mid-scroll. Its own "hover settle"
+        // waits until the selection rests. Turned on (1 s, its shortest) when it's off; switch: Sound & music.
+        internal static bool EnableSettle(object settings)
+        {
+            var on = settings != null ? settings.GetType().GetProperty("HoverSettleEnabled") : null;
+            if (on == null || !on.CanWrite || on.PropertyType != typeof(bool) || Equals(on.GetValue(settings, null), true)) return false;
+            on.SetValue(settings, true, null);
+            var secs = settings.GetType().GetProperty("HoverSettleSeconds");
+            if (secs != null && secs.CanWrite && secs.PropertyType == typeof(double)) secs.SetValue(settings, 1.0, null);
+            return true;
+        }
+
+        public static void ApplySongSettle()
+        {
+            if (!Features.On("songsettle")) return;
+            try { if (UpdateUps(EnableSettle, "Selene smooth scrolling")) HomeNav.Log("songs: UniPlaySong waits until the selection rests (hover settle on)"); }
+            catch (Exception ex) { HomeNav.Log("songs: hover settle: " + (ex.InnerException ?? ex).Message); }
+        }
+
+        private static object UpsPlugin() { return HomeNav.Api != null ? HomeNav.Api.Addons.Plugins.FirstOrDefault(p => p.Id == UniPlaySongId) : null; }
+        private static object UpsSettings()
+        {
+            var plugin = UpsPlugin();
+            var service = plugin != null ? Field(plugin, "_settingsService") : null;
+            return service != null ? Prop(service, "Current") : null;
+        }
+
+        // a copy of UniPlaySong's settings changed by `change`, handed to its settings service and saved (false: nothing to change)
+        private static bool UpdateUps(Func<object, bool> change, string reason)
+        {
+            var plugin = UpsPlugin();
+            var service = plugin != null ? Field(plugin, "_settingsService") : null;
+            var current = service != null ? Prop(service, "Current") : null;
+            if (current == null) return false;
+            var clone = typeof(Playnite.SDK.Data.Serialization).GetMethods().First(m => m.Name == "GetClone" && m.IsGenericMethod).MakeGenericMethod(current.GetType()).Invoke(null, new[] { current });
+            if (!change(clone)) return false;
+            var update = service.GetType().GetMethod("UpdateSettings");
+            if (update == null) { HomeNav.Log("songs: UniPlaySong settings could not be updated (" + reason + ")"); return false; }
+            update.Invoke(service, new[] { clone, reason });
+            var save = plugin.GetType().GetMethods().FirstOrDefault(m => m.Name == "SavePluginSettings" && m.IsGenericMethod);
+            if (save != null) save.MakeGenericMethod(clone.GetType()).Invoke(plugin, new[] { clone });
+            HomeNav.ForgetUps();
+            return true;
+        }
+        public static void DownloadSettingsChanged()
+        {
+            System.Threading.Interlocked.Increment(ref generation);
+            started = false;
+            if (DownloadConsent.Allowed("songsetup")) StartLater();
+        }
 
         // how far the songs are, for the setting's row: "57 of 358 games have a song" (UniPlaySong keeps each game's song in
         // its own folder under ExtraMetadata / UniPlaySong / Games; a folder with one is a game with a song)
@@ -29,19 +106,35 @@ namespace Selene
         private static string SongsRoot { get { return Path.Combine(HomeNav.Api.Paths.ConfigurationPath, "ExtraMetadata", "UniPlaySong", "Games"); } }
         private static bool HasAudio(string dir) { return Directory.Exists(dir) && Directory.EnumerateFiles(dir).Any(f => Audio.Any(x => f.EndsWith(x, StringComparison.OrdinalIgnoreCase))); }
 
-        // how many games have a song, of how many
+        // how many games have a song, of how many. The folders are looked through off the UI thread at most every 3 s, and the
+        // last count is used meanwhile: going through every game's folder on each call held up Selene settings (the stick
+        // stopped for a moment at Sound & music, whose row shows the count and is refreshed every second)
+        private static volatile int songsCounted = -1;
+        private static DateTime songsCountedAt = DateTime.MinValue;
+        private static volatile bool counting;
         private static void Count(out int have, out int total)
         {
-            have = 0;
             total = HomeNav.Api.Database.Games.Count(g => !g.Hidden);
-            var root = SongsRoot;
-            if (Directory.Exists(root))
-                foreach (var dir in Directory.GetDirectories(root))
-                    if (HasAudio(dir)) have++;
+            if (!counting && (DateTime.Now - songsCountedAt).TotalSeconds > 3)
+            {
+                counting = true;
+                var root = SongsRoot;
+                System.Threading.Tasks.Task.Factory.StartNew(() =>
+                {
+                    int n = 0;
+                    try { if (Directory.Exists(root)) foreach (var dir in Directory.GetDirectories(root)) if (HasAudio(dir)) n++; }
+                    catch (Exception ex) { HomeNav.Log("songs: count: " + ex.Message); }
+                    songsCounted = n;
+                    songsCountedAt = DateTime.Now;
+                    counting = false;
+                });
+            }
+            have = Math.Max(0, songsCounted);
         }
+        private static bool Counted { get { return songsCounted >= 0; } }
 
         // Selene's downloads are running (its own tools, songs still missing)
-        private static bool Fetching { get { return started && File.Exists(YtDlp) && File.Exists(Ffmpeg); } }
+        private static bool Fetching { get { return DownloadConsent.Allowed("songsetup") && started && File.Exists(YtDlp) && File.Exists(Ffmpeg); } }
 
         // how far the songs are (the bar under the setting); below 0: not running
         public static double Progress
@@ -70,6 +163,7 @@ namespace Selene
                 if (HomeNav.Api == null) return null;
                 int have, total;
                 Count(out have, out total);
+                if (!Counted) return null;   // (the first count is still running)
                 if (total == 0) return null;
                 return have >= total ? "Every game has a song" : have + " of " + total + " games have a song" + (Fetching ? ", more on the way" : "");
             }
@@ -87,9 +181,10 @@ namespace Selene
                 if (HasAudio(Path.Combine(SongsRoot, gameId.ToString()))) return;
                 int have, total;
                 Count(out have, out total);
+                if (!Counted) return;   // (the first count is still running)
                 if (total == 0 || have >= total) return;
                 noted = true;
-                ProgressToast.ShowNote("Game songs", have + " of " + total + " so far", 0xE405);
+                ProgressToast.ShowNote("Game songs", have + " of " + total + " ready", 0xE405);
             }
             catch (Exception ex) { HomeNav.Log("songs: note: " + ex.Message); }
         }
@@ -97,8 +192,10 @@ namespace Selene
         // a little after start, in the background
         public static void StartLater()
         {
-            if (started || !Features.On("songsetup") || HomeNav.Api == null) return;
+            DisableManagedAutomaticDownloads();
+            if (started || !DownloadConsent.Allowed("songsetup") || HomeNav.Api == null) return;
             started = true;
+            int requestGeneration = generation;
             var plugin = HomeNav.Api.Addons.Plugins.FirstOrDefault(p => p.Id == UniPlaySongId);
             if (plugin == null) return;
             var service = Field(plugin, "_settingsService");
@@ -112,29 +209,36 @@ namespace Selene
                 if (string.Equals(Path.GetFullPath(yt), Path.GetFullPath(YtDlp), StringComparison.OrdinalIgnoreCase))
                 {
                     var later = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
-                    later.Tick += (s, e) => { later.Stop(); Fetch(plugin, false); };
+                    later.Tick += (s, e) => { later.Stop(); if (requestGeneration == generation && DownloadConsent.Allowed("songsetup")) Fetch(plugin, false); };
                     later.Start();
                 }
                 return;
             }
 
             var dispatcher = Application.Current.Dispatcher;
+            if (System.Threading.Interlocked.CompareExchange(ref setupWorkers, 1, 0) != 0) { started = false; return; }
             var worker = new System.Threading.Thread(() =>
             {
                 try
                 {
                     System.Threading.Thread.Sleep(20000);   // after the start-up's own work
+                    if (requestGeneration != generation || !DownloadConsent.Allowed("songsetup")) return;
                     bool fresh = !File.Exists(YtDlp) || !File.Exists(Ffmpeg);
                     if (fresh) dispatcher.BeginInvoke(new Action(() => ProgressToast.ShowNote("Game songs", "Setting up", 0xE405)));
-                    Download();
-                    dispatcher.BeginInvoke(new Action(() => PointAndFetch(plugin, service)));
+                    Download(requestGeneration);
+                    dispatcher.BeginInvoke(new Action(() => { if (requestGeneration == generation && DownloadConsent.Allowed("songsetup")) PointAndFetch(plugin, service); }));
                 }
                 catch (Exception ex) { HomeNav.Log("songs: setup failed: " + ex.Message); }
+                finally
+                {
+                    System.Threading.Interlocked.Exchange(ref setupWorkers, 0);
+                    if (requestGeneration != generation && DownloadConsent.Allowed("songsetup")) dispatcher.BeginInvoke(new Action(StartLater));
+                }
             }) { IsBackground = true, Priority = System.Threading.ThreadPriority.BelowNormal };
             worker.Start();
         }
 
-        private static void Download()
+        private static void Download(int requestGeneration)
         {
             ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
             Directory.CreateDirectory(Tools);
@@ -143,12 +247,14 @@ namespace Selene
                 web.Headers[HttpRequestHeader.UserAgent] = "Selene-Core";
                 if (!File.Exists(YtDlp))
                 {
+                    if (requestGeneration != generation || !DownloadConsent.Allowed("songsetup")) return;
                     web.DownloadFile("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe", YtDlp + ".part");
                     File.Move(YtDlp + ".part", YtDlp);
                     HomeNav.Log("songs: yt-dlp downloaded");
                 }
                 if (!File.Exists(Ffmpeg))
                 {
+                    if (requestGeneration != generation || !DownloadConsent.Allowed("songsetup")) return;
                     var zip = Path.Combine(Path.GetTempPath(), "selene-ffmpeg.zip");
                     web.DownloadFile("https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip", zip);
                     using (var archive = ZipFile.OpenRead(zip))
@@ -168,6 +274,7 @@ namespace Selene
         // downloader) and saved; then a song for every game without one, the last played first
         private static void PointAndFetch(object plugin, object service)
         {
+            if (!DownloadConsent.Allowed("songsetup")) return;
             try
             {
                 var current = Prop(service, "Current");
@@ -176,6 +283,7 @@ namespace Selene
                 if (next == null) { HomeNav.Log("songs: couldn't copy UniPlaySong's settings"); return; }
                 Set(next, "YtDlpPath", YtDlp);
                 Set(next, "FFmpegPath", Ffmpeg);
+                DisableAutomaticTriggers(next);
                 var update = service.GetType().GetMethod("UpdateSettings");
                 if (update == null) { HomeNav.Log("songs: UniPlaySong can't take new settings (a newer version?)"); return; }
                 update.Invoke(service, new object[] { next, "Selene" });
@@ -187,9 +295,7 @@ namespace Selene
                 if (!Fetch(plugin, true))
                 {
                     // older/newer UniPlaySong: its next library update does every game added since "never"
-                    Set(next, "LastAutoLibUpdateAssetsDownload", DateTime.MinValue);
-                    if (save != null) save.MakeGenericMethod(next.GetType()).Invoke(plugin, new[] { next });
-                    HomeNav.Log("songs: songs come with the next library update");
+                    HomeNav.Log("songs: this UniPlaySong version cannot accept the requested download; use its own download controls");
                 }
             }
             catch (Exception ex) { HomeNav.Log("songs: pointing UniPlaySong failed: " + (ex.InnerException ?? ex).Message); }
@@ -199,14 +305,15 @@ namespace Selene
         // this UniPlaySong has no such method
         private static bool Fetch(object plugin, bool note)
         {
+            if (!DownloadConsent.Allowed("songsetup")) return false;
             var fetch = plugin.GetType().GetMethod("AutoDownloadMusicForGamesAsync", BindingFlags.Instance | BindingFlags.NonPublic);
             if (fetch == null) return false;
             var games = HomeNav.Api.Database.Games.Where(g => !g.Hidden).OrderByDescending(g => g.LastActivity ?? DateTime.MinValue).ToList();
             // off the UI thread, as UniPlaySong starts it (its search runs a while before it first yields); one game every
             // couple of seconds, the games that have a song skipped
-            System.Threading.Tasks.Task.Run(() => { try { fetch.Invoke(plugin, new object[] { games }); } catch (Exception ex) { HomeNav.Log("songs: " + (ex.InnerException ?? ex).Message); } });
+            System.Threading.Tasks.Task.Run(() => { try { if (DownloadConsent.Allowed("songsetup")) fetch.Invoke(plugin, new object[] { games }); } catch (Exception ex) { HomeNav.Log("songs: " + (ex.InnerException ?? ex).Message); } });
             HomeNav.Log("songs: UniPlaySong is getting songs for the games without one (" + games.Count + " games)");
-            if (note) ProgressToast.ShowNote("Game songs", "On their way", 0xE405);
+            if (note) ProgressToast.ShowNote("Game songs", "Downloading", 0xE405);
             return true;
         }
 

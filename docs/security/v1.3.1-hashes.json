@@ -1,0 +1,18 @@
+{
+  "Selene.pthm": {
+    "bytes": 138000763,
+    "sha256": "598cd2a1d324365208470b486a88737e1eaa624cb460e2208a4e0662fe77c852"
+  },
+  "SeleneCore.pext": {
+    "bytes": 508449,
+    "sha256": "a943bdd71f4303e08f2354a113d9dd27bee49c463856d4ce298987e5f48025dd"
+  },
+  "SeleneHelper.exe": {
+    "bytes": 11264,
+    "sha256": "f91433734a99116dae4b4a364143b4d9d3e79e3d50e77c6ef6404248eb131317"
+  },
+  "SeleneCore.dll": {
+    "bytes": 1190912,
+    "sha256": "386c21c27dff05303b12ecc77ace943ee3175f65d8a97de7365647b3d14db98d"
+  }
+}

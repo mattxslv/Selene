@@ -22,7 +22,16 @@ into `%APPDATA%\Playnite\Themes\Fullscreen\Selene_a98e0027-fa6a-4f5e-a087-bad8d6
 
 **Releasing:** `python tools/release.py <version>` moves the Unreleased notes to the version and sets it everywhere;
 commit and push; `tools\package.ps1`; then
-`gh release create v<version> dist\Selene.pthm dist\SeleneCore.pext --title "Selene <version>"`.
+`gh release create v<version> dist\Selene.pthm dist\SeleneCore.pext dist\SHA256SUMS dist\BUILDINFO.txt --title "Selene <version>"`.
+
+`tools\package.ps1` requires a clean committed tree, checks package contents against the fresh stage and rejects
+known old-helper content. It writes SHA256SUMS and BUILDINFO.txt with the source commit and tool/input hashes.
+The legacy compiler is not deterministic; this records provenance rather than promising reproducible bytes.
+For disposable local tests only, `-AllowDirty` marks the source as modified.
+Run `pwsh -NoProfile -File tools/tests/security.ps1` on Linux or Windows for the helper retirement and package
+regression checks. The Windows-only build, runtime and Defender validation are described in
+[Windows migration and validation](../security/windows-validation.md). Version metadata does not replace
+Authenticode signing; a publisher certificate is still needed before signed releases can be produced.
 
 ## Translating
 

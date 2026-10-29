@@ -3,19 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/mattxslv/Selene/releases/latest"><img src="https://img.shields.io/github/v/release/mattxslv/Selene?style=for-the-badge&amp;label=Get%20Selene&amp;labelColor=202938&amp;color=9CCBFF" height="28" alt="Get the latest Selene release"></a>
-</p>
-<p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/mattxslv/Selene?style=for-the-badge&amp;label=License&amp;labelColor=202938&amp;color=C8D6E5" height="28" alt="Code license: MIT"></a>
-</p>
-<p align="center">
-  <a href="https://github.com/mattxslv/Selene/releases"><img src="https://img.shields.io/github/downloads/mattxslv/Selene/total?style=for-the-badge&amp;label=All%20versions&amp;labelColor=202938&amp;color=B6CAE0" height="28" alt="File downloads across all currently available versions"></a>
-</p>
-<p align="center">
-  <a href="https://github.com/mattxslv/Selene/releases/latest"><img src="https://img.shields.io/github/downloads/mattxslv/Selene/latest/total?style=for-the-badge&amp;label=Latest%20version&amp;labelColor=202938&amp;color=B6CAE0" height="28" alt="File downloads from the latest version only"></a>
-</p>
-<p align="center">
-  <sub>File downloads across all versions vs. the latest version only.<br>Not unique installs; removed files are excluded.</sub>
+  <a href="https://github.com/mattxslv/Selene/releases/latest"><img src="https://img.shields.io/github/v/release/mattxslv/Selene?style=for-the-badge&amp;label=Get%20Selene&amp;labelColor=202938&amp;color=9CCBFF" height="28" alt="Get the latest Selene release"></a> <a href="LICENSE"><img src="https://img.shields.io/github/license/mattxslv/Selene?style=for-the-badge&amp;label=License&amp;labelColor=202938&amp;color=C8D6E5" height="28" alt="Code license: MIT"></a> <a href="https://github.com/mattxslv/Selene/releases"><img src="https://img.shields.io/github/downloads/mattxslv/Selene/total?style=for-the-badge&amp;label=All%20versions&amp;labelColor=202938&amp;color=B6CAE0" height="28" alt="File downloads across all currently available versions"></a> <a href="https://github.com/mattxslv/Selene/releases/latest"><img src="https://img.shields.io/github/downloads/mattxslv/Selene/latest/total?style=for-the-badge&amp;label=Latest%20version&amp;labelColor=202938&amp;color=B6CAE0" height="28" alt="File downloads from the latest version only"></a>
 </p>
 
 <p align="center">

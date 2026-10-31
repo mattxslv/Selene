@@ -186,7 +186,17 @@ namespace Selene
             if (System.IO.File.Exists(none) && (DateTime.Now - System.IO.File.GetLastWriteTime(none)).TotalDays < 7) return false;
 
             var mpd = string.IsNullOrEmpty(steamId()) ? null : ManifestUrl(steamId());
-            if (mpd == null) { System.IO.File.WriteAllText(none, g.Name); return false; }
+            if (mpd == null)
+            {
+                // not on Steam, or no trailer there: the official one from YouTube
+                if (YouTubeTrailer.Fetch(g, file))
+                {
+                    Application.Current.Dispatcher.BeginInvoke(new Action(() => { HomeNav.TrailerReady(id); LibraryStage.TrailerReady(id); }));
+                    return true;
+                }
+                System.IO.File.WriteAllText(none, g.Name);
+                return false;
+            }
 
             var started = DateTime.Now;
             var dir = System.IO.Path.GetDirectoryName(file);
@@ -226,7 +236,12 @@ namespace Selene
             var none = System.IO.Path.Combine(SelenePaths.Media("Trailers"), g.Id + ".noart");
             if (System.IO.File.Exists(none) && (DateTime.Now - System.IO.File.GetLastWriteTime(none)).TotalDays < 7) return;
             var id = steamId();
-            if (string.IsNullOrEmpty(id)) { System.IO.File.WriteAllText(none, g.Name); return; }
+            if (string.IsNullOrEmpty(id))
+            {
+                // not on Steam (HoYoPlay's, Riot's games...): IGDB's artwork, else SteamGridDB's logo
+                if (!OtherArt(g, needHero, needLogo, hero, logo)) System.IO.File.WriteAllText(none, g.Name);
+                return;
+            }
 
             // Steam's own library cache on this PC first (it has the logos the store page doesn't: newer games keep theirs
             // in hashed folders only Steam knows)
@@ -279,7 +294,37 @@ namespace Selene
                 try { System.IO.File.Delete(fresh); } catch { }
                 System.IO.File.WriteAllText(sharpTried, g.Name);
             }
+            // what Steam's store had none of: IGDB / SteamGridDB
+            bool stillHero = needHero && !System.IO.File.Exists(hero), stillLogo = needLogo && !System.IO.File.Exists(logo);
+            if ((stillHero || stillLogo) && OtherArt(g, stillHero, stillLogo, hero, logo)) got = true;
             if (!got && (needLogo && !System.IO.File.Exists(logo)) && (needHero && !System.IO.File.Exists(hero))) System.IO.File.WriteAllText(none, g.Name);
+        }
+
+        // art from outside Steam: the background from IGDB's artwork (best kind first, each tried until one saves: a "wide"
+        // picture can be a small emblem PNG), the logo from IGDB's see-through logo, else SteamGridDB's (with a key)
+        private static bool OtherArt(Game g, bool needHero, bool needLogo, string hero, string logo)
+        {
+            bool got = false;
+            GameMedia.IgdbArt art = null;
+            try { art = GameMedia.IgdbArtFor(g.Name); }
+            catch (Exception ex) { HomeNav.Log("art download: " + g.Name + " (IGDB): " + ex.Message); }
+            if (needHero && art != null)
+                foreach (var u in art.Heroes)
+                {
+                    try { if (Save(u, hero, false)) { got = true; Crop16x9(hero); HeroArrived(); HomeNav.Log("art download: " + g.Name + " background (IGDB)"); break; } }
+                    catch (Exception ex) { HomeNav.Log("art download: " + g.Name + " background (IGDB): " + ex.Message); break; }
+                }
+            if (needLogo)
+            {
+                try
+                {
+                    if (art != null && art.Logo != null && Save(art.Logo, logo, true)) { got = true; TrimLogo(logo); HomeNav.Log("art download: " + g.Name + " logo (IGDB)"); }
+                    else if (SquareFetch.Logo(g, logo)) { got = true; TrimLogo(logo); HomeNav.Log("art download: " + g.Name + " logo (SteamGridDB)"); }
+                }
+                catch (Exception ex) { HomeNav.Log("art download: " + g.Name + " logo: " + ex.Message); }
+            }
+            if (!got && needHero) HomeNav.Log("art download: " + g.Name + ": no background on IGDB" + (art != null ? " (" + art.Heroes.Count + " tried)" : ""));
+            return got;
         }
 
         // Old downloads have no provenance record. Only replace art whose decoded pixels match the old,

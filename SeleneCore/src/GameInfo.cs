@@ -318,6 +318,17 @@ namespace Selene
             catch (Exception ex) { HomeNav.Log("game info: picture: " + ex.Message); return null; }
         }
 
+        // a game renamed: looked up again on the next pass (its old name may have matched nothing)
+        public static void Forget(Guid id)
+        {
+            try
+            {
+                var tried = ReadTried();
+                if (tried.Remove(id)) WriteTried(tried);
+            }
+            catch { }
+        }
+
         private static Dictionary<Guid, DateTime> ReadTried()
         {
             var tried = new Dictionary<Guid, DateTime>();

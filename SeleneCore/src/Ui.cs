@@ -228,7 +228,7 @@ namespace Selene
                 dot.Children.Add(Letter(shown, shown.Length > 1 ? 12 : 16, FontWeights.SemiBold, Ink.Brush("SeleneScrimColor")));
             });
             sp.Children.Add(dot);
-            sp.Children.Add(new TextBlock { Text = label, FontSize = 21, FontFamily = Body, Foreground = Ink.Brush("SeleneInkColor", 0.9), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0) });
+            sp.Children.Add(new TextBlock { Text = Lang.T(label), FontSize = 21, FontFamily = Body, Foreground = Ink.Brush("SeleneInkColor", 0.9), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0) });
             sp.Background = Brushes.Transparent;
             sp.MouseLeftButtonUp += (s, e) => { if (LoginScene.IsActive) { LoginScene.MousePress(button); e.Handled = true; } };
             return sp;
@@ -511,7 +511,32 @@ namespace Selene
         {
             var input = e.StagingItem != null ? e.StagingItem.Input : null;
             // Controller presses arrive as key events; mouse navigation also wakes full-rate transitions.
-            if (input is System.Windows.Input.KeyEventArgs || input is System.Windows.Input.MouseEventArgs) Poke();
+            if (input is System.Windows.Input.KeyEventArgs || input is System.Windows.Input.MouseEventArgs)
+            {
+                Poke();
+                // (a mouse resting on the window sends no moves; only real input counts toward "idle")
+                if (!(input is System.Windows.Input.MouseEventArgs) || input is System.Windows.Input.MouseButtonEventArgs || input is System.Windows.Input.MouseWheelEventArgs || MouseMoved())
+                {
+                    LastInput = DateTime.Now;
+                    ScreenPresence.Woken();
+                }
+            }
+        }
+
+        // the last press, click or real mouse move (ScreenPresence's calm when idle); the start counts as one
+        public static DateTime LastInput = DateTime.Now;
+        private static System.Windows.Point lastMouse;
+        private static bool MouseMoved()
+        {
+            try
+            {
+                var p = System.Windows.Forms.Control.MousePosition;
+                var now = new System.Windows.Point(p.X, p.Y);
+                bool moved = (now - lastMouse).Length > 4;
+                lastMouse = now;
+                return moved;
+            }
+            catch { return false; }
         }
 
         // The display containing Playnite, not necessarily the primary monitor (the TV may have a different rate).
@@ -880,10 +905,12 @@ namespace Selene
 
         // the controller: when a button last went down (a press that came from it), and buttons being let go
         public static DateTime PadPressAt = DateTime.MinValue;
-        public static bool PressFromPad { get { return (DateTime.Now - PadPressAt).TotalMilliseconds < 80; } }
+        public static bool PressFromPad { get { return (DateTime.Now - PadPressAt).TotalMilliseconds < 300; } }   // (80 ms: late copies after a game flashed the hints to keyboard keys)
         public static event Action<string> ButtonReleased;
         public static void Released(string button) { var h = ButtonReleased; if (h != null) h(button); }
-        public static bool KeyIsPadCopy() { return (DateTime.Now - padHandledAt).TotalMilliseconds < 120; }
+        // (300 ms: with a game loading the PC in the background, Playnite's copies came later than 120 ms and counted as second presses:
+        // LB / RB switched two tabs, and the hints flashed to keyboard keys on every move)
+        public static bool KeyIsPadCopy() { return (DateTime.Now - padHandledAt).TotalMilliseconds < 300; }
 
         // the copy of a stick push can come later than that (126-136 ms seen, so the stick moved two groups in Selene settings):
         // an arrow key in the direction the pad last went, within a quarter second, is that copy too (no one presses the same
@@ -891,7 +918,7 @@ namespace Selene
         private static string padDirection;
         private static DateTime padDirectionAt = DateTime.MinValue;
         public static void PadWent(string button) { var b = Normalize(button); if (b.StartsWith("DPad")) { padDirection = b; padDirectionAt = DateTime.Now; } }
-        public static bool KeyIsPadCopy(string direction) { return KeyIsPadCopy() || (direction != null && direction == padDirection && (DateTime.Now - padDirectionAt).TotalMilliseconds < 250); }
+        public static bool KeyIsPadCopy(string direction) { return KeyIsPadCopy() || (direction != null && direction == padDirection && (DateTime.Now - padDirectionAt).TotalMilliseconds < 400); }
 
         public static void Pressed(string button)
         {

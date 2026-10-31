@@ -32,8 +32,7 @@ namespace Selene
         public static void Evaluate()
         {
             bool now = Compute();
-            if (Application.Current != null && !Equals(Application.Current.Resources["SeleneAmbientMotionEnabled"], now))
-                Application.Current.Resources["SeleneAmbientMotionEnabled"] = now;
+            UpdateAmbient(now);
             if (now == inView) return;
             inView = now;
             HomeNav.Log("presence: " + (now ? "in view (media and ambient motion resume)" : "out of view (media and ambient motion paused)"));
@@ -57,5 +56,37 @@ namespace Selene
         }
 
         private static int behind;
+
+        // ---- calm when idle: nobody has pressed anything for a while, the background motion eases to a stop ----
+        // In view but untouched (Selene left on while the TV plays music, or someone reading), the moving background (looping video,
+        // drifting dust, breathing light) and the focused tile's ring kept the GPU redrawing the whole screen every frame: ~10% of
+        // an RTX 5070 Ti / 5060 Ti at 4K, against ~1% for themes that stand still (#91). After IdleSeconds without input they
+        // pause, still pictures stay; the first press brings them back. Trailers and songs are not touched.
+        // Switch: Advanced > Calm when idle ("idlecalm").
+        private const int IdleSeconds = 45;
+        private static bool ambient = true;
+        private static System.Windows.Threading.DispatcherTimer idleCheck;
+
+        public static bool Idle { get { return Features.On("idlecalm") && (DateTime.Now - Ui.LastInput).TotalSeconds > IdleSeconds; } }
+
+        private static void UpdateAmbient(bool view)
+        {
+            if (idleCheck == null && Application.Current != null)
+            {
+                idleCheck = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(2) };
+                idleCheck.Tick += (s, e) => UpdateAmbient(inView);
+                idleCheck.Start();
+            }
+            bool now = view && !Idle;
+            if (Application.Current != null && !Equals(Application.Current.Resources["SeleneAmbientMotionEnabled"], now))
+                Application.Current.Resources["SeleneAmbientMotionEnabled"] = now;
+            if (now == ambient) return;
+            ambient = now;
+            if (view) HomeNav.Log("presence: " + (now ? "input again (background motion resumes)" : "idle " + IdleSeconds + " s (background motion paused)"));
+            try { LoginScene.SetAmbient(now); } catch (Exception ex) { HomeNav.Log("presence: " + ex.Message); }
+        }
+
+        // a press while calm: the motion comes back at once (not on the next 2 s check)
+        public static void Woken() { if (!ambient && inView) UpdateAmbient(inView); }
     }
 }

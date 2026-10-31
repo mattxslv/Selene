@@ -19,8 +19,8 @@ namespace Selene
     {
         private static readonly Guid UniPlaySongId = new Guid("a1b2c3d4-e5f6-7890-abcd-ef1234567890");
         private static string Tools { get { return Path.Combine(SelenePaths.DataFolder, "Tools"); } }
-        private static string YtDlp { get { return Path.Combine(Tools, "yt-dlp.exe"); } }
-        private static string Ffmpeg { get { return Path.Combine(Tools, "ffmpeg.exe"); } }
+        internal static string YtDlp { get { return Path.Combine(Tools, "yt-dlp.exe"); } }
+        internal static string Ffmpeg { get { return Path.Combine(Tools, "ffmpeg.exe"); } }
         private static bool started;
         private static int generation;
         private static int setupWorkers;

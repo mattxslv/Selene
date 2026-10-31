@@ -17,7 +17,9 @@ const PLACES = [
   "Starting Playnite", "Spotlight", "Collection", "A game's page", "Store", "Captures", "Settings or menu",
   "Starting or playing a game", "Quitting", "Somewhere else",
 ];
-const MAX_REQUEST = 3_000_000;    // bytes, logs and picture included
+const MAX_REQUEST = 12_000_000;   // bytes, logs, full-log bundle and picture included
+const MAX_BUNDLE = 8_000_000;     // base64 characters: the gzip'd full logs (usually well under 1 MB)
+const LOGS_KEEP = 365 * 24 * 3600; // seconds the full logs stay reachable from their issue
 const MAX_PICTURE = 2_000_000;    // base64 characters
 const MAX_BODY = 60_000;          // GitHub allows 65,536 characters in an issue body
 const PER_IP_HOUR = 5;
@@ -30,6 +32,7 @@ export default {
     const path = url.pathname;
     if (request.method === "GET" && path === "/") return text("Selene report service", 200);
     if (request.method === "GET" && path.startsWith("/shot/")) return picture(env, path.slice(6));
+    if (request.method === "GET" && path.startsWith("/logs/")) return fullLogs(env, path.slice(6));
     if (request.method === "POST" && path === "/report") return report(request, env, url.origin);
     if (request.method === "POST" && path === "/draft") return draft(request, env, url.origin);
     const m = path.match(/^\/r\/([0-9a-f-]{36})(\/status)?$/);
@@ -96,7 +99,15 @@ async function send(r, request, env, origin) {
     shotUrl = `${origin}/shot/${id}`;
   }
 
-  const issue = build(r, shotUrl);
+  // the full logs (Selene sends them gzip'd): kept here and linked from the issue, which only has room for a summary
+  let logsUrl = null;
+  if (typeof r.logBundle === "string" && r.logBundle.length > 20 && r.logBundle.length <= MAX_BUNDLE && r.logBundle.startsWith("H4sI")) {
+    const id = crypto.randomUUID();
+    await env.STORE.put("logs:" + id, base64ToBytes(r.logBundle), { expirationTtl: LOGS_KEEP });
+    logsUrl = `${origin}/logs/${id}`;
+  }
+
+  const issue = build(r, shotUrl, logsUrl);
   const response = await fetch(`https://api.github.com/repos/${env.REPO}/issues`, {
     method: "POST",
     headers: {
@@ -174,7 +185,7 @@ async function readReport(request) {
   }
 }
 
-function build(r, shotUrl) {
+function build(r, shotUrl, logsUrl) {
   const field = (v, max) => scrub(String(v ?? "").slice(0, max)).trim();
   const note = field(r.note, 2000);
   const where = field(r.place, 60);
@@ -188,6 +199,7 @@ function build(r, shotUrl) {
   if (shotUrl) lines.push(`<img src="${shotUrl}" alt="The screen when this was reported" width="720">`, "");
   const selene = field(r.selene, 40), playnite = field(r.playnite, 40), windows = field(r.windows, 80);
   lines.push([tag(selene && "Selene " + selene), tag(playnite && "Playnite " + playnite), tag(windows)].filter(Boolean).join(" · "));
+  if (logsUrl) lines.push("", `**Full logs:** ${logsUrl} (Selene and Playnite logs, add-ons, settings, displays)`);
   let body = lines.join("\n");
   // the logs fill what's left, newest lines kept
   const logs = [["Problems in selene.log", r.seleneProblems], ["selene.log, recent lines", r.seleneLog], ["playnite.log, warnings and errors", r.playniteLog]]
@@ -205,6 +217,17 @@ function build(r, shotUrl) {
   const short = note.replace(/\s+/g, " ").trim();
   const title = short ? (short.length > 80 ? short.slice(0, 77).trimEnd() + "..." : short) : `${r.category}${where ? " · " + where : ""}`;
   return { title, body, labels: ["bug"] };
+}
+
+// ---- the full logs, linked from the issue: plain text, stored gzip'd and sent as it is ----
+async function fullLogs(env, id) {
+  if (!/^[0-9a-f-]{36}$/.test(id)) return text("Not found", 404);
+  const bytes = await env.STORE.get("logs:" + id, "arrayBuffer");
+  if (!bytes) return text("Not found (full logs are kept for a year)", 404);
+  return new Response(bytes, {
+    encodeBody: "manual",
+    headers: { "Content-Type": "text/plain; charset=utf-8", "Content-Encoding": "gzip", "Cache-Control": "public, max-age=86400" },
+  });
 }
 
 // ---- the picture, shown in the issue ----

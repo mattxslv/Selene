@@ -178,12 +178,29 @@ namespace Selene
         }
 
         private static void TextChanged(object sender, EventArgs args) { Apply((TextBlock)sender); }
+        // WPF reports "unloaded" also for texts that are only moved or re-templated, and doesn't always say "loaded" again: a
+        // text let go at once lost its translation the next time its style set the English back (#31: Play / Details switching
+        // between Chinese and English). Let go only when it is still gone a moment later.
         private static void Unloaded(object sender, System.Windows.RoutedEventArgs args)
         {
             var text = (TextBlock)sender;
-            textProperty.RemoveValueChanged(text, TextChanged);
-            text.Unloaded -= Unloaded;
-            states.GetOrCreateValue(text).Watching = false;
+            var later = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+            later.Tick += (s, e) =>
+            {
+                later.Stop();
+                if (text.IsLoaded) return;
+                textProperty.RemoveValueChanged(text, TextChanged);
+                text.Unloaded -= Unloaded;
+                states.GetOrCreateValue(text).Watching = false;
+            };
+            later.Start();
+        }
+
+        // a phrase in the language Selene shows (the English when there's no translation for it)
+        public static string T(string english)
+        {
+            string translated;
+            return english != null && table != null && table.TryGetValue(english, out translated) ? translated : english;
         }
 
         // a TextBlock as it loads: its English text swapped for the translation (texts that are bound stay Playnite's)

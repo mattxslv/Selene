@@ -53,6 +53,13 @@ game publishers and are not covered by Selene's MIT license. Rights holders can 
 The flat store logos (Steam, Epic Games, GOG, EA, Ubisoft, Battle.net, itch.io; Xbox and Microsoft from Simple Icons 9.21) are shapes from Simple Icons
 (https://simpleicons.org), CC0. The brands belong to their owners.
 
+## Preview sample art
+`theme/Media/Sample` holds Steam store art, used only to show what a home looks like in the setup's theme and background
+previews before any of your own games are in: Clair Obscur: Expedition 33 (background, cover, logo; © Sandfall Interactive /
+Kepler Interactive) and the covers of Hades II (Supergiant Games), Hollow Knight: Silksong (Team Cherry), Baldur's Gate 3
+(Larian Studios), Elden Ring (FromSoftware / Bandai Namco) and Cyberpunk 2077 (CD PROJEKT RED). All rights belong to their
+owners; not covered by Selene's license. Any of them is removed on request.
+
 ## Wallpapers
 The wallpapers in `theme/Wallpapers` come from the theme collection of [Omarchy](https://github.com/basecamp/omarchy),
 grouped by the theme they shipped with. Each image remains the property of its artist; they are not covered by

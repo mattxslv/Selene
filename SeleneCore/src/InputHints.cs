@@ -37,8 +37,12 @@ namespace Selene
         public static void PointerMoved(Point position)
         {
             if (!haveMouse) { mouse = position; haveMouse = true; return; }
-            if (Math.Abs(position.X - mouse.X) > 3 || Math.Abs(position.Y - mouse.Y) > 3) { mouse = position; Set(InputKind.Mouse); }
+            if (Math.Abs(position.X - mouse.X) > 3 || Math.Abs(position.Y - mouse.Y) > 3) { mouse = position; lastPointerMove = DateTime.Now; Set(InputKind.Mouse); }
         }
+
+        // the pointer really moved lately (a mouse, or a controller turned into one)
+        private static DateTime lastPointerMove = DateTime.MinValue;
+        public static bool PointerMovedWithin(int ms) { return (DateTime.Now - lastPointerMove).TotalMilliseconds < ms; }
         public static string Label(string button)
         {
             if (Kind == InputKind.Controller) return null;

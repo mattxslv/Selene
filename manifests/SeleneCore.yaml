@@ -1,5 +1,52 @@
 AddonId: SeleneCore_cd424c29-97f4-4dd0-aa66-4d8e01cc8724
 Packages:
+  - Version: 1.5.1
+    RequiredApiVersion: 6.0.0
+    ReleaseDate: 2026-11-01
+    PackageUrl: https://github.com/mattxslv/Selene/releases/download/v1.5.1/SeleneCore.pext
+    Changelog:
+      - >-
+        Filter tabs show at most five at a time: with more (many Playnite presets), they slide smoothly as you move with LB / RB, and the edge with more tabs fades out (#71).
+      - >-
+        Look > Button hints now hides the hints everywhere (Spotlight and Collection); Collection can still hide only its own. With them off, Collection's covers move down into the free space instead of floating above it (#32).
+      - >-
+        Captures shows AMD Software's screenshots and clips (Videos\Radeon ReLive) (#90).
+      - >-
+        Square tiles and logos looked up by name only take an exact name match: a game with a similar name no longer lends its square (#31).
+      - >-
+        Spotlight > Store card can hide the Store card, like the other cards (#59).
+      - >-
+        Games no longer start silent after an earlier start was interrupted: Selene's quiet launch level could stay saved as the game's volume in Windows (a launcher that hands over to the game, like GOG's DOSBox games), and is now put back to 100% (#86; may also be behind #69).
+      - >-
+        Translated button hints and Play / Details no longer switch back to English now and then (#31).
+      - >-
+        A launcher that waits for you while a game starts (a sign-in, an update prompt) gets the screen after 12 seconds instead of staying behind the loading screen; B still leaves the loading screen at once (#55).
+      - >-
+        Play / Resume and Home find a running game again after B was pressed while it loaded (they did nothing while the game went on starting).
+      - >-
+        With a game loading the PC, LB / RB no longer switch two tabs at once and the button hints no longer flash to keyboard keys while moving.
+      - >-
+        The setup's theme and background previews show the example game (Clair Obscur: Expedition 33) and its row of covers on a new install, before any downloads are allowed (they were empty).
+      - >-
+        A new install's avatar step offers your animated Steam avatar (it came in only after the setup, so the still one was picked), and a profile that picked the still one moves once the animated one is there.
+      - >-
+        Home during a game run as administrator (Genshin Impact, Honkai: Star Rail...): the game is muted and minimized so it stops drawing behind the home, and Home or Resume brings it back (its window came back black). Windows may still refuse to let Selene back over such a game after the first time; Alt+Tab works then. Its process is never frozen.
+      - >-
+        With the controller driving the mouse (Steam Input's desktop layout), moving the pointer no longer also moves Selene's focus highlight.
+      - >-
+        YouTube trailers start after their opening black (a few seconds of black looked like the trailer stalling).
+      - >-
+        SteamGridDB square tiles prefer key art over app icons when no square has more votes (Genshin Impact showed its launcher icon).
+      - >-
+        Selene left on screen untouched no longer keeps the graphics card busy: after 45 seconds without input the moving background (video, dust, light) and the focus ring's spin pause, and any press brings them back (#91: ~10% GPU at 4K before). Switch: Advanced > Calm when idle.
+      - >-
+        Games from launchers Playnite has no library for come into your library on their own: HoYoPlay's Genshin Impact, Honkai: Star Rail and Zenless Zone Zero, Riot's VALORANT and League of Legends (started through the Riot Client), and other Unity or Unreal games registered in Windows' installed apps (store games stay with their own add-ons), as PC (Windows) games. Switch: Advanced > Find launcher games.
+      - >-
+        No "Library update", "Game media downloaded" or "Achievements ready" cards; they show only with Notifications > Progress cards on.
+      - >-
+        Games that aren't on Steam (Genshin Impact, VALORANT...) get their background from IGDB's official artwork at full size, a logo from IGDB or SteamGridDB, and their official trailer from YouTube, 90 seconds of it (Spotlight > Trailers from YouTube), so their song plays with it too.
+      - >-
+        Games start at the resolution of the screen Selene is on: a Unity or Unreal game last played at 1080p on a monitor opens in 4K on a 4K TV (Genshin Impact, Honkai: Star Rail...). Windowed games keep their window. Switch: Games > Match the screen's resolution.
   - Version: 1.5.0
     RequiredApiVersion: 6.0.0
     ReleaseDate: 2026-10-31

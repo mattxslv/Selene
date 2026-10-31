@@ -579,6 +579,12 @@ namespace Selene
                 bool on = Features.On("dialogs") && Features.On("progresstoast");
                 statusLine.Opacity = on ? 0 : 1;
                 if (!on) return;
+                // the library update runs quietly like other background work unless Notifications > Progress cards is on
+                if (!Features.On("taskcards"))
+                {
+                    if (libraryStatus != null) { var gone = libraryStatus; libraryStatus = null; EndTask(gone); }
+                    return;
+                }
                 var raw = (statusWords.Text ?? "").Trim();
                 // one card for the whole update: "Library update" as its heading, the step it's on under it
                 var text = raw.Length == 0 ? "" : "Library update - " + (raw.IndexOf("finished", StringComparison.OrdinalIgnoreCase) >= 0 ? "Finished" : raw);

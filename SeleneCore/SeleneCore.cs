@@ -80,9 +80,11 @@ namespace Selene
             SeleneShell.Start();
             StartupWork.AfterHome("game songs", () => { if (!MediaDownloads.Unified || !MediaDownloads.Enabled) SongSetup.StartLater(); });
             StartupWork.AfterHome("library media", () => { if (MediaDownloads.Enabled) MediaDownloads.Start(); });
-            StartupWork.AfterHome("Steam avatar", () => { if (string.IsNullOrWhiteSpace(settings.Settings.AvatarPath)) AnimatedAvatar.Fetch(SelenePaths.SteamId); });
+            // at once (off the UI thread): a new install's avatar step comes before the home, and offered only the still picture
+            if (string.IsNullOrWhiteSpace(settings.Settings.AvatarPath)) AnimatedAvatar.Fetch(SelenePaths.SteamId);
             HomeNav.StartIsolatedMute();              // (dev: a test copy beside a PC in use stays silent)
             StartupWork.AfterHome("legacy tasks", LegacyTasks.CheckLater);
+            StartupWork.AfterHome("report bundle (dev)", ReportBundle.DevDump);
             HomeNav.Log("Selene Core started");
         }
 
@@ -121,6 +123,7 @@ namespace Selene
                 PlayniteApi.Dialogs.ShowMessage("Selene couldn't recover this game's launcher from its old administrator task. Set its Play action to the game's executable in Playnite. If the task was already removed, use its saved details or launcher backup.", "Update game launcher");
                 return;
             }
+            if (Active && Features.On("gameresolution")) GameResolution.Apply(PlayniteApi, args.Game, action);   // before the game reads its saved size
             if (Active && args.Game != null) HomeNav.GameStarting(args.Game.Id);
         }
 
@@ -350,11 +353,13 @@ namespace Selene
             new Option { Group = "Spotlight", Key = "cardachievements", Label = "Achievements card", About = "Show achievements from all your games, newest first.", Available = AchievementsData.Available },
             new Option { Group = "Spotlight", Key = "capturesfolders", Label = "Captures folders", About = "Add a folder with your screenshots and clips. Pick one that's listed to remove it.", Action = "Add", Note = () => SelenePaths.CapturesFolders.Count == 0 ? "Steam, Videos and NVIDIA folders only" : string.Join(" · ", SelenePaths.CapturesFolders) },
             new Option { Group = "Spotlight", Key = "cardsurprise", Label = "Surprise me card", About = "Let Selene pick a game for you." },
+            new Option { Group = "Spotlight", Key = "cardstore", Label = "Store card", About = "Show the Store card on Spotlight." },
             new Option { Group = "Spotlight", Key = "cardnews", Label = "News card", About = "Show headlines from the news feeds you follow." },
             new Option { Group = "Spotlight", Key = "cardpictures", Label = "Pictures under cards", About = "Show recent captures, recently played games and suggestions under the cards." },
             new Option { Group = "Spotlight", Key = "steadyhold", Label = "Steady hold scrolling", About = "Holding left or right moves through games at a steady pace the row can keep up with." },
             new Option { Group = "Spotlight", Key = "pickscroll", Label = "Scroll to a picked game", About = "Scroll along the row to a game you picked from search or another screen." },
             new Option { Group = "Spotlight", Key = "rowedges", Label = "Full-width row", About = "Let the game row reach the edges of the screen." },
+            new Option { Group = "Spotlight", Key = "youtubetrailers", Label = "Trailers from YouTube", About = "For games with no Steam trailer, download the official trailer from YouTube. Uses the game song tools." },
             new Option { Group = "Spotlight", Key = "trailerdelay", Label = "Trailer delay", About = "Set how long to stay on a game before its trailer plays.", Choices = new[] { "1", "2.5", "5", "0" }, Names = new[] { "1 second", "2.5 seconds", "5 seconds", "Never" }, Default = "2.5" },
             new Option { Group = "Spotlight", Key = "trailerdownload", Label = "Download trailers", About = "Off until you choose a scope and confirm the save location. Each trailer is about 20 MB.", Choices = new[] { "off", "browse", "all" }, Names = new[] { "Off", "Games you select", "Whole library" }, Default = "off", Note = Background.ArtNote, Progress = Background.ArtProgress },
             new Option { Group = "Spotlight", Key = "artdownload", Label = "Download logos and backgrounds", About = "Get missing logos and backgrounds for selected games.", DefaultOn = false, Note = Background.ArtNote, Progress = Background.ArtProgress },
@@ -377,7 +382,7 @@ namespace Selene
             // ---- Notifications ----
             new Option { Group = "Notifications", Key = "notifysound", Label = "Notification sound", About = "Play a sound when a notification appears." },
             new Option { Group = "Notifications", Key = "sessioncard", Label = "Session card", About = "Show how long you played after you close a game." },
-            new Option { Group = "Notifications", Key = "taskcards", Label = "Progress cards", About = "Show cards while downloads and library updates run. Off: only when they finish.", DefaultOn = false },
+            new Option { Group = "Notifications", Key = "taskcards", Label = "Progress cards", About = "Show cards while downloads, achievement checks and library updates run, and when they finish.", DefaultOn = false },
             new Option { Group = "Notifications", Key = "progresstoast", Label = "Download notifications", About = "Show downloads in a small notification instead of a window." },
             new Option { Group = "Notifications", Key = "updatecheck", Label = "Update notifications", About = "Check for a new version of Selene once a day." },
             new Option { Group = "Notifications", Key = "setuphint", Label = "Add-on tips", About = "Let you know when logos and trailers need the Extra Metadata add-on." },
@@ -423,7 +428,7 @@ namespace Selene
             new Option { Group = "Look", Key = "smoothswitch", Label = "Fade back to Spotlight", About = "Fade back to Spotlight when you leave a game's page." },
             new Option { Group = "Look", Key = "screenshotskeleton", Label = "Screenshot loading cards", About = "Show a moving shine while screenshots load." },
             new Option { Group = "Look", Key = "dialogs", Label = "Selene dialogs", About = "Show Playnite's messages in Selene's style." },
-            new Option { Group = "Look", Key = "hints", Label = "Button hints", About = "Show button hints at the bottom of the screen." },
+            new Option { Group = "Look", Key = "hints", Label = "Button hints", About = "Show button hints at the bottom of the screen, on Spotlight and in Collection." },
             new Option { Group = "Look", Key = "prompts", Label = "Button names", About = "Choose which controller's buttons the hints show.", Choices = new[] { "playnite", "xbox", "playstation" }, Names = new[] { "As Playnite's setting", "Xbox", "PlayStation" }, Default = "playnite" },
             // ---- Games ----
             new Option { Group = "Spotlight", Key = "newsfeeds", Label = "News feeds", About = "Add, remove or turn off the feeds on the News card.", Action = "Manage" },
@@ -434,6 +439,7 @@ namespace Selene
             new Option { Group = "Advanced", Key = "downloadprogress", Label = "Combined media downloads", About = "Use one download control in Games. Turn off for individual controls." },
             new Option { Group = "Look", Key = "previewartfit", Label = "Keep trailer-card artwork proportional", About = "Prevent stretched artwork in trailer cards. Restart Playnite to apply." },
             new Option { Group = "Games", Key = "gamesask", Label = "Offer to get art for a new library", About = "Offer media downloads when setting up a new library." },
+            new Option { Group = "Games", Key = "gameresolution", Label = "Match the screen's resolution", About = "Start fullscreen Unity and Unreal games at the resolution of the screen Selene is on, like 4K on a TV." },
             new Option { Group = "Games", Key = "loadingscreen", Label = "Loading screen", About = "Show the game's artwork and logo while it starts." },
             new Option { Group = "Games", Key = "aftergame", Label = "After a game", About = "Choose where you return to after you close a game.", Choices = new[] { "spotlight", "where" }, Names = new[] { "Spotlight, on that game", "Where you were" }, Default = "spotlight" },
             new Option { Group = "Games", Key = "freeze", Label = "Pause games on Guide", About = "Pause offline games when you press the Guide button. When this is off, games are only muted." },
@@ -452,6 +458,7 @@ namespace Selene
             new Option { Group = "Games", Key = "menuclosegame", Label = "Close game in the menu", About = "Show Close for the running game at the top of the menu, hidden games too." },
             new Option { Group = "Advanced", Key = "xboxsignin", Label = "Xbox sign-in", About = "Offer to sign Playnite in to Xbox so Game Pass games show up." },
             new Option { Group = "Advanced", Key = "gamesfolder", Label = "Find games in Games folders", About = "With no game folder set, look in a Games folder on each drive for games no store knows about." },
+            new Option { Group = "Advanced", Key = "launchergames", Label = "Find launcher games", About = "Add games from launchers Playnite has no library for, like HoYoPlay's Genshin Impact and Honkai: Star Rail." },
             new Option { Group = "Advanced", Key = "storelibraries", Label = "Offer store libraries", About = "Offer Playnite's library add-ons for the stores on this PC in the setup check." },
             new Option { Group = "Advanced", Key = "setupcheck", Label = "Setup check", About = "Check Playnite's settings and add-ons, and fix what Selene can.", Action = "Open" },
             new Option { Group = "Advanced", Key = "shortaddonask", Label = "Short add-on question", About = "Use a shorter add-on installation prompt." },
@@ -459,6 +466,7 @@ namespace Selene
             new Option { Group = "Advanced", Key = "legacytasks", Label = "Old administrator tasks", About = "Remove the administrator tasks that older versions of Selene left on this PC.", Action = "Remove", Available = () => LegacyTasks.Any, Note = LegacyTasks.Summary },
             new Option { Group = "Advanced", Key = "fullrate", Label = "Match the screen's refresh rate", About = "Move at 120 or 144 Hz on high refresh rate screens." },
             new Option { Group = "Advanced", Key = "calmmotion", Label = "Calm background motion", About = "Reduce background animation to 30 FPS. Restart Playnite to apply." },
+            new Option { Group = "Advanced", Key = "idlecalm", Label = "Calm when idle", About = "Pause the moving background after 45 seconds without input, to save power and GPU. Any press brings it back." },
             new Option { Group = "Advanced", Key = "presence", Label = "Pause when out of view", About = "Pause background motion and trailers while Selene is out of view." },
             new Option { Group = "Look", Key = "perfmode", Label = "Performance mode", About = "For slower PCs: no moving background or trailer previews. Motion and art stay. Applies after restarting Playnite.", DefaultOn = false },
             new Option { Group = "Advanced", Key = "asynccovers", Label = "Load covers in the background", About = "Covers load without holding up scrolling and fade in. Applies after restarting Playnite." },

@@ -43,7 +43,7 @@ namespace Selene
         {
             { "Spotlight", new[] {
                 new[] { "Row", "steadyhold", "pickscroll", "rowedges", "filtertabs", "fullscreenpresets", "consistentfavorites", "shade", "idle" },
-                new[] { "Cards", "cardactivity", "actualplatform", "activitysessions", "cardcaptures", "capturesfolders", "cardachievements", "cardsurprise", "cardnews", "newsfeeds", "cardpictures" },
+                new[] { "Cards", "cardactivity", "actualplatform", "activitysessions", "cardcaptures", "capturesfolders", "cardachievements", "cardsurprise", "cardnews", "newsfeeds", "cardstore", "cardpictures" },
                 new[] { "Trailers and downloads", "trailerdelay", "trailersound", "trailerdownload", "artdownload", "screenshotsdownload" } } },
             { "Games", new[] {
                 new[] { "Your library", "gamesget", "gamesask" },
@@ -508,7 +508,7 @@ namespace Selene
                 if (key == "translatecollect") { Lang.Collect(Features.On(key)); if (Features.On(key)) Ui.Notice("Phrases are saved to \"Selene phrases.txt\" on your Desktop."); }
                 Ui.Key();
                 ShowSwitch(index, true);
-                if (key == "hints") HomeHints.Update();
+                if (key == "hints") { HomeHints.Update(); SeleneShell.ApplyNowPlaying(); }
                 if (key == "detailsbadges") Ui.PublishPrompts();
                 if (key == "fullscreenpresets") HomeNav.ApplyValueSettings();
                 if (key == "fullrate") Ui.FullRateChanged();

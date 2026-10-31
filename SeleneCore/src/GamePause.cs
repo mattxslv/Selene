@@ -104,6 +104,16 @@ namespace Selene
             HomeNav.Log("pause: " + gameName + " (pid " + pid + ") muted" + (suspended ? ", frozen" : online ? ", online: not frozen" : !allowFreeze ? ", not minimised: not frozen" : ", freeze failed"));
         }
 
+        // a game Selene may not control (run as administrator): only its sound, given back by Resume
+        public static void MuteOnly(int pid, string gameName)
+        {
+            if (pid <= 0) return;
+            Resume();
+            pausedPid = pid;
+            SetProcessMute(pid, true);
+            HomeNav.Log("pause: " + gameName + " (pid " + pid + ") muted only");
+        }
+
         // frozen right now (its picture from the Home press is still exactly what it shows)
         public static bool Frozen { get { return pausedPid != 0 && suspended; } }
 
@@ -259,6 +269,14 @@ namespace Selene
                 var vol = session as ISimpleAudioVolume;
                 float level;
                 if (vol == null || vol.GetMasterVolume(out level) != 0) return;
+                // Windows remembers each program's volume: a process that ended while turned down (a launcher that starts the
+                // game and exits, DOSBox under GOG's) kept Selene's hush level, and the next start read that as the game's own
+                // volume and "restored" it to silence for good (#86). Selene's own level is never taken for the game's.
+                if (level <= HushLevel * 2)
+                {
+                    HomeNav.Log("launch: game audio was left near silent by an earlier start (" + (level * 100).ToString("0.0") + "%) -> back to 100%");
+                    level = 1f;
+                }
                 var ctx = Guid.Empty;
                 vol.SetMasterVolume(HushLevel, ref ctx);
                 hushed[id] = new KeyValuePair<object, float>(session, level);

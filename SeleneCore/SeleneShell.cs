@@ -127,7 +127,7 @@ namespace Selene
             HomeNav.ApplyValueSettings();
             Ui.WatchFullRate(main);            // the screen's own refresh rate while Playnite is in front
             // minimized, in the tray or behind a game: the background video, trailers, dust and light pause (ScreenPresence)
-            ScreenPresence.Changed += LoginScene.SetAmbient;
+            // (the background motion itself: ScreenPresence.UpdateAmbient, which also calms it when idle)
             ScreenPresence.Changed += LibraryStage.PresenceChanged;
             ScreenPresence.Changed += HomeNav.PresenceChanged;
 
@@ -211,7 +211,11 @@ namespace Selene
             Switch(Part("SeleneAchievementsStatHub"), "achievements");
             Switch(Part("SeleneLibraryStats"), "collectioninfo");
             Switch(Part("SeleneLibraryGenres"), "collectioninfo");
-            Switch(Part("SeleneLibraryHints"), "collectionhints");
+            // (Look > Button hints off hides them everywhere; Collection's own switch can hide just its own)
+            var collectionHints = Part("SeleneLibraryHints");
+            if (collectionHints != null && !Features.On("hints")) collectionHints.Visibility = Visibility.Collapsed;
+            else Switch(collectionHints, "collectionhints");
+            LibraryStage.ApplyHints();
         }
 
         // Switching between Spotlight and Collection is a crossfade: the screen you leave stays up while the other one gets

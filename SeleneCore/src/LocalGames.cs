@@ -72,6 +72,7 @@ namespace Selene
                         {
                             InstallDirectory = dir,
                             IsInstalled = true,
+                            PlatformIds = PcPlatform(db),
                             GameActions = new System.Collections.ObjectModel.ObservableCollection<GameAction>
                             {
                                 new GameAction { Name = "Play", Type = GameActionType.File, Path = exe, WorkingDir = Path.GetDirectoryName(exe), IsPlayAction = true }
@@ -82,6 +83,7 @@ namespace Selene
                         HomeNav.Log("local game added: " + name + " -> " + exe);
                     }
                 }
+                if (Features.On("launchergames")) AddLauncherGames(db, dirs, names);
                 HideXboxDuplicates(db, games);
                 MarkGoneFolders(db, games);
                 SyncInstalledState(db, games);
@@ -90,6 +92,214 @@ namespace Selene
                 UseSteamShortcuts(db, db.Games.ToList());
             }
             catch (Exception ex) { HomeNav.Log("local games scan failed: " + ex.Message); }
+        }
+
+        // ---- games from launchers Playnite has no library for (HoYoPlay: Genshin Impact, Honkai: Star Rail, Zenless Zone Zero...;
+        // Wuthering Waves, and others that register with Windows) ----
+        // Two sources: HoYoPlay's own list of installed games (HKCU\Software\Cognosphere\HYP and the Chinese miHoYo\HYP), and the
+        // games registered in Windows' installed apps. Only a folder that really holds a Unity or Unreal game (or a Riot game) is taken (an app
+        // never is), never one inside a store's library (Steam, Epic, GOG...: their Playnite add-ons import those).
+        // Riot's games (VALORANT, League of Legends, Teamfight Tactics) start through the Riot Client, as their installed-apps
+        // entry says (RiotClientServices.exe --uninstall-product=X): launching their own exe does nothing useful.
+        private class Found { public string Name, Folder, Exe, Args; public bool FromLauncher; }
+
+        private static readonly Regex RiotUninstall = new Regex(@"^""?(?<exe>[^""]*RiotClientServices\.exe)""?\s+--uninstall-product=(?<product>[^\s]+)\s+--uninstall-patchline=(?<line>[^\s]*)", RegexOptions.IgnoreCase);
+
+        private static void AddLauncherGames(Playnite.SDK.IGameDatabaseAPI db, HashSet<string> dirs, HashSet<string> names)
+        {
+            var found = new List<Found>();
+            var uninstall = UninstallEntries();
+            foreach (var hyp in new[] { @"Software\Cognosphere\HYP", @"Software\miHoYo\HYP" })
+            {
+                try
+                {
+                    using (var root = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(hyp))
+                    {
+                        if (root == null) continue;
+                        foreach (var ver in root.GetSubKeyNames())
+                            using (var v = root.OpenSubKey(ver))
+                                foreach (var biz in v.GetSubKeyNames())
+                                    using (var g = v.OpenSubKey(biz))
+                                    {
+                                        var path = g.GetValue("GameInstallPath") as string;
+                                        if (string.IsNullOrWhiteSpace(path)) continue;
+                                        // the game's name: its installed-apps entry (key "hk4e_global_..." -> "Genshin Impact")
+                                        string name = uninstall.Where(u => u.Key.StartsWith(biz + "_", StringComparison.OrdinalIgnoreCase)).Select(u => u.Name).FirstOrDefault();
+                                        found.Add(new Found { Name = name, Folder = path, FromLauncher = true });
+                                    }
+                    }
+                }
+                catch (Exception ex) { HomeNav.Log("launcher games: " + hyp + ": " + ex.Message); }
+            }
+            int fromHyp = found.Count;
+            foreach (var u in uninstall)
+            {
+                if (string.IsNullOrWhiteSpace(u.Folder)) continue;
+                var riot = RiotUninstall.Match(u.Uninstall ?? "");
+                if (riot.Success)
+                {
+                    var product = riot.Groups["product"].Value;
+                    if (product.Equals("Riot_Client", StringComparison.OrdinalIgnoreCase) || !File.Exists(riot.Groups["exe"].Value)) continue;
+                    found.Add(new Found { Name = u.Name, Folder = u.Folder, Exe = riot.Groups["exe"].Value, FromLauncher = true,
+                                          Args = "--launch-product=" + product + " --launch-patchline=" + riot.Groups["line"].Value });
+                }
+                else found.Add(new Found { Name = u.Name, Folder = u.Folder });
+            }
+            HomeNav.Log("launcher games: " + fromHyp + " from HoYoPlay, " + (found.Count - fromHyp) + " installed apps with a folder");
+
+            List<Game> games = null;
+            foreach (var f in found)
+            {
+                try
+                {
+                    var dir = f.Folder.Trim().Trim('"');
+                    try { dir = Path.GetFullPath(dir).TrimEnd('\\'); } catch { continue; }
+                    var full = Full(dir);
+                    if (full == null || !Directory.Exists(dir)) { if (f.FromLauncher) HomeNav.Log("launcher games: folder missing " + dir); continue; }
+                    if (InStoreLibrary(dir)) continue;
+                    var gameExe = EngineExe(dir);
+                    var exe = f.Exe ?? gameExe;
+                    if (exe == null) { if (f.FromLauncher) HomeNav.Log("launcher games: no game exe in " + dir); continue; }
+                    var name = string.IsNullOrWhiteSpace(f.Name) ? Path.GetFileName(dir) : f.Name.Trim();
+                    var play = new GameAction { Name = "Play", Type = GameActionType.File, Path = exe, Arguments = f.Args, WorkingDir = Path.GetDirectoryName(exe), IsPlayAction = true };
+                    if (dirs.Contains(full) || names.Contains(Norm(name)))
+                    {
+                        // added here before under its folder's name, or started through the game's own exe: put right
+                        if (games == null) games = db.Games.ToList();
+                        var had = games.FirstOrDefault(g => g.PluginId == Guid.Empty && Full(g.InstallDirectory) == full);
+                        if (had != null && Fix(db, had, name, dir, gameExe, play)) continue;
+                        HomeNav.Log("launcher games: " + name + " already in the library");
+                        continue;
+                    }
+                    db.Games.Add(new Game(name)
+                    {
+                        InstallDirectory = dir,
+                        IsInstalled = true,
+                        PlatformIds = PcPlatform(db),
+                        GameActions = new System.Collections.ObjectModel.ObservableCollection<GameAction> { play }
+                    });
+                    dirs.Add(full);
+                    names.Add(Norm(name));
+                    HomeNav.Log("launcher game added: " + name + " -> " + exe + (string.IsNullOrEmpty(f.Args) ? "" : " " + f.Args));
+                }
+                catch (Exception ex) { HomeNav.Log("launcher games: " + f.Folder + ": " + ex.Message); }
+            }
+        }
+
+        // Playnite's "PC (Windows)" platform (its own, by specification id; made when the library has none yet): games Selene adds
+        // showed "Platform: Unknown"
+        private static List<Guid> PcPlatform(Playnite.SDK.IGameDatabaseAPI db)
+        {
+            try
+            {
+                var pc = db.Platforms.FirstOrDefault(p => p.SpecificationId == "pc_windows") ?? db.Platforms.FirstOrDefault(p => p.Name == "PC (Windows)");
+                if (pc == null) { pc = new Platform("PC (Windows)") { SpecificationId = "pc_windows" }; db.Platforms.Add(pc); }
+                return new List<Guid> { pc.Id };
+            }
+            catch { return null; }
+        }
+
+        // a launcher game found again: the folder's name ("Genshin Impact game") becomes the real one, and a Play action on the
+        // game's own exe becomes the launcher's when it has one (Riot)
+        private static bool Fix(Playnite.SDK.IGameDatabaseAPI db, Game g, string name, string dir, string gameExe, GameAction play)
+        {
+            bool changed = false;
+            if (g.Name == Path.GetFileName(dir) && name != g.Name)
+            {
+                HomeNav.Log("launcher games: renamed " + g.Name + " -> " + name);
+                g.Name = name; changed = true;
+                // looked up again under the real name: details, and art that found nothing (or the wrong game) under the folder's
+                GameInfo.Forget(g.Id);
+                foreach (var stale in new[] { Path.Combine(SelenePaths.Media("Trailers"), g.Id + ".noart"), Path.Combine(SelenePaths.Media("Square"), g.Id + ".jpg") })
+                    try { if (File.Exists(stale)) File.Delete(stale); } catch { }
+            }
+            if ((g.PlatformIds == null || g.PlatformIds.Count == 0) && PcPlatform(db) != null) { g.PlatformIds = PcPlatform(db); changed = true; }
+            var cur = g.GameActions != null ? g.GameActions.FirstOrDefault(a => a.IsPlayAction) : null;
+            if (cur != null && !string.IsNullOrEmpty(play.Arguments) && gameExe != null && string.Equals(Full(cur.Path), Full(gameExe)) && g.GameActions.Count == 1)
+            {
+                cur.Path = play.Path; cur.Arguments = play.Arguments; cur.WorkingDir = play.WorkingDir;
+                HomeNav.Log("launcher games: " + name + " starts through " + Path.GetFileName(play.Path));
+                changed = true;
+            }
+            if (changed) db.Games.Update(g);
+            return changed;
+        }
+
+        private class Installed { public string Key, Name, Folder, Uninstall; }
+
+        // Playnite is a 32-bit program: plain registry reads of HKLM\SOFTWARE land in WOW6432Node and miss every 64-bit
+        // installer's entry (HoYoPlay's games), so both views are read
+        private static List<Installed> UninstallEntries()
+        {
+            var list = new List<Installed>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            const string path = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
+            var hives = new[]
+            {
+                new { Hive = Microsoft.Win32.RegistryHive.LocalMachine, View = Microsoft.Win32.RegistryView.Registry64 },
+                new { Hive = Microsoft.Win32.RegistryHive.LocalMachine, View = Microsoft.Win32.RegistryView.Registry32 },
+                new { Hive = Microsoft.Win32.RegistryHive.CurrentUser, View = Microsoft.Win32.RegistryView.Registry64 },
+                new { Hive = Microsoft.Win32.RegistryHive.CurrentUser, View = Microsoft.Win32.RegistryView.Registry32 },
+            };
+            foreach (var h in hives)
+            {
+                try
+                {
+                    using (var hive = Microsoft.Win32.RegistryKey.OpenBaseKey(h.Hive, h.View))
+                    using (var root = hive.OpenSubKey(path))
+                    {
+                        if (root == null) continue;
+                        foreach (var k in root.GetSubKeyNames())
+                        {
+                            if (k.StartsWith("Steam App ", StringComparison.OrdinalIgnoreCase)) continue;   // Steam's own
+                            using (var e = root.OpenSubKey(k))
+                            {
+                                if (e == null) continue;
+                                var name = e.GetValue("DisplayName") as string;
+                                if (string.IsNullOrWhiteSpace(name)) continue;
+                                if (Equals(e.GetValue("SystemComponent"), 1)) continue;
+                                if (!seen.Add(h.Hive + "|" + k)) continue;   // a 32-bit Windows shows the same key in both views
+                                list.Add(new Installed { Key = k, Name = name, Folder = e.GetValue("InstallLocation") as string, Uninstall = e.GetValue("UninstallString") as string });
+                            }
+                        }
+                    }
+                }
+                catch { }
+            }
+            return list;
+        }
+
+        private static bool InStoreLibrary(string dir)
+        {
+            var parts = dir.Split('\\');
+            if (parts.Any(p => StoreFolder.IsMatch(p))) return true;
+            for (var d = dir; !string.IsNullOrEmpty(d); d = Path.GetDirectoryName(d))
+                if (File.Exists(Path.Combine(d, ".egstore")) || Directory.Exists(Path.Combine(d, ".egstore"))) return true;
+            return IsXboxAppFolder(dir);
+        }
+
+        // the game's exe if the folder holds a Unity game (<Name>.exe next to <Name>_Data) or an Unreal one (<Name>.exe next to
+        // <Project>\Binaries\Win64); anything else (an app, a launcher) gives null
+        private static string EngineExe(string dir)
+        {
+            string[] subdirs;
+            try { subdirs = Directory.GetDirectories(dir); } catch { return null; }
+            foreach (var data in subdirs.Where(s => s.EndsWith("_Data", StringComparison.OrdinalIgnoreCase)))
+            {
+                var exe = data.Substring(0, data.Length - 5) + ".exe";
+                if (File.Exists(exe) && !NotTheGame.IsMatch(Path.GetFileNameWithoutExtension(exe))) return exe;
+            }
+            foreach (var s in subdirs)
+            {
+                var bin = Path.Combine(s, @"Binaries\Win64");
+                if (!Directory.Exists(bin) || Path.GetFileName(s).Equals("Engine", StringComparison.OrdinalIgnoreCase)) continue;
+                string[] top, shipping;
+                try { top = Directory.GetFiles(dir, "*.exe"); shipping = Directory.GetFiles(bin, "*.exe"); } catch { continue; }
+                var pick = top.Where(f => !NotTheGame.IsMatch(Path.GetFileNameWithoutExtension(f))).OrderByDescending(f => new FileInfo(f).Length).FirstOrDefault()
+                           ?? shipping.Where(f => !NotTheGame.IsMatch(Path.GetFileNameWithoutExtension(f))).OrderByDescending(f => new FileInfo(f).Length).FirstOrDefault();
+                if (pick != null) return pick;
+            }
+            return null;
         }
 
         // main exe: a non-helper exe in the folder itself, else the largest one up to 4 levels down (Unreal: Binaries\Win64)

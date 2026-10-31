@@ -48,7 +48,7 @@ namespace Selene
                 {
                     doneWatch.Stop(); doneWatch = null; sawWork = false;
                     HomeNav.Log("media downloads: done");
-                    ProgressToast.ShowNote("Game media", "Downloaded", 0xE896);
+                    if (Features.On("taskcards")) ProgressToast.ShowNote("Game media", "Downloaded", 0xE896);
                 }
             };
             doneWatch.Start();

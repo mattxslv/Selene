@@ -171,6 +171,8 @@ namespace Selene
             col.Children.Add(noteBox);
             noteHint = new TextBlock { Text = "Nothing to add? Press Send as it is, with A on it or the Start button.", FontSize = 16, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.6), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 12, 0, 0) };
             col.Children.Add(noteHint);
+            // what goes with it: the full logs are public on GitHub with the issue
+            col.Children.Add(new TextBlock { Text = "Sent with it, public on GitHub: Selene's and Playnite's logs, your add-ons, settings and displays (your user name removed).", FontSize = 14, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.45), HorizontalAlignment = noteHint.HorizontalAlignment, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) });
             pad = new KeyPad("Send");
             pad.Root.Margin = new Thickness(0, 20, 0, 0);
             pad.Typed = Type;
@@ -356,6 +358,10 @@ namespace Selene
                     report["seleneLog"] = Scrub(string.Join("\n", Last(session.Where(l => !Noise(l)), 350)));
                     report["seleneProblems"] = Scrub(string.Join("\n", Grouped(session.Where(Problem))));
                     report["playniteLog"] = Scrub(string.Join("\n", Last(playniteLog.Where(l => l.Contains("|ERROR") || l.Contains("|WARN") || l.StartsWith("   ") || l.StartsWith("System.")), 120)));
+                    // everything else that helps: whole logs, add-ons, settings, displays, compressed; the service keeps it and
+                    // links it from the issue ("Full logs"), the issue itself keeps the short version above
+                    try { report["logBundle"] = Convert.ToBase64String(Gzip(Scrub(ReportBundle.Build(seleneLog, playniteLog)))); }
+                    catch (Exception ex) { HomeNav.Log("report: full logs left out: " + ex.Message); }
                     var result = Call(path, report);
                     object ok, err;
                     if (result.TryGetValue("ok", out ok) && ok is bool && (bool)ok) answer = result;
@@ -515,6 +521,16 @@ namespace Selene
             if (page != null) Ui.Fade(page, 0, 200, 0, () => stage.Children.Remove(page));
             Ui.Fade(header, 0, 200);
             for (int i = 0; i < card.Children.Count; i++) Ui.Rise((UIElement)card.Children[i], 40 + i * 60, 14, 320);
+        }
+
+        private static byte[] Gzip(string text)
+        {
+            var raw = Encoding.UTF8.GetBytes(text ?? "");
+            using (var ms = new MemoryStream())
+            {
+                using (var gz = new System.IO.Compression.GZipStream(ms, System.IO.Compression.CompressionLevel.Optimal, true)) gz.Write(raw, 0, raw.Length);
+                return ms.ToArray();
+            }
         }
 
         private static List<string> ReadLines(string path)

@@ -579,7 +579,7 @@ namespace Selene
             if (items.Count == 0)
             {
                 note.Text = all.Count > 0 ? (filter == 1 ? "No screenshots here. LB / RB show the clips, or everything." : "No clips here. LB / RB show the screenshots, or everything.")
-                    : "No screenshots or clips found. Selene looks in Steam's screenshot folders, Videos\\Captures (Xbox Game Bar), Videos\\NVIDIA (the NVIDIA app) and the folders you add under Captures in Selene Core's settings.";
+                    : "No screenshots or clips found. Selene looks in Steam's screenshot folders, Videos\\Captures (Xbox Game Bar), Videos\\NVIDIA (the NVIDIA app), Videos\\Radeon ReLive (AMD Software) and the folders you add under Captures in Selene Core's settings.";
                 return;
             }
             note.Text = "";
@@ -874,13 +874,16 @@ namespace Selene
             Folder(list, Path.Combine(videos, "Captures"), null, false);
             // the NVIDIA app: Videos\NVIDIA\<game>\, and the older Videos\<game>\
             Folder(list, Path.Combine(videos, "NVIDIA"), null, true);
+            // AMD Software (Adrenalin): Videos\Radeon ReLive\<game>\ (newer versions: Videos\AMD\<game>\) (#90)
+            Folder(list, Path.Combine(videos, "Radeon ReLive"), null, true);
+            Folder(list, Path.Combine(videos, "AMD"), null, true);
             try
             {
                 if (Directory.Exists(videos))
                     foreach (var dir in Directory.GetDirectories(videos))
                     {
                         var n = Path.GetFileName(dir);
-                        if (n.Equals("Captures", StringComparison.OrdinalIgnoreCase) || n.Equals("NVIDIA", StringComparison.OrdinalIgnoreCase) || SystemFolder(n, dir)) continue;
+                        if (n.Equals("Captures", StringComparison.OrdinalIgnoreCase) || n.Equals("NVIDIA", StringComparison.OrdinalIgnoreCase) || n.Equals("Radeon ReLive", StringComparison.OrdinalIgnoreCase) || n.Equals("AMD", StringComparison.OrdinalIgnoreCase) || SystemFolder(n, dir)) continue;
                         Add(list, Directory.GetFiles(dir), n);
                     }
             }
@@ -997,7 +1000,7 @@ namespace Selene
                     if (all.Count == 0)
                     {
                         headline = "No captures yet";
-                        about = "Screenshots and clips from Steam, Xbox Game Bar, the NVIDIA app and your own folders show here.";
+                        about = "Screenshots and clips from Steam, Xbox Game Bar, the NVIDIA app, AMD Software and your own folders show here.";
                     }
                     else
                     {

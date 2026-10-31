@@ -82,6 +82,31 @@ namespace Selene
 
         private static string SquareFile(Guid id) { return Path.Combine(SelenePaths.Media("Square"), id + ".jpg"); }
 
+        // a logo for a game Steam and IGDB have none for (HoYoPlay's games), from SteamGridDB: its top-voted static PNG, for the
+        // entry whose name is the game's (else the first found). Needs the key; false when there's none or nothing was found.
+        public static bool Logo(Game g, string target)
+        {
+            var key = Key;
+            if (key == null || !DownloadConsent.Allowed("artdownload")) return false;
+            var found = Json(Api + "search/autocomplete/" + Uri.EscapeDataString(g.Name), key);
+            var hits = found != null ? (found["data"] as object[] ?? new object[0]).OfType<Dictionary<string, object>>().ToList() : new List<Dictionary<string, object>>();
+            Func<string, string> norm = s => System.Text.RegularExpressions.Regex.Replace((s ?? "").ToLowerInvariant(), "[^a-z0-9]", "");
+            var hit = hits.FirstOrDefault(h => norm(Convert.ToString(h["name"])) == norm(g.Name));   // (exact name only, as for squares)
+            if (hit == null) return false;
+            Dictionary<string, object> list;
+            try { list = Json(Api + "logos/game/" + hit["id"] + "?types=static&mimes=image/png&nsfw=false&humor=false&epilepsy=false", key); }
+            catch (WebException) { return false; }
+            var pick = list != null ? (list["data"] as object[] ?? new object[0]).OfType<Dictionary<string, object>>().FirstOrDefault() : null;
+            var url = pick != null ? pick["url"] as string : null;
+            if (url == null) return false;
+            byte[] data;
+            using (var web = Client(null)) data = web.DownloadData(url);
+            if (data.Length < 8 || data[0] != 0x89 || data[1] != 0x50) return false;
+            Directory.CreateDirectory(Path.GetDirectoryName(target));
+            File.WriteAllBytes(target, data);
+            return true;
+        }
+
         // from the art download worker: a square picture for a game that has none
         public static void Fetch(Game g, Func<string> steamId)
         {
@@ -98,9 +123,12 @@ namespace Selene
             if (!string.IsNullOrEmpty(id)) grids = Api + "grids/steam/" + id;
             else
             {
+                // by name only on the exact name: the first hit was often another game with a similar name (#31: emulated PS2
+                // games got a Steam game's square). No match: no square, the game's own cover shows
                 var found = Json(Api + "search/autocomplete/" + Uri.EscapeDataString(g.Name), key);
-                var first = found != null ? (found["data"] as object[] ?? new object[0]).OfType<Dictionary<string, object>>().FirstOrDefault() : null;
-                if (first != null) grids = Api + "grids/game/" + first["id"];
+                Func<string, string> norm = s => System.Text.RegularExpressions.Regex.Replace((s ?? "").ToLowerInvariant(), "[^a-z0-9]", "");
+                var exact = found != null ? (found["data"] as object[] ?? new object[0]).OfType<Dictionary<string, object>>().FirstOrDefault(h => norm(Convert.ToString(h["name"])) == norm(g.Name)) : null;
+                if (exact != null) grids = Api + "grids/game/" + exact["id"];
             }
             string url = null;
             if (grids != null)
@@ -108,7 +136,16 @@ namespace Selene
                 try
                 {
                     var list = Json(grids + "?dimensions=1024x1024,512x512&types=static&nsfw=false&humor=false&epilepsy=false", key);
-                    var pick = list != null ? (list["data"] as object[] ?? new object[0]).OfType<Dictionary<string, object>>().FirstOrDefault() : null;
+                    // most votes first; on a tie (often all 0) a full-size JPEG: those are key art, where a PNG is often the
+                    // game's app icon (Genshin Impact's came up as Paimon's launcher icon)
+                    Func<Dictionary<string, object>, string, double> num = (d, k) => { object v; try { return d.TryGetValue(k, out v) ? Convert.ToDouble(v) : 0; } catch { return 0; } };
+                    var pick = list != null ? (list["data"] as object[] ?? new object[0]).OfType<Dictionary<string, object>>()
+                        .Select((d, i) => new { d, i })
+                        .OrderByDescending(x => num(x.d, "upvotes") - num(x.d, "downvotes"))
+                        .ThenBy(x => Convert.ToString(x.d.ContainsKey("mime") ? x.d["mime"] : "") == "image/jpeg" ? 0 : 1)
+                        .ThenByDescending(x => num(x.d, "width"))
+                        .ThenBy(x => x.i)
+                        .Select(x => x.d).FirstOrDefault() : null;
                     if (pick != null) url = pick["url"] as string;
                 }
                 catch (WebException ex)

@@ -875,6 +875,7 @@ namespace Selene
         }
         public static void GameEnded()
         {
+            GamePause.Unhush();   // never left turned down if the game ended before its sound faded back in (Windows keeps it)
             gameEndedAt = DateTime.Now;
             guideAtHome = false;
             lastGameSnap = null;
@@ -1495,8 +1496,8 @@ namespace Selene
             PreviewChanged();
         }
 
-        // no game in the library yet: an example game's art (Steam's library art for it, fetched once and kept in Selene's media
-        // folder, not shipped with Selene), so the Game art / Background only choice shows what it does
+        // no game in the library yet: an example game's art (Steam's library art for it; a copy ships with the theme in Media\Sample,
+        // see THIRD-PARTY-NOTICES), so the Game art / Background only choice shows what it does
         private const string SampleName = "Clair Obscur: Expedition 33";
         private const string SampleUrl = "https://cdn.akamai.steamstatic.com/steam/apps/1903340/library_hero.jpg";
         private static Grid previewLayer;
@@ -1518,10 +1519,20 @@ namespace Selene
             }
         }
 
+        // a sample picture: the one fetched into the media folder, else the copy that ships with the theme (Media\Sample), so a
+        // new install's theme and background steps show the example before any download is allowed
+        private static string SampleFile(string name)
+        {
+            var fetched = System.IO.Path.Combine(SelenePaths.Media("Sample"), name);
+            if (System.IO.File.Exists(fetched)) return fetched;
+            var shipped = SelenePaths.ThemeFile("Media", "Sample", name);
+            return !string.IsNullOrEmpty(shipped) && System.IO.File.Exists(shipped) ? shipped : null;
+        }
+
         private static ImageSource LoadSample(string name, int width)
         {
-            var f = System.IO.Path.Combine(SelenePaths.Media("Sample"), name);
-            return System.IO.File.Exists(f) ? Wallpapers.Load(f, width) : null;
+            var f = SampleFile(name);
+            return f != null ? Wallpapers.Load(f, width) : null;
         }
 
         // the sample game's pictures from Steam (once; kept in Selene's media folder, not shipped), then `ready` on the UI thread
@@ -1555,8 +1566,8 @@ namespace Selene
         }
         private static bool SampleArtForPreview(Panel art)
         {
-            var file = System.IO.Path.Combine(SelenePaths.Media("Sample"), "expedition33-hero.jpg");
-            if (samplePic == null && System.IO.File.Exists(file)) samplePic = Wallpapers.Load(file);   // decoded once, kept
+            var file = SampleFile("expedition33-hero.jpg");
+            if (samplePic == null && file != null) samplePic = Wallpapers.Load(file);   // decoded once, kept
             if (samplePic != null) { PutPreviewArt(art, samplePic, true); return true; }
             if (!DownloadConsent.Allowed("artdownload")) return false;
             var ui = Application.Current.Dispatcher;
@@ -3684,6 +3695,9 @@ namespace Selene
                 if (!repeat) StopSteady();
                 lastPadButton = same; lastPadRaw = pressed; lastPadAt = now;
                 if (repeat && SteadyRepeat(same)) { e.Cancel(); return; }
+                // the controller driving the mouse (Steam Input's desktop layout and the like turn the stick into pointer moves, but
+                // Playnite still gets the stick and d-pad): while the pointer is moving, directions move only the pointer, no focus
+                if (same.StartsWith("DPad") && InputHints.PointerMovedWithin(1200)) { e.Cancel(); return; }
                 HideCursorForController();
                 // both sticks clicked together: Report a problem, with a picture of the screen as it is (View + Start is often
                 // taken: Steam and others put the PC to sleep with it)
@@ -4974,12 +4988,20 @@ namespace Selene
 
         private static void RenderFilterTabs(Window w) { RenderFilterTabs(w, 0); }
 
+        // at most this many tabs show; more (a long list of Playnite presets) slide past in a strip that fades out at the edge
+        // that has more, so the bar never fills the whole top of the screen (#71)
+        private const int VisibleTabs = 5;
+        private static double tabStripAt;
+        private static string tabStripSet;
+        private static bool tabFadeLeft, tabFadeRight;
+
         private static void RenderFilterTabs(Window w, int dir)
         {
             var host = w != null ? FindByName(w, "SeleneFilterTabs") as StackPanel : null;
             if (host == null) return;
             host.Children.Clear();
             host.Children.Add(FilterBadge("LB"));
+            var strip = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
             for (int i = 0; i < RowFilters.Length; i++)
             {
                 bool on = i == RowFilter;
@@ -4995,7 +5017,7 @@ namespace Selene
                     Background = on ? (Brush)Ink.Brush("SeleneFocusColor", 0.95) : Brushes.Transparent,
                     VerticalAlignment = VerticalAlignment.Center, RenderTransformOrigin = new Point(0.5, 0.5)
                 };
-                host.Children.Add(tab);
+                strip.Children.Add(tab);
                 if (on && dir != 0)
                 {
                     var pop = new ScaleTransform(0.86, 0.86);
@@ -5006,7 +5028,60 @@ namespace Selene
                     tab.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0.4, 1, TimeSpan.FromMilliseconds(160)));
                 }
             }
+            if (RowFilters.Length <= VisibleTabs) { host.Children.Add(strip); tabStripSet = null; }
+            else host.Children.Add(TabWindow(strip, dir));
             host.Children.Add(FilterBadge("RB"));
+        }
+
+        // the tabs in a window as wide as the widest run of VisibleTabs in a row (it keeps its width while sliding); the chosen
+        // tab glides to the middle (held at the ends), and a soft fade on a side says more tabs wait there
+        private static UIElement TabWindow(StackPanel strip, int dir)
+        {
+            strip.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            var widths = strip.Children.Cast<UIElement>().Select(c => c.DesiredSize.Width).ToArray();
+            double view = 0, total = widths.Sum();
+            for (int i = 0; i + VisibleTabs <= widths.Length; i++) view = Math.Max(view, widths.Skip(i).Take(VisibleTabs).Sum());
+            int sel = Math.Max(0, Math.Min(widths.Length - 1, RowFilter));
+            double center = widths.Take(sel).Sum() + widths[sel] / 2;
+            double at = Math.Max(0, Math.Min(total - view, center - view / 2));
+            bool left = at > 0.5, right = at < total - view - 0.5;
+
+            // the same tabs as last time: slide on from where the strip was; a new set starts in place
+            var set = string.Join("|", RowFilterLabels);
+            bool same = set == tabStripSet;
+            double from = same ? tabStripAt : at;
+            tabStripSet = set;
+            tabStripAt = at;
+            var shift = new TranslateTransform(-at, 0);
+            strip.RenderTransform = shift;
+            var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+            var time = TimeSpan.FromMilliseconds(260);
+            bool animate = same && !Lite && Math.Abs(from - at) > 0.5;
+            if (animate) shift.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(-from, -at, time) { EasingFunction = ease });
+
+            const double room = 8;   // a little space inside the edges, so a tab never meets the cut right at a badge
+            double wide = Math.Ceiling(view) + 2 * room;
+            double fade = Math.Min(0.18, 64 / wide);
+            // (in the window's own pixels: measured on the content it would span the whole strip, off past the edge)
+            var mask = new LinearGradientBrush { MappingMode = BrushMappingMode.Absolute, StartPoint = new Point(0, 0), EndPoint = new Point(wide, 0) };
+            var leftEdge = new GradientStop(left ? Colors.Transparent : Colors.Black, 0);
+            var rightEdge = new GradientStop(right ? Colors.Transparent : Colors.Black, 1);
+            mask.GradientStops.Add(leftEdge);
+            mask.GradientStops.Add(new GradientStop(Colors.Black, fade));
+            mask.GradientStops.Add(new GradientStop(Colors.Black, 1 - fade));
+            mask.GradientStops.Add(rightEdge);
+            if (same && !Lite)
+            {
+                if (left != tabFadeLeft) leftEdge.BeginAnimation(GradientStop.ColorProperty, new ColorAnimation(left ? Colors.Black : Colors.Transparent, left ? Colors.Transparent : Colors.Black, time));
+                if (right != tabFadeRight) rightEdge.BeginAnimation(GradientStop.ColorProperty, new ColorAnimation(right ? Colors.Black : Colors.Transparent, right ? Colors.Transparent : Colors.Black, time));
+            }
+            tabFadeLeft = left;
+            tabFadeRight = right;
+            // (a canvas: the strip keeps its full width inside it instead of being cut to the window before it slides)
+            var window = new Canvas { Width = wide, Height = strip.DesiredSize.Height, ClipToBounds = true, OpacityMask = mask, VerticalAlignment = VerticalAlignment.Center };
+            Canvas.SetLeft(strip, room);
+            window.Children.Add(strip);
+            return window;
         }
 
         internal static Border FilterBadge(string text)
@@ -5255,7 +5330,7 @@ namespace Selene
             catch (Exception ex) { Log("save card order: " + ex.Message); }
         }
 
-        // the row's cards and the switch each one answers to (the Store card is always there)
+        // the row's cards and the switch each one answers to
         private static readonly System.Collections.Generic.KeyValuePair<string, string>[] CardFeatures =
         {
             new System.Collections.Generic.KeyValuePair<string, string>("nav:library", "cardcollection"),
@@ -5264,6 +5339,7 @@ namespace Selene
             new System.Collections.Generic.KeyValuePair<string, string>("nav:surprise", "cardsurprise"),
             new System.Collections.Generic.KeyValuePair<string, string>("nav:news", "cardnews"),
             new System.Collections.Generic.KeyValuePair<string, string>("nav:achievements", "cardachievements"),
+            new System.Collections.Generic.KeyValuePair<string, string>("nav:store", "cardstore"),   // (#59: could not be hidden)
         };
 
         // the cards in the theme's order (a card switched back on goes back in at its place, then the saved order applies)
@@ -5688,7 +5764,15 @@ namespace Selene
                     return;
                 }
                 // Elevated games are outside Selene's process-control scope until a protected broker exists.
-                if (LocalGames.IsElevated((int)pid)) { Log("pause skipped: game runs as administrator"); return; }
+                // Its process isn't touched (no freeze, no priority); what Windows lets any program do to an administrator window
+                // is: its sound muted (per-app volume) and the window minimized like the taskbar does, so it stops drawing 4K
+                // behind the home (Genshin Impact kept the GPU busy and the home stuttered). Home again restores it.
+                if (LocalGames.IsElevated((int)pid))
+                {
+                    ShowWindow(gameWindow, 7);  // SW_SHOWMINNOACTIVE
+                    GamePause.MuteOnly((int)pid, (name ?? "") + " (administrator, minimized=" + IsIconic(gameWindow) + ")");
+                    return;
+                }
                 // freezing switched off: every game is treated like an online one (only muted)
                 bool online = !Features.On("freeze") || GamePause.IsOnline((int)pid);
                 if (!online) ShowWindow(gameWindow, 7);  // SW_SHOWMINNOACTIVE: parked, so Windows will not ghost it once frozen
@@ -6180,6 +6264,8 @@ namespace Selene
         }
         private static IntPtr steamDialog = IntPtr.Zero;
         private static int steamDialogTicks;
+        private static IntPtr launcherAsk = IntPtr.Zero;   // a launcher's window in front while a game loads, and for how many ticks
+        private static int launcherAskTicks;
         private static DateTime launchStart;
         private static System.Windows.Threading.DispatcherTimer launchTimer;
         private static DateTime gameWindowSeenAt = DateTime.MinValue;
@@ -6563,6 +6649,14 @@ namespace Selene
         {
             if (Api == null) return;
             var g = Api.Database.Games.Get(id);
+            // Play / Resume on the game that is running: back to it (Playnite's own start does nothing for a running game)
+            if (g != null && g.IsRunning && !launching && CanReturnToGame() && Application.Current.MainWindow != null)
+            {
+                Log("play: " + g.Name + " is running -> back to it");
+                guideAtHome = false;
+                ReturnToGame(Application.Current.MainWindow);
+                return;
+            }
             // one identity per press: the delayed start below and B's cancel both act on this attempt only
             var attempt = new LaunchAttempt(id, g != null ? LocalGames.ProcessesInGameFolder(g) : new List<int>());
             launchAttempt = attempt;
@@ -6644,6 +6738,7 @@ namespace Selene
                 gameWindowSeenAt = DateTime.MinValue;
                 gameGoneSince = DateTime.MinValue;
                 coverArtGone = false;
+                launchShownLogged = 0;
                 lastGameWindow = IntPtr.Zero;
                 gamePids.Clear();
                 gamePidsAt = DateTime.MinValue;
@@ -6653,7 +6748,7 @@ namespace Selene
                 launchGrace = LaunchGrace(gameId);
                 coverCancelledByGuide = false;
                 steamDialog = IntPtr.Zero;
-                steamDialogTicks = 0;
+                steamDialogTicks = 0; launcherAsk = IntPtr.Zero; launcherAskTicks = 0;
                 var phase = System.Diagnostics.Stopwatch.StartNew();
                 if (removeCoverOverlay != null) removeCoverOverlay();  // a previous one still fading
                 SnapshotWindows();
@@ -6699,6 +6794,27 @@ namespace Selene
             var sd = FindSteamDialog();
             if (sd != IntPtr.Zero && sd == steamDialog) steamDialogTicks++; else { steamDialog = sd; steamDialogTicks = 0; }
             if (sd != IntPtr.Zero && steamDialogTicks >= 30) { AbortLaunchCover(sd, "Steam dialog"); return; }
+            // the same for any launcher: its own (not full-screen) window in front for 12 s before the game shows any window is
+            // waiting for the player (Rockstar Games Launcher signing out, a login, an update prompt) and the loading screen kept it
+            // covered with no way to reach it (#55). Shorter visits (EA, Ubisoft show a window on every start) keep the cover.
+            if (gameWindowSeenAt == DateTime.MinValue)
+            {
+                var fg = GetForegroundWindow();
+                bool asking = false;
+                RECT fr;
+                if (fg != IntPtr.Zero && fg != me && !IsIconic(fg) && GetWindowRect(fg, out fr))
+                {
+                    uint fpid; GetWindowThreadProcessId(fg, out fpid);
+                    var screen = System.Windows.Forms.Screen.FromHandle(fg).Bounds;
+                    bool small = fr.Right - fr.Left < screen.Width * 0.9 || fr.Bottom - fr.Top < screen.Height * 0.9;
+                    var cover = coverWindow != null ? new System.Windows.Interop.WindowInteropHelper(coverWindow).Handle : IntPtr.Zero;
+                    var proc = ProcessNameOf(fg);
+                    bool shell = proc == "explorer" || proc == "shellexperiencehost" || proc == "startmenuexperiencehost" || proc == "searchhost" || proc == "textinputhost" || proc == "lockapp" || proc == "";
+                    asking = small && !shell && IsWindowVisible(fg) && fg != cover && fpid != (uint)System.Diagnostics.Process.GetCurrentProcess().Id;
+                }
+                if (asking && fg == launcherAsk) launcherAskTicks++; else { launcherAsk = asking ? fg : IntPtr.Zero; launcherAskTicks = 0; }
+                if (asking && launcherAskTicks >= 120) { AbortLaunchCover(fg, "a launcher window waits for you: " + WindowInfo(fg)); return; }
+            }
             // ONE rule for every game (no per-game timing): the game is ready when it is really showing something -
             //   its own (nearly) full-screen window is up AND it is making sound (intro logos / menu music)
             // Fallbacks: window up 12 s but silent -> show it; sound for 10 s but no full-screen window (windowed game) ->
@@ -6739,7 +6855,7 @@ namespace Selene
                     // for a moment (no window can cover that, and it comes on the game's own schedule): the loading screen
                     // fades to black first and the game gets the focus once it's dark, so the blank can't be seen
                     var gameHwnd = found;
-                    Action focusGame = () => { if (launching && IsWindow(gameHwnd)) ForceForegroundAsync(gameHwnd, KeepCoverOnTop); };
+                    Action focusGame = () => { if (launching && IsWindow(gameHwnd)) ForceForegroundAsync(gameHwnd, KeepCoverOnTop, false); };
                     if (!coverArtGone) { coverArtGone = true; ArtToLogo(focusGame); }
                     else focusGame();
                 }
@@ -7035,20 +7151,87 @@ namespace Selene
             return result;
         }
 
-        private static bool CanReturnToGame() { return gameWindow != IntPtr.Zero && IsWindow(gameWindow) && AnyGameRunning(); }
+        private static bool CanReturnToGame()
+        {
+            if (!AnyGameRunning()) return false;
+            if (gameWindow != IntPtr.Zero && IsWindow(gameWindow)) return true;
+            // the game's window was lost track of (B pressed while it loaded: the loading screen went, the game went on starting)
+            // while the game runs: found again from its processes, so Resume and Home can still go back to it
+            var found = RunningGameWindow();
+            if (found == IntPtr.Zero) return false;
+            gameWindow = found;
+            Log("game window found again: " + WindowInfo(found));
+            return true;
+        }
+
+        private static IntPtr RunningGameWindow()
+        {
+            try
+            {
+                var g = RunningGame();
+                if (g == null) return IntPtr.Zero;
+                foreach (var pid in LocalGames.ProcessesInGameFolder(g))
+                {
+                    try
+                    {
+                        var h = System.Diagnostics.Process.GetProcessById(pid).MainWindowHandle;
+                        if (h != IntPtr.Zero && IsWindow(h)) return h;
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+            return IntPtr.Zero;
+        }
 
         // While the loading screen is up, any window coming to the front (the game's first window, its launcher) is put back
         // under the art at once; the 100 ms check alone let a black game window show for a moment.
         private delegate void WinEventProc(IntPtr hook, uint evt, IntPtr hwnd, int obj, int child, uint thread, uint time);
         [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern IntPtr SetWinEventHook(uint min, uint max, IntPtr module, WinEventProc proc, uint pid, uint thread, uint flags);
-        private static WinEventProc foregroundProc;   // kept alive: Windows calls it
-        private static IntPtr foregroundHook;
+        private static WinEventProc foregroundProc, showProc;   // kept alive: Windows calls them
+        private static IntPtr foregroundHook, showHook;
 
         private static void WatchForeground()
         {
             if (foregroundHook != IntPtr.Zero) return;
             foregroundProc = (h, evt, hwnd, o, c, t, time) => { if (launching) KeepCoverOnTop(); };
             foregroundHook = SetWinEventHook(3, 3, IntPtr.Zero, foregroundProc, 0, 0, 0);   // EVENT_SYSTEM_FOREGROUND, out of context
+            // a window that appears without taking the focus (Genshin Impact's small first window at the top left, launchers'
+            // splash screens) flashed over the loading screen until the next 100 ms check: any new top-level window puts it back
+            showProc = (h, evt, hwnd, o, c, t, time) =>
+            {
+                // any window that isn't a control inside another one: owned pop-ups (a splash, an anti-cheat notice) too
+                if (!launching || o != 0 || c != 0 || hwnd == IntPtr.Zero || (GetWindowLong(hwnd, -16) & 0x40000000) != 0) return;   // WS_CHILD
+                KeepCoverOnTop();
+                // what appears while a game starts (which window flickers over the loading screen, and from which program)
+                RECT r;
+                if (launchShownLogged < 40 && GetWindowRect(hwnd, out r) && r.Right - r.Left > 0 && r.Bottom - r.Top > 0)
+                {
+                    launchShownLogged++;
+                    Log("launch: window shown " + WindowInfo(hwnd) + (coverDark ? " (loading screen already dark)" : ""));
+                }
+            };
+            showHook = SetWinEventHook(0x8002, 0x8002, IntPtr.Zero, showProc, 0, 0, 0);   // EVENT_OBJECT_SHOW, out of context
+        }
+        [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern IntPtr GetParent(IntPtr hwnd);
+        private static int launchShownLogged;
+
+        // a window for the log: its program, class, place and size, and whether it is topmost / run as administrator
+        private static string WindowInfo(IntPtr hwnd)
+        {
+            try
+            {
+                if (hwnd == IntPtr.Zero) return "none";
+                uint pid; GetWindowThreadProcessId(hwnd, out pid);
+                string proc = "?";
+                try { proc = System.Diagnostics.Process.GetProcessById((int)pid).ProcessName; } catch { }
+                var cls = new System.Text.StringBuilder(64); GetClassName(hwnd, cls, 64);
+                RECT r; GetWindowRect(hwnd, out r);
+                bool top = (GetWindowLong(hwnd, -20) & 0x8) != 0;   // WS_EX_TOPMOST
+                return proc + " [" + cls + "] " + r.Left + "," + r.Top + " " + (r.Right - r.Left) + "x" + (r.Bottom - r.Top)
+                    + (top ? " topmost" : "") + (pid != 0 && LocalGames.IsElevated((int)pid) ? " admin" : "") + (IsIconic(hwnd) ? " minimized" : "");
+            }
+            catch { return "?"; }
         }
 
         private static void KeepCoverOnTop()
@@ -7060,25 +7243,39 @@ namespace Selene
 
         // the same off the UI thread: attaching to the game's input thread waits for that thread to answer, and a game in the
         // middle of its display-mode switch answered seconds later, freezing the loading screen's fade (and the veil's) with it
-        private static void ForceForegroundAsync(IntPtr hwnd, Action then)
+        private static void ForceForegroundAsync(IntPtr hwnd, Action then) { ForceForegroundAsync(hwnd, then, true); }
+        // raise=false: the focus only, the window left where it is in the stacking (a starting game behind the loading screen:
+        // raising it showed its first, half-drawn frame over the art for a moment)
+        private static void ForceForegroundAsync(IntPtr hwnd, Action then, bool raise)
         {
             var app = Application.Current;
             System.Threading.Tasks.Task.Factory.StartNew(() =>
             {
-                try { ForceForeground(hwnd); } catch (Exception ex) { Log("foreground: " + ex.Message); }
+                try { ForceForeground(hwnd, raise); } catch (Exception ex) { Log("foreground: " + ex.Message); }
                 if (then != null && app != null) app.Dispatcher.BeginInvoke(then);
             });
         }
 
-        private static void ForceForeground(IntPtr hwnd)
+        private static void ForceForeground(IntPtr hwnd) { ForceForeground(hwnd, true); }
+        private static void ForceForeground(IntPtr hwnd, bool raise)
         {
             if (IsIconic(hwnd)) ShowWindow(hwnd, 9);  // SW_RESTORE
             uint fg = GetWindowThreadProcessId(GetForegroundWindow(), IntPtr.Zero), me = GetCurrentThreadId();
             bool attached = fg != 0 && fg != me && AttachThreadInput(me, fg, true);
-            BringWindowToTop(hwnd);
+            if (raise) BringWindowToTop(hwnd);
             SetForegroundWindow(hwnd);
             if (attached) AttachThreadInput(me, fg, false);
+            if (!raise) return;
+            // a game run as administrator: Windows refuses all of the above across that line (its window stayed minimized
+            // and black while "in front", and Selene could not come back over it). The switch Alt+Tab makes is allowed: it
+            // restores and activates the window (measured on Genshin Impact, from a program that wasn't even in front)
+            if (GetForegroundWindow() != hwnd || IsIconic(hwnd))
+            {
+                SwitchToThisWindow(hwnd, true);
+                Log("foreground: Alt+Tab switch to " + WindowInfo(hwnd) + " -> in front: " + WindowInfo(GetForegroundWindow()));
+            }
         }
+        [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern void SwitchToThisWindow(IntPtr hwnd, bool altTab);
 
         // console-style switch: Playnite settles in from a slight zoom while fading in ...
         private static ScaleTransform RootScale(FrameworkElement root)
@@ -7180,6 +7377,11 @@ namespace Selene
             {
                 GamePause.Resume();
                 ForceForeground(target);
+                // back to a game run as administrator: Playnite goes back into the tray as after its launch, so the next Home
+                // comes out of hiding (the one way Windows always lets it in front of that game)
+                uint tpid = 0;
+                if (target != IntPtr.Zero) GetWindowThreadProcessId(target, out tpid);
+                if (tpid != 0 && LocalGames.IsElevated((int)tpid) && !CloseToTray.IsHidden) CloseToTray.HideToTray();
                 // Playnite stays blank behind the game (restoring it there made Windows show that stale bright frame
                 // on the next Guide press); Activated fades it back in. Retry once, and if the game still didn't
                 // come forward, fade Playnite back in rather than leaving a black screen.
@@ -7191,7 +7393,7 @@ namespace Selene
                     bool ok = GetForegroundWindow() == target;
                     if (!ok && attempt == 1) { ForceForeground(target); return; }
                     verify.Stop();
-                    Log("guide -> back to game (foreground=" + ok + ", attempts=" + attempt + ")");
+                    Log("guide -> back to game (foreground=" + ok + ", attempts=" + attempt + ", in front: " + WindowInfo(GetForegroundWindow()) + ")");
                     if (!ok && w.IsActive) PlayEnterAnimation(w);
                 };
                 verify.Start();
@@ -7622,16 +7824,30 @@ namespace Selene
                 {
                     // Ordinary window switching only. Never cover or freeze an elevated game on the assumption
                     // that focus was acquired: Windows can refuse this request.
+                    // Windows won't hand the screen over while an administrator window is active (borrowing its input queue
+                    // is blocked across that line): the game's window is minimized first, as the taskbar does, and then
+                    // Selene may come forward (the second Home press over Genshin Impact stayed behind it, every press lost).
                     var elevatedWindow = GetForegroundWindow();
+                    // Selene may not take the screen itself, but Windows hands it on by its own rule when the active window is
+                    // minimized: to the next window down. So Playnite is shown and laid directly under the game first, then the
+                    // game is minimized (minimizing first gave the screen to the taskbar, and Selene was refused after that)
+                    Log("guide: administrator game in front (" + WindowInfo(elevatedWindow) + ")");
+                    if (CloseToTray.IsHidden) CloseToTray.Unhide();
+                    SetWindowPos(hwnd, elevatedWindow, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010);   // under the game: NOSIZE | NOMOVE | NOACTIVATE
+                    ShowWindow(elevatedWindow, 6);   // SW_MINIMIZE: Windows activates the next window, Playnite
+                    Log("guide: game minimized=" + IsIconic(elevatedWindow) + ", now in front: " + WindowInfo(GetForegroundWindow()));
+                    if (!PlayniteInFront()) w.Activate();
                     ForceForegroundAsync(hwnd, () =>
                     {
-                        if (!PlayniteInFront()) { Log("guide: ordinary focus request declined for administrator game; use Alt+Tab"); return; }
-                        if (AnyGameRunning()) { gameWindow = elevatedWindow; guideAtHome = true; }
+                        Log("guide: after the switch, in front: " + WindowInfo(GetForegroundWindow()));
+                        if (!PlayniteInFront()) ForceForeground(hwnd);   // once more, now that the game is down
+                        if (!PlayniteInFront()) { if (IsIconic(elevatedWindow)) ShowWindow(elevatedWindow, 9); Log("guide: Windows kept the administrator game in front; use Alt+Tab"); return; }
+                        if (AnyGameRunning()) { gameWindow = elevatedWindow; guideAtHome = true; StartStealGuard(w); }   // (the game can't take the screen straight back)
                         var content = w.Content as UIElement;
                         if (content != null) FadeInRoot(content);
                         FocusRowSoon(0);
-                        Ui.Notice("Administrator game is still running. Pause it from its own menu.", 6000);
-                        Log("guide: ordinary window switch from administrator game; no process control");
+                        if (AnyGameRunning()) PauseRunningGame();   // muted (it is already minimized)
+                        Log("guide: administrator game minimized, Selene in front");
                     });
                     return;
                 }

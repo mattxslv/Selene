@@ -435,6 +435,74 @@ namespace Selene
             return IgdbScreenshotsById(igdbId);
         }
 
+        // a game not on Steam (HoYoPlay's, Riot's...): its wide official artwork from IGDB through Playnite's backend, full size
+        // (4K where IGDB has it). Only on an exact name match ("Honkai Star Rail" = "Honkai: Star Rail"); pictures with see-through
+        // parts (logos, characters cut out) and narrow ones are left out. Its screenshots when it has no artwork.
+        // IGDB's artwork types: 2 key art without a logo (the best background: Selene puts the logo over it), 1 artwork,
+        // 3 key art with its logo; 7 the logo itself (see-through); 6 and 10 (emblems, tall covers) are never backgrounds
+        private static readonly int[] HeroTypes = { 2, 1, 3 };
+
+        internal class IgdbArt { public List<string> Heroes = new List<string>(); public string Logo; }
+
+        // a game's backgrounds (best first, to try in turn: a picture can turn out to be something else) and logo
+        internal static IgdbArt IgdbArtFor(string name)
+        {
+            var art = new IgdbArt();
+            var igdbId = IgdbIdByName(name);
+            if (igdbId == null) return art;
+            var game = Json(Download(PlayniteBackend + "game/" + igdbId));
+            object g;
+            if (game == null || !game.TryGetValue("data", out g) || !(g is Dictionary<string, object>)) return art;
+            var data = (Dictionary<string, object>)g;
+            Func<string, string> url = imageId => "https://images.igdb.com/igdb/image/upload/t_original/" + imageId + ".jpg";
+            foreach (var field in new[] { "artworks_expanded", "screenshots_expanded" })
+            {
+                object list;
+                if (!data.TryGetValue(field, out list) || !(list is object[])) continue;
+                var wide = new List<KeyValuePair<int, Dictionary<string, object>>>();
+                foreach (var o in (object[])list)
+                {
+                    var d = o as Dictionary<string, object>;
+                    if (d == null || !d.ContainsKey("image_id")) continue;
+                    object alpha, kind;
+                    bool see = d.TryGetValue("alpha_channel", out alpha) && Equals(alpha, true);
+                    int type = d.TryGetValue("artwork_type", out kind) ? Convert.ToInt32(kind) : 1;
+                    if (field == "artworks_expanded" && type == 7 && see && art.Logo == null)
+                        art.Logo = "https://images.igdb.com/igdb/image/upload/t_original/" + d["image_id"] + ".png";
+                    if (see) continue;
+                    double w = d.ContainsKey("width") ? Convert.ToDouble(d["width"]) : 0, h = d.ContainsKey("height") ? Convert.ToDouble(d["height"]) : 0;
+                    if (w < 1280 || h <= 0 || w / h < 1.6) continue;
+                    int rank = field == "screenshots_expanded" ? 10 : Array.IndexOf(HeroTypes, type);
+                    if (rank < 0) continue;
+                    wide.Add(new KeyValuePair<int, Dictionary<string, object>>(rank, d));
+                }
+                foreach (var d in wide.OrderBy(p => p.Key).ThenByDescending(p => Convert.ToDouble(p.Value["width"])).Take(4))
+                    art.Heroes.Add(url(Convert.ToString(d.Value["image_id"])));
+            }
+            return art;
+        }
+
+        private static string IgdbIdByName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return null;
+            string body;
+            using (var wc = Client())
+            {
+                wc.Headers[HttpRequestHeader.ContentType] = "application/json";
+                body = wc.UploadString(PlayniteBackend + "search", "{\"SearchTerm\":" + new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(name) + "}");
+            }
+            var found = Json(body);
+            object data;
+            if (found == null || !found.TryGetValue("data", out data) || !(data is object[])) return null;
+            string want = Norm(name);
+            foreach (var o in (object[])data)
+            {
+                var d = o as Dictionary<string, object>;
+                if (d != null && d.ContainsKey("name") && Norm(Convert.ToString(d["name"])) == want) return Convert.ToString(d["id"]);
+            }
+            return null;
+        }
+
         private static List<string> IgdbScreenshotsById(string igdbId)
         {
             var list = new List<string>();

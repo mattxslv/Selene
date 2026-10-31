@@ -29,6 +29,13 @@ namespace Selene
 
         public static bool Playing { get { return video != null; } }
 
+        // Collection's button hints off: their row shrinks so the covers sit lower instead of floating over an empty strip (#32)
+        public static void ApplyHints()
+        {
+            var grid = library as Grid;
+            if (grid != null && grid.RowDefinitions.Count > 3) grid.RowDefinitions[3].Height = new GridLength(Features.On("hints") && Features.On("collectionhints") ? 104 : 40);
+        }
+
         public static void Attach(Window w)
         {
             if (list != null || w == null) return;

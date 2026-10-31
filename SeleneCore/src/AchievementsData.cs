@@ -496,7 +496,7 @@ namespace Selene
                     cachedAt = DateTime.MinValue;   // read again on the next look
                     if (recentOnly) return;
                     try { File.WriteAllText(SetupFile, "done " + version + (SteamUserSet(persisted) ? " steam" : "")); } catch { }
-                    if (ok) ProgressToast.ShowNote("Achievements", "Ready", 0xea23);
+                    if (ok && Features.On("taskcards")) ProgressToast.ShowNote("Achievements", "Ready", 0xea23);
                 }));
                 pt.GetProperty("OnRefreshCompleted").SetValue(policy, finished, null);
                 int n, all; double part; Guid? on;

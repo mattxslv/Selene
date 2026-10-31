@@ -100,11 +100,37 @@ namespace Selene
         // the saved animated avatar when there is one
         public static string Steam { get { return File.Exists(SteamFile) ? SteamFile : null; } }
 
+        // a profile that picked the Steam avatar while only its still picture was there (the animated one came in later): the
+        // moving one instead
+        private static void MoveProfilesToGif()
+        {
+            try
+            {
+                var still = SelenePaths.AvatarImage;
+                if (string.IsNullOrEmpty(still) || !File.Exists(still) || Steam == null) return;
+                var stillPrint = Profiles.Fingerprint(still);
+                foreach (var p in Profiles.All.ToList())
+                {
+                    var file = Profiles.AvatarFile(p);
+                    if (string.IsNullOrEmpty(file) || !File.Exists(file) || file.EndsWith(".gif", StringComparison.OrdinalIgnoreCase)) continue;
+                    if (Profiles.Fingerprint(file) != stillPrint) continue;
+                    p.Avatar = Profiles.KeepPicture(Steam);
+                    Profiles.Update(p);
+                    HomeNav.Log("steam: " + p.Name + "'s avatar now moves");
+                }
+            }
+            catch (Exception ex) { HomeNav.Log("steam: avatar swap: " + ex.Message); }
+        }
+
         // reads the account's public profile page (at most once a day) and saves its animated avatar; off the UI thread
         public static void Fetch(string steamId)
         {
             if (string.IsNullOrEmpty(steamId)) return;
-            if (File.Exists(SteamFile) && (DateTime.Now - File.GetLastWriteTime(SteamFile)).TotalHours < 24) return;
+            if (File.Exists(SteamFile) && (DateTime.Now - File.GetLastWriteTime(SteamFile)).TotalHours < 24)
+            {
+                if (Application.Current != null) Application.Current.Dispatcher.BeginInvoke(new Action(MoveProfilesToGif));
+                return;
+            }
             System.Threading.Tasks.Task.Factory.StartNew(() =>
             {
                 try
@@ -126,6 +152,8 @@ namespace Selene
                         if (File.Exists(SteamFile)) File.Delete(SteamFile);
                         File.Move(tmp, SteamFile);
                         HomeNav.Log("steam: animated avatar saved");
+                        var app = Application.Current;
+                        if (app != null) app.Dispatcher.BeginInvoke(new Action(MoveProfilesToGif));
                     }
                 }
                 catch (Exception ex) { HomeNav.Log("steam: no animated avatar (" + ex.Message + ")"); }

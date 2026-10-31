@@ -371,6 +371,44 @@ namespace Selene
             int SetMute([MarshalAs(UnmanagedType.Bool)] bool mute, ref Guid ctx);
         }
 
+        // another app's volume in the Windows volume mixer (Spotify, when it is the ambient music): the level it had before
+        // is returned the first time, so it can be put back. -1 when the app has no audio session (not running).
+        public static float SetAppVolume(string process, float volume)
+        {
+            float before = -1;
+            try
+            {
+                var pids = new System.Collections.Generic.HashSet<uint>(System.Linq.Enumerable.Select(System.Diagnostics.Process.GetProcessesByName(process), p => (uint)p.Id));
+                if (pids.Count == 0) return -1;
+                var en = (IMMDeviceEnumerator)Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")));
+                IMMDeviceCollection devs;
+                en.EnumAudioEndpoints(0, 1, out devs);
+                int n; devs.GetCount(out n);
+                var iid = typeof(IAudioSessionManager2).GUID;
+                var ctx = Guid.Empty;
+                for (int i = 0; i < n; i++)
+                {
+                    IMMDevice dev; devs.Item(i, out dev);
+                    object o;
+                    if (dev.Activate(ref iid, 1, IntPtr.Zero, out o) != 0) continue;
+                    IAudioSessionEnumerator se;
+                    ((IAudioSessionManager2)o).GetSessionEnumerator(out se);
+                    int count; se.GetCount(out count);
+                    for (int k = 0; k < count; k++)
+                    {
+                        object sess; se.GetSession(k, out sess);
+                        uint pid;
+                        if (((IAudioSessionControl2)sess).GetProcessId(out pid) != 0 || !pids.Contains(pid)) continue;
+                        var vol = (ISimpleAudioVolume)sess;
+                        float v; if (before < 0 && vol.GetMasterVolume(out v) == 0) before = v;
+                        vol.SetMasterVolume(volume, ref ctx);
+                    }
+                }
+            }
+            catch (Exception ex) { HomeNav.Log("app volume " + process + ": " + ex.Message); }
+            return before;
+        }
+
         private static bool ownMuted;
         // Playnite quit while hidden in the tray: Windows remembers an app's mute, so it is lifted on the way out (another theme would start silent)
         public static void UnmuteOnExit() { if (ownMuted && !HomeNav.Isolated) SetOwnAudioMute(false); }

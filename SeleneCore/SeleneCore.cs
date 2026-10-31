@@ -97,6 +97,7 @@ namespace Selene
                 HomeNav.Log("dev slow quit: closing takes " + secs + " s");
                 System.Threading.Thread.Sleep(secs * 1000);
             }
+            try { MusicLevel.Release(); } catch { }
             base.Dispose();
         }
 
@@ -326,6 +327,9 @@ namespace Selene
             public Func<string> Note;   // a third line under the words, read when the row is built (a count, a state)
             public Func<double> Progress;   // a thin bar under that line while something runs: 0..1 (below 0: none), read when the row is built
             public Action<bool> Put;
+            // a choice that is another place's setting (Playnite's music volume): read and written there
+            public Func<string> GetValue;
+            public Action<string> PutValue;
         }
 
         // the groups Selene settings shows, in order (each option names its group)
@@ -335,7 +339,7 @@ namespace Selene
         {
             // ---- Start-up ----
             new Option { Group = "Start-up", Key = "intro", Label = "Logo intro", About = "Show the Selene logo when Playnite starts." },
-            new Option { Group = "Start-up", Key = "startsound", Label = "Start-up sound", About = "Play a chime with the start-up logo." },
+            new Option { Group = "Sound & music", Key = "startsound", Label = "Start-up sound", About = "Play a chime with the start-up logo." },
             new Option { Group = "Start-up", Key = "login", Label = "Who's playing?", About = "Choose who's playing each time Playnite starts. When this is off, the last profile signs in automatically." },
             new Option { Group = "Start-up", Key = "starton", Label = "Start on", About = "Choose the screen Playnite opens on.", Choices = new[] { "spotlight", "collection", "last" }, Names = new[] { "Spotlight", "Collection", "Where you left it" }, Default = "spotlight" },
             new Option { Group = "Start-up", Key = "starttab", Label = "Starting tab", About = "Choose the tab Spotlight opens on.", Choices = new[] { "last", "all", "installed", "recent", "favorites", "unplayed" }, Names = new[] { "Where you left it", "All games", "Installed", "Recently played", "Favorites", "Not played yet" }, Default = "last" },
@@ -359,7 +363,7 @@ namespace Selene
             new Option { Group = "Spotlight", Key = "trailerdownload", Label = "Download trailers", About = "Off until you choose a scope and confirm the save location. Each trailer is about 20 MB.", Choices = new[] { "off", "browse", "all" }, Names = new[] { "Off", "Games you select", "Whole library" }, Default = "off", Note = Background.ArtNote, Progress = Background.ArtProgress },
             new Option { Group = "Spotlight", Key = "artdownload", Label = "Download logos and backgrounds", About = "Get missing logos and backgrounds for selected games.", DefaultOn = false, Note = Background.ArtNote, Progress = Background.ArtProgress },
             new Option { Group = "Spotlight", Key = "screenshotsdownload", Label = "Download screenshots", About = "Download screenshots for games you select. Existing pictures work while downloads are off.", DefaultOn = false },
-            new Option { Group = "Spotlight", Key = "trailersound", Label = "Trailer sound", About = "Play trailers with sound. Press R3 to turn the sound on or off.", DefaultOn = false },
+            new Option { Group = "Sound & music", Key = "trailersound", Label = "Trailer sound", About = "Play trailers with sound. Press R3 to turn the sound on or off.", DefaultOn = false },
             new Option { Group = "Spotlight", Key = "filtertabs", Label = "Filter tabs", About = "Choose Selene's tabs or Playnite presets.", Choices = new[] { "selene", "playnite" }, Names = new[] { "Selene's", "Playnite's presets" }, Default = "selene" },
             new Option { Group = "Spotlight", Key = "shade", Slider = true, Label = "Background shade", About = "Set how much the artwork darkens behind text.", Choices = new[] { "0", "0.25", "0.5", "0.75", "1" }, Names = new[] { "Off", "25%", "50%", "75%", "100%" }, Default = "1" },
             new Option { Group = "Spotlight", Key = "idle", Label = "Idle screen", About = "Show game artwork after a period of inactivity.", Choices = new[] { "0", "5", "10", "20" }, Names = new[] { "Never", "5 minutes", "10 minutes", "20 minutes" }, Default = "10" },
@@ -375,24 +379,31 @@ namespace Selene
             new Option { Group = "Collection", Key = "collectionhints", Label = "Button hints", About = "Show button hints at the bottom of Collection." },
             new Option { Group = "Collection", Key = "cardcollection", Label = "Collection card on Spotlight", About = "Show a card on Spotlight that opens Collection.", DefaultOn = false },
             // ---- Notifications ----
-            new Option { Group = "Notifications", Key = "notifysound", Label = "Notification sound", About = "Play a sound when a notification appears." },
+            new Option { Group = "Sound & music", Key = "notifysound", Label = "Notification sound", About = "Play a sound when a notification appears." },
             new Option { Group = "Notifications", Key = "sessioncard", Label = "Session card", About = "Show how long you played after you close a game." },
             new Option { Group = "Notifications", Key = "taskcards", Label = "Progress cards", About = "Show cards while downloads and library updates run. Off: only when they finish.", DefaultOn = false },
             new Option { Group = "Notifications", Key = "progresstoast", Label = "Download notifications", About = "Show downloads in a small notification instead of a window." },
             new Option { Group = "Notifications", Key = "updatecheck", Label = "Update notifications", About = "Check for a new version of Selene once a day." },
             new Option { Group = "Notifications", Key = "setuphint", Label = "Add-on tips", About = "Let you know when logos and trailers need the Extra Metadata add-on." },
             // ---- Sound & music ----
-            new Option { Group = "Sound & music", Key = "sounds", Label = "Interface sounds", About = "Play sounds when you move, select and go back." },
+            new Option { Group = "Sound & music", Key = "sounds", Note = () => MusicLevel.Installed() ? null : "For background music, install the UniPlaySong add-on.", Label = "Interface sounds", About = "Sounds as you move, select and go back. Off silences all of Selene's own sounds." },
             new Option { Group = "Sound & music", Key = "quietdetails", Label = "Quiet details transitions", About = "Avoid extra navigation ticks when opening game details." },
             new Option { Group = "Look", Key = "defaultbackdrop", Label = "Selene background fallback", About = "Use Selene's background when no game art is showing. Restart Playnite to apply." },
-            new Option { Group = "Sound & music", Key = "soundmenu", Label = "Sound in the menu", About = "Change the volume and audio output from the menu." },
+            new Option { Group = "Sound & music", Key = "soundmenu", Label = "Sound in the menu", About = "Show Windows volume and the audio output in the menu." },
             new Option { Group = "Sound & music", Key = "livevolume", Label = "Keep volume display in sync", About = "Keep the Sound panel in sync with Windows volume." },
-            new Option { Group = "Sound & music", Key = "soundvolume", Slider = true, Label = "Interface sounds volume", About = "Set the volume of interface sounds.", Choices = new[] { "25", "50", "75", "100" }, Names = new[] { "25%", "50%", "75%", "100%" }, Default = "100" },
+            new Option { Group = "Sound & music", Key = "soundvolume", Slider = true, Label = "Sounds volume", About = "How loud Selene's own sounds are: moving, selecting, start-up and notifications.", Choices = new[] { "0", "25", "50", "75", "100" }, Names = new[] { "Off", "25%", "50%", "75%", "100%" }, Default = "100" },
             new Option { Group = "Sound & music", Key = "clipvolume", Slider = true, Label = "Clip volume", About = "Set the volume of video clips in Captures.", Available = () => false /* set with Up / Down in Captures only */, Choices = new[] { "0", "10", "20", "30", "40", "50", "60", "70", "80", "90", "100" }, Names = new[] { "Off", "10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%", "100%" }, Default = "90" },
-            new Option { Group = "Sound & music", Key = "songsetup", Label = "Get game songs", About = "Get missing game songs. Required tools use about 130 MB.", DefaultOn = false, Note = SongSetup.Status, Progress = Background.SongsProgress, Available = () => HasAddon("UniPlaySong") },
+            new Option { Group = "Sound & music", Key = "musicvolume", Note = MusicLevel.NowPlaying, Slider = true, Label = "Music volume", About = "How loud all music is, UniPlaySong's included. Off or muted silences it.", Choices = new[] { "0", "25", "50", "75", "100" }, Names = new[] { "Off", "25%", "50%", "75%", "100%" }, Default = "50", GetValue = MusicLevel.Volume, PutValue = MusicLevel.SetVolume, Available = MusicLevel.Installed },
+            new Option { Group = "Sound & music", Key = "nowplaying", Label = "Show what is playing", About = "Show the song playing in the top bar. Needs UniPlaySong.", Available = MusicLevel.Installed },
+            new Option { Group = "Sound & music", Key = "musicmuted", Label = "Mute music", About = "No music at all, whatever the volume.", DefaultOn = false, Available = MusicLevel.Installed },
+            new Option { Group = "Sound & music", Key = "upsgame", Label = "Songs for each game", About = "Play a game's own song when you rest on it. This is UniPlaySong's own switch.", Get = () => MusicLevel.UpsSwitch("EnableMusic"), Put = on => MusicLevel.SetUpsSwitch("EnableMusic", on), Available = MusicLevel.Installed },
+            new Option { Group = "Sound & music", Key = "upsdefault", Label = "Ambient music", About = "Play background music when a game has no song of its own. This is UniPlaySong's own switch.", Get = () => MusicLevel.UpsSwitch("EnableDefaultMusic"), Put = on => MusicLevel.SetUpsSwitch("EnableDefaultMusic", on), Available = MusicLevel.Installed },
+            new Option { Group = "Sound & music", Key = "upsspotify", Label = "Spotify as ambient music", About = "Your Spotify plays instead of the ambient tracks: on the home, in the menu and on games without a song. Needs the Spotify app open and signed in. Off goes back to the ambient tracks.", DefaultOn = false, Get = MusicLevel.SpotifyAmbient, Put = MusicLevel.SetSpotifyAmbient, Available = () => MusicLevel.Installed() && Features.On("upsdefault") },
             new Option { Group = "Sound & music", Key = "selenemusic", Label = "Selene OST as default music", About = "Use Selene OST when no default music file is selected." },
-            new Option { Group = "Sound & music", Key = "songsettle", Label = "Songs wait until you stop", About = "Wait until scrolling stops before changing songs.", Available = () => HasAddon("UniPlaySong") },
-            new Option { Group = "Sound & music", Key = "music", Label = "Background music", About = "Play music while you browse. Requires the UniPlaySong add-on.", Available = () => HasAddon("UniPlaySong") },
+            new Option { Group = "Sound & music", Key = "upsnight", Label = "Night music", About = "Softer, lower music for the evening. This is UniPlaySong's own switch.", DefaultOn = false, Get = () => MusicLevel.UpsSwitch("CalmDownModeEnabled"), Put = on => MusicLevel.SetUpsSwitch("CalmDownModeEnabled", on), Available = MusicLevel.Installed },
+            new Option { Group = "Sound & music", Key = "songsetup", Label = "Get game songs", About = "Opt in to songs for your library. Asks before downloading songs or about 130 MB of required tools.", DefaultOn = false, Note = SongSetup.Status, Progress = Background.SongsProgress, Available = () => HasAddon("UniPlaySong") },
+            new Option { Group = "Sound & music", Key = "songsettle", Label = "Songs wait until you stop", About = "A game's song starts once you rest on it, so holding a direction scrolls smoothly. Sets UniPlaySong's hover delay.", Available = () => HasAddon("UniPlaySong") },
+            new Option { Group = "Sound & music", Key = "music", Label = "Let Selene run the music", About = "Selene pauses and resumes UniPlaySong as you browse, launch games and watch trailers. Off leaves it alone.", Available = () => HasAddon("UniPlaySong") },
             new Option { Group = "Sound & music", Key = "independentmusic", Label = "Game music without trailers", About = "Play game songs without waiting for a trailer. Requires UniPlaySong.", DefaultOn = false },
             new Option { Group = "Sound & music", Key = "launchquiet", Label = "Quiet loading screen", About = "Keep the loading screen silent until the game appears." },
             new Option { Group = "Games", Key = "launchchoice", Label = "Keep launch choices above loading", About = "Show launch choices before the loading screen." },
@@ -543,6 +554,7 @@ namespace Selene
             var o = Find(key);
             if (o == null || !o.IsChoice) return "";
             string v;
+            if (o.GetValue != null) { try { v = o.GetValue(); if (o.Choices.Contains(v)) return v; } catch { } return o.Default ?? o.Choices[0]; }
             if (settings != null && settings.Values != null && settings.Values.TryGetValue(key, out v) && o.Choices.Contains(v)) return v;
             return o.Default ?? o.Choices[0];
         }
@@ -586,6 +598,8 @@ namespace Selene
 
         public static void SetValue(string key, string value)
         {
+            var external = Find(key);
+            if (external != null && external.PutValue != null) { external.PutValue(value); return; }
             if (settings == null) return;
             if (settings.Values == null) settings.Values = new Dictionary<string, string>();
             settings.Values[key] = value;

@@ -1485,6 +1485,11 @@
                                     <ButtonEx x:Name="PART_ButtonMainMenu" VerticalAlignment="Center" Style="{DynamicResource ButtonTopMenu}" Margin="10,0,16,0" Height="48" MinWidth="48" Visibility="Collapsed">
                                         <TextBlock Text="&#xE700;" FontFamily="Segoe MDL2 Assets" Foreground="{DynamicResource SeleneInkBrush}" FontSize="24" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                     </ButtonEx>
+                                    <!-- what UniPlaySong is playing: a note and the song (Selene Core fills it: NowPlayingBar; the "Show what is playing" switch) -->
+                                    <StackPanel x:Name="SeleneNowPlaying" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,28,0" Visibility="Collapsed" IsHitTestVisible="False">
+                                        <TextBlock Text="&#xE8D6;" FontFamily="Segoe MDL2 Assets" Foreground="{DynamicResource SeleneInk60Brush}" FontSize="22" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                        <TextBlock x:Name="SeleneNowPlayingText" Foreground="{DynamicResource SeleneInk90Brush}" FontSize="20" FontFamily="{DynamicResource FontMain}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" MaxWidth="320" VerticalAlignment="Center"/>
+                                    </StackPanel>
                                     <!-- the signed-in profile's avatar (Selene Core fills it; the "Profile in the top bar" switch) -->
                                     <Grid x:Name="SeleneTopProfile" VerticalAlignment="Center" Margin="0,0,28,0" Visibility="Collapsed" IsHitTestVisible="False"/>
                                     <TextBlock x:Name="PART_TextClock" Foreground="{DynamicResource SeleneInkBrush}" FontSize="30" FontFamily="{DynamicResource FontMain}" VerticalAlignment="Center" Margin="10,0,0,0"/>

@@ -54,6 +54,7 @@ namespace Selene
                 var db = api.Database;
                 var games = db.Games.ToList();
                 var dirs = new HashSet<string>(games.Select(g => Full(g.InstallDirectory)).Where(d => d != null));
+                var owned = games.SelectMany(OwnedPaths).ToList();
                 var names = new HashSet<string>(games.Select(g => Norm(g.Name)));
                 foreach (var root in Roots.Where(Directory.Exists))
                 {
@@ -61,13 +62,16 @@ namespace Selene
                     {
                         var full = Full(dir);
                         if (full == null || dirs.Contains(full)) continue;
-                        var name = Path.GetFileName(dir);
-                        if (names.Contains(Norm(name))) continue;  // a store copy already in the library
+                        // a game already points into this folder or holds it (its install folder or exe is a level down: the
+                        // folder is a release's wrapper, like C:\Games\Pummel.Party.v1.14.0c-OFME\Pummel.Party)
+                        if (owned.Any(p => Inside(p, full) || Inside(full, p))) continue;
+                        var exe = PickExe(dir);
+                        if (exe == null) continue;
+                        var name = GameName(dir, exe);
+                        if (names.Contains(Norm(name)) || names.Contains(Norm(Path.GetFileName(dir)))) continue;  // a store copy already in the library
                         if (IsXboxAppFolder(dir)) continue;  // the Xbox library lists it already
                         if (IsStoreLibraryFolder(dir)) continue;  // a store's own library folder (G:\Games\steamapps came in as a game)
                         if (IsInstallerFolder(dir)) continue;  // a downloaded installer, not an installed game
-                        var exe = PickExe(dir);
-                        if (exe == null) continue;
                         var game = new Game(name)
                         {
                             InstallDirectory = dir,
@@ -83,6 +87,7 @@ namespace Selene
                     }
                 }
                 HideXboxDuplicates(db, games);
+                HideWrapperDuplicates(db, db.Games.ToList());
                 MarkGoneFolders(db, games);
                 SyncInstalledState(db, games);
                 UseFolderTracking(db, games);
@@ -276,6 +281,76 @@ namespace Selene
                 g.IsInstalled = false;
                 db.Games.Update(g);
                 HomeNav.Log("game folder gone, marked not installed: " + g.Name + " (" + dir + ")");
+            }
+        }
+
+        // where a game lives: its install folder and its play files (paths with Playnite's {InstallDir} left out)
+        private static IEnumerable<string> OwnedPaths(Game g)
+        {
+            var d = Full(g.InstallDirectory);
+            if (d != null) yield return d;
+            if (g.GameActions == null) yield break;
+            foreach (var a in g.GameActions)
+                if (a != null && !string.IsNullOrWhiteSpace(a.Path) && a.Path.IndexOf('{') < 0 && Path.IsPathRooted(a.Path))
+                {
+                    var p = Full(a.Path);
+                    if (p != null) yield return p;
+                }
+        }
+
+        private static bool Inside(string path, string folder)
+        {
+            return path != null && folder != null && (path == folder || path.StartsWith(folder + "\\", StringComparison.Ordinal));
+        }
+
+        // A release folder ("Pummel.Party.v1.14.0c-OFME", "2584270-GameDrive.Org") wraps the game's own folder: the name comes
+        // from the folder the exe sits in a level down, words for dots, without a version. A plain folder name stays as it is.
+        private static readonly Regex Version = new Regex(@"\bv?\d+(\.\d+)+[a-z]?\b", RegexOptions.IgnoreCase);
+        internal static string GameName(string dir, string exe)
+        {
+            var name = Path.GetFileName(dir);
+            bool release = name.IndexOf(' ') < 0 && (name.Contains(".") || name.Contains("-"));
+            if (release)
+            {
+                var rel = exe.Substring(dir.Length).TrimStart('\\');
+                var sub = rel.Contains("\\") ? rel.Substring(0, rel.IndexOf('\\')) : null;
+                if (!string.IsNullOrEmpty(sub)) name = sub;
+            }
+            if (name.IndexOf(' ') < 0)
+            {
+                name = Regex.Replace(name, @"-[A-Za-z0-9]+$", "");   // the group's tag at the end
+                name = Version.Replace(name.Replace('_', ' ').Replace('.', ' ').Trim(), "");
+                name = Version.Replace(name, "");
+            }
+            name = Regex.Replace(name, @"\s+", " ").Trim();
+            return name.Length > 0 ? name : Path.GetFileName(dir);
+        }
+
+        // Added before the check above: a game Selene added for a Games-folder wrapper while the library already had it (a store
+        // copy, or one added by hand that points a level down). Hidden, not deleted: playtime stays, and it can be shown again.
+        private static void HideWrapperDuplicates(Playnite.SDK.IGameDatabaseAPI db, List<Game> games)
+        {
+            foreach (var g in games.Where(x => x.PluginId == Guid.Empty && !x.Hidden && !string.IsNullOrWhiteSpace(x.InstallDirectory)))
+            {
+                var dir = Full(g.InstallDirectory);
+                if (dir == null || !Roots.Any(r => string.Equals(Full(Path.GetDirectoryName(g.InstallDirectory)), Full(r), StringComparison.Ordinal))) continue;
+                var other = games.FirstOrDefault(o => o.Id != g.Id && !o.Hidden && Full(o.InstallDirectory) != dir && OwnedPaths(o).Any(p => Inside(p, dir)));
+                if (other == null)
+                {
+                    var exe = g.GameActions != null ? g.GameActions.Where(a => a != null && a.IsPlayAction).Select(a => a.Path).FirstOrDefault() : null;
+                    // the play file a level down names it; failing that (tracked by folder), the one folder inside
+                    if (exe == null || !Path.IsPathRooted(exe) || !Inside(Full(exe), dir))
+                    {
+                        string[] subs; try { subs = Directory.GetDirectories(g.InstallDirectory); } catch { subs = new string[0]; }
+                        exe = subs.Length == 1 ? Path.Combine(subs[0], "game.exe") : null;
+                    }
+                    var clean = exe != null ? Norm(GameName(g.InstallDirectory, exe)) : null;
+                    if (clean != null && clean != Norm(g.Name)) other = games.FirstOrDefault(o => o.Id != g.Id && !o.Hidden && Norm(o.Name) == clean);
+                }
+                if (other == null) continue;
+                g.Hidden = true;
+                db.Games.Update(g);
+                HomeNav.Log("local game hidden (the library has it as " + other.Name + "): " + g.Name);
             }
         }
 

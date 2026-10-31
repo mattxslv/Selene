@@ -72,6 +72,7 @@ namespace Selene
             LoginScene.AttachHomeGlow(main);   // the login's glow behind the home's cards
             LibraryStage.Attach(main);         // Collection's background trailer
             TopProfile.Attach(main);
+            NowPlayingBar.Attach(main);
             StoreData.AttachCard();            // the Store card's free games
             Contrast.Apply();                  // the home's shades as deep as the wallpaper needs           // the signed-in profile beside the clock
             Brand.Attach(main);                // Selene's mark on empty screens

@@ -80,6 +80,7 @@ namespace Selene
             // Playnite re-filters the whole library when the preset changes (over a second on a big one): done once after
             // start-up, not on the first press of View
             StartupWork.AfterHome("collection filter", ApplyCollectionFilter);
+            MusicLevel.Start();   // Playnite's music volume / muted reach UniPlaySong too
             IdleScreen.Install();  // the idle screen's clock
             Ui.DevFrameLog();   // %TEMP%\selene-dev-frames: frames per second in the log
             Ui.StartupFrameLog();   // the first seconds: long frames in the log (the intro must not stutter)
@@ -128,6 +129,8 @@ namespace Selene
                 // the login layer (menu, profiles...) is up: its keys are its own (this class handler runs before the
                 // layer's, and moved the home row behind the menu)
                 if (LoginScene.IsActive) return;
+                // a window over Playnite (an add-on's dialog) is active: its keys are its own, nothing on the home or the page moves
+                if (DialogUp()) return;
                 // the keyboard copy of a pad press Selene already handled (it moved things a second time)
                 if (Ui.KeyIsPadCopy(e.Key == Key.Left ? "DPadLeft" : e.Key == Key.Right ? "DPadRight" : e.Key == Key.Up ? "DPadUp" : e.Key == Key.Down ? "DPadDown" : null) && (e.Key == Key.Left || e.Key == Key.Right || e.Key == Key.Up || e.Key == Key.Down || e.Key == Key.Enter || e.Key == Key.Escape)) { e.Handled = true; return; }
                 // the cards are still flying in: nothing moves yet
@@ -2612,7 +2615,7 @@ namespace Selene
 
         // UniPlaySong's live settings, the object its player reads: found inside the add-on like the legacy theme did
         // (asking Playnite for the add-on's settings can hand back a copy, so changes never reached the player)
-        private static object LiveUps()
+        internal static object LiveUps()
         {
             if (upsSettings != null || Api == null) return upsSettings;
             foreach (var plugin in Api.Addons.Plugins)
@@ -3042,6 +3045,31 @@ namespace Selene
         private static DateTime quietUntil;
         private static System.Windows.Threading.DispatcherTimer quietTimer;
 
+        // Selene's "Interface sounds" off, or "Sounds volume" at Off: Playnite's move sound is emptied for good, not only for a moment
+        internal static bool MoveSilenced() { return !Features.On("sounds") || Features.Number("soundvolume") <= 0; }
+
+        internal static void SyncMoveSound()
+        {
+            try
+            {
+                if (navigateSound == null)
+                {
+                    foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+                    {
+                        var t = asm.GetType("Playnite.FullscreenApp.FullscreenApplication", false);
+                        if (t == null) continue;
+                        navigateSound = t.GetProperty("NavigateSound", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
+                        break;
+                    }
+                    if (navigateSound == null) return;
+                }
+                var current = (IntPtr)navigateSound.GetValue(null, null);
+                if (MoveSilenced()) { if (current != IntPtr.Zero) { savedNavigateSound = current; navigateSound.SetValue(null, IntPtr.Zero, null); } }
+                else if (current == IntPtr.Zero && savedNavigateSound != IntPtr.Zero && DateTime.Now >= quietUntil) navigateSound.SetValue(null, savedNavigateSound, null);
+            }
+            catch (Exception ex) { Log("move sound: " + ex.Message); }
+        }
+
         public static void QuietFocus(int ms)
         {
             try
@@ -3077,7 +3105,7 @@ namespace Selene
                             return;
                         }
                         quietTimer.Stop();
-                        if (savedNavigateSound != IntPtr.Zero && (IntPtr)navigateSound.GetValue(null, null) == IntPtr.Zero) navigateSound.SetValue(null, savedNavigateSound, null);
+                        if (!MoveSilenced() && savedNavigateSound != IntPtr.Zero && (IntPtr)navigateSound.GetValue(null, null) == IntPtr.Zero) navigateSound.SetValue(null, savedNavigateSound, null);
                     };
                 }
                 quietTimer.Start();
@@ -3109,6 +3137,7 @@ namespace Selene
                     }
                     if (playNavigate == null || playActivate == null) return false;
                 }
+                if (MoveSilenced()) return true;
                 if (confirm) { playActivate.Invoke(null, null); return true; }
                 var current = navigateSound != null ? (IntPtr)navigateSound.GetValue(null, null) : IntPtr.Zero;
                 if (current == IntPtr.Zero && savedNavigateSound == IntPtr.Zero) return false;   // Playnite has no tick loaded yet (first setup): Selene's own plays
@@ -3125,7 +3154,7 @@ namespace Selene
         {
             if (quietUntil == DateTime.MinValue) return;
             quietUntil = DateTime.MinValue;
-            try { if (navigateSound != null && savedNavigateSound != IntPtr.Zero && (IntPtr)navigateSound.GetValue(null, null) == IntPtr.Zero) navigateSound.SetValue(null, savedNavigateSound, null); }
+            try { if (!MoveSilenced() && navigateSound != null && savedNavigateSound != IntPtr.Zero && (IntPtr)navigateSound.GetValue(null, null) == IntPtr.Zero) navigateSound.SetValue(null, savedNavigateSound, null); }
             catch (Exception ex) { Log("quiet focus: " + ex.Message); }
         }
 
@@ -3704,6 +3733,9 @@ namespace Selene
                     // B answers it the safe way (No / Cancel); Playnite's own dialogs did nothing on B
                     if (answer == "B" && DialogLook.Back()) e.Cancel();
                     else if (DialogLook.Take(answer)) e.Cancel();   // (a dialog without the focus: the press is still its own)
+                    // an add-on's own window (UniPlaySong's song and download dialogs) that the keyboard focus is not in: the press can't reach it
+                    // through WPF (it reads the pad itself), and left alone it moved Selene's screen behind it
+                    else if (!ActiveDialogHasFocus()) e.Cancel();
                     return;
                 }
                 if (LoginScene.HandleButton(pressed)) { e.Cancel(); return; }
@@ -4150,6 +4182,19 @@ namespace Selene
             var mw = Application.Current.MainWindow;
             var list = mw != null ? FindByName(mw, "PART_ListGameItems") as ItemsControl : null;
             return list != null && list.Items.Count == 0;
+        }
+
+        // the window over Playnite's main one that is active has the keyboard focus inside it (its own presses reach it)
+        private static bool ActiveDialogHasFocus()
+        {
+            try
+            {
+                var main = Application.Current.MainWindow;
+                foreach (Window w in Application.Current.Windows)
+                    if (!ReferenceEquals(w, main) && w.IsVisible && w.IsActive) return w.IsKeyboardFocusWithin;
+            }
+            catch { }
+            return true;
         }
 
         public static bool DialogUp()

@@ -56,6 +56,9 @@ namespace Selene
             HomeNav.Api = PlayniteApi;
             SongSetup.DisableManagedAutomaticDownloads();
             SongSetup.ApplySongSettle();
+            SongSetup.ApplyDefaultMusic();
+            GamesSetup.AskLater();
+            XboxSignIn.AskLater();
             if (Features.On("perflog")) PerformanceRecorder.SetRecording(true);
             StartupWork.Start(() => SeleneShell.Ready && Application.Current.MainWindow != null && Application.Current.MainWindow.IsVisible
                 && !LoginScene.StartingUp && !LoginScene.InSetup && !HomeNav.IntroRunning && HomeNav.StartupReady);
@@ -75,7 +78,8 @@ namespace Selene
             HomeNav.RefreshRowFilters();              // the five tabs, then your own filter presets
             Ui.RefreshPrompts();                      // Xbox or PlayStation names in the hints
             SeleneShell.Start();
-            StartupWork.AfterHome("game songs", SongSetup.StartLater);
+            StartupWork.AfterHome("game songs", () => { if (!MediaDownloads.Unified || !MediaDownloads.Enabled) SongSetup.StartLater(); });
+            StartupWork.AfterHome("library media", () => { if (MediaDownloads.Enabled) MediaDownloads.Start(); });
             StartupWork.AfterHome("Steam avatar", () => { if (string.IsNullOrWhiteSpace(settings.Settings.AvatarPath)) AnimatedAvatar.Fetch(SelenePaths.SteamId); });
             HomeNav.StartIsolatedMute();              // (dev: a test copy beside a PC in use stays silent)
             StartupWork.AfterHome("legacy tasks", LegacyTasks.CheckLater);
@@ -214,7 +218,10 @@ namespace Selene
             Settings.HelperPath = editing.HelperPath; Settings.StreamLogsFolder = editing.StreamLogsFolder;
             Settings.AvatarPath = editing.AvatarPath; Settings.DisplayName = editing.DisplayName;
             Settings.StreamClientMatch = editing.StreamClientMatch; Settings.StreamCredentialsFile = editing.StreamCredentialsFile; Settings.HelperTask = editing.HelperTask;
+            string gridKey = null;   // (written straight to the live settings by the page's field: kept over the copy made before editing)
+            bool hasGridKey = Settings.Values != null && Settings.Values.TryGetValue("steamgriddb-key", out gridKey);
             Settings.WallpapersFolder = editing.WallpapersFolder; Settings.CapturesFolders = editing.CapturesFolders; Settings.Values = editing.Values; Settings.TurnedOff = editing.TurnedOff; Settings.TurnedOn = editing.TurnedOn;
+            if (hasGridKey) { if (Settings.Values == null) Settings.Values = new Dictionary<string, string>(); Settings.Values["steamgriddb-key"] = gridKey; }
         }
 
         public void EndEdit()
@@ -277,6 +284,8 @@ namespace Selene
                 v => s.CapturesFolders = new List<string>(v.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)));
             caps.AcceptsReturn = true; caps.MinHeight = 60;
             field("Your wallpapers folder (images in it and its subfolders show up in the background picker). Empty = only Selene's wallpapers:", s.WallpapersFolder, v => s.WallpapersFolder = v);
+            var gridKey = Features.Remembered("steamgriddb-key");
+            field("SteamGridDB API key, for square tile art (free at steamgriddb.com > Preferences > API). Empty = the SteamGridDB add-on's key, if any:", gridKey, v => SquareFetch.SetKey(v));
             field("Login name. Empty = your Steam name:", s.DisplayName, v => s.DisplayName = v);
             field("Login picture (image file). Empty = your Steam avatar:", s.AvatarPath, v => s.AvatarPath = v);
             field("Optional companion program (.exe) Selene starts for Sleep, Restart, Shut down and to restart Playnite. It runs with Playnite's own rights, so only choose a program you trust. Empty = off:", s.HelperPath, v => s.HelperPath = v);
@@ -333,9 +342,13 @@ namespace Selene
             new Option { Group = "Start-up", Key = "startrefresh", Label = "Update library at start-up", About = "Check for new and removed games after Playnite starts." },
             // ---- Spotlight ----
             new Option { Group = "Spotlight", Key = "cardactivity", Label = "Activity card", About = "Show what you've been playing and for how long." },
-            new Option { Group = "Spotlight", Key = "activitysessions", Label = "Play sessions in Activity", About = "Show your sessions, streaks and monthly totals on the Activity screen. Requires the GameActivity add-on.", Available = Sessions.Available },
+            new Option { Group = "Spotlight", Key = "actualplatform", Label = "Use game platform metadata", About = "Show the selected game's platform instead of its store." },
+            new Option { Group = "Spotlight", Key = "fullscreenpresets", Label = "Honor fullscreen preset visibility", About = "Show presets enabled for fullscreen mode." },
+            new Option { Group = "Spotlight", Key = "consistentfavorites", Label = "Use the same Favorites in game options", About = "Use profile Favorites in game options and Spotlight." },
+            new Option { Group = "Spotlight", Key = "activitysessions", Label = "Play sessions in Activity", About = "Show play sessions and totals. Requires GameActivity.", Available = Sessions.Available },
             new Option { Group = "Spotlight", Key = "cardcaptures", Label = "Captures card", About = "Show your screenshots and video clips." },
             new Option { Group = "Spotlight", Key = "cardachievements", Label = "Achievements card", About = "Show achievements from all your games, newest first.", Available = AchievementsData.Available },
+            new Option { Group = "Spotlight", Key = "capturesfolders", Label = "Captures folders", About = "Add a folder with your screenshots and clips. Pick one that's listed to remove it.", Action = "Add", Note = () => SelenePaths.CapturesFolders.Count == 0 ? "Steam, Videos and NVIDIA folders only" : string.Join(" · ", SelenePaths.CapturesFolders) },
             new Option { Group = "Spotlight", Key = "cardsurprise", Label = "Surprise me card", About = "Let Selene pick a game for you." },
             new Option { Group = "Spotlight", Key = "cardnews", Label = "News card", About = "Show headlines from the news feeds you follow." },
             new Option { Group = "Spotlight", Key = "cardpictures", Label = "Pictures under cards", About = "Show recent captures, recently played games and suggestions under the cards." },
@@ -344,14 +357,19 @@ namespace Selene
             new Option { Group = "Spotlight", Key = "rowedges", Label = "Full-width row", About = "Let the game row reach the edges of the screen." },
             new Option { Group = "Spotlight", Key = "trailerdelay", Label = "Trailer delay", About = "Set how long to stay on a game before its trailer plays.", Choices = new[] { "1", "2.5", "5", "0" }, Names = new[] { "1 second", "2.5 seconds", "5 seconds", "Never" }, Default = "2.5" },
             new Option { Group = "Spotlight", Key = "trailerdownload", Label = "Download trailers", About = "Off until you choose a scope and confirm the save location. Each trailer is about 20 MB.", Choices = new[] { "off", "browse", "all" }, Names = new[] { "Off", "Games you select", "Whole library" }, Default = "off", Note = Background.ArtNote, Progress = Background.ArtProgress },
-            new Option { Group = "Spotlight", Key = "artdownload", Label = "Download logos and backgrounds", About = "Download missing art for games you select. Asks before starting and shows where it will be saved.", DefaultOn = false, Note = Background.ArtNote, Progress = Background.ArtProgress },
+            new Option { Group = "Spotlight", Key = "artdownload", Label = "Download logos and backgrounds", About = "Get missing logos and backgrounds for selected games.", DefaultOn = false, Note = Background.ArtNote, Progress = Background.ArtProgress },
             new Option { Group = "Spotlight", Key = "screenshotsdownload", Label = "Download screenshots", About = "Download screenshots for games you select. Existing pictures work while downloads are off.", DefaultOn = false },
             new Option { Group = "Spotlight", Key = "trailersound", Label = "Trailer sound", About = "Play trailers with sound. Press R3 to turn the sound on or off.", DefaultOn = false },
-            new Option { Group = "Spotlight", Key = "filtertabs", Label = "Filter tabs", About = "Choose the tabs you switch between with LB and RB.", Choices = new[] { "selene", "playnite", "both" }, Names = new[] { "Selene's", "Playnite's presets", "Both" }, Default = "selene" },
+            new Option { Group = "Spotlight", Key = "filtertabs", Label = "Filter tabs", About = "Choose Selene's tabs or Playnite presets.", Choices = new[] { "selene", "playnite" }, Names = new[] { "Selene's", "Playnite's presets" }, Default = "selene" },
             new Option { Group = "Spotlight", Key = "shade", Slider = true, Label = "Background shade", About = "Set how much the artwork darkens behind text.", Choices = new[] { "0", "0.25", "0.5", "0.75", "1" }, Names = new[] { "Off", "25%", "50%", "75%", "100%" }, Default = "1" },
-            new Option { Group = "Spotlight", Key = "idle", Label = "Idle screen", About = "Set how long before Spotlight dims and shows your games' art. Press any button to wake it.", Choices = new[] { "0", "5", "10", "20" }, Names = new[] { "Never", "5 minutes", "10 minutes", "20 minutes" }, Default = "10" },
+            new Option { Group = "Spotlight", Key = "idle", Label = "Idle screen", About = "Show game artwork after a period of inactivity.", Choices = new[] { "0", "5", "10", "20" }, Names = new[] { "Never", "5 minutes", "10 minutes", "20 minutes" }, Default = "10" },
             // ---- Collection ----
             new Option { Group = "Collection", Key = "collectionglide", Label = "Smooth scrolling", About = "Glide between covers in Collection instead of jumping." },
+            new Option { Group = "Look", Key = "logosize", Label = "Even logo sizes", About = "Size Collection logos by their shape, so tall logos aren't small." },
+            new Option { Group = "Look", Key = "squareart", Label = "Square art from SteamGridDB", About = "Get square tile art from SteamGridDB with the art downloads. Needs a free key." },
+            new Option { Group = "Look", Key = "steamgridkey", Label = "SteamGridDB key", About = "Paste a free key from steamgriddb.com.", Action = "Paste", Note = SquareFetch.Status },
+            new Option { Group = "Collection", Key = "collection23", Label = "2:3 covers", About = "Shape Collection's tiles like the covers, so none are cut. Also sets Playnite's grid to 2:3." },
+            new Option { Group = "Collection", Key = "collectionhero", Label = "Same art as Spotlight", About = "Show Spotlight's game art behind Collection too. Applies after restarting Playnite." },
             new Option { Group = "Collection", Key = "librarytrailer", Label = "Collection trailers", About = "Play a game's trailer when you stay on it. Press R3 for sound." },
             new Option { Group = "Collection", Key = "collectioninfo", Label = "Game details", About = "Show playtime, last played, release year and genres under the game's logo." },
             new Option { Group = "Collection", Key = "collectionhints", Label = "Button hints", About = "Show button hints at the bottom of Collection." },
@@ -359,24 +377,36 @@ namespace Selene
             // ---- Notifications ----
             new Option { Group = "Notifications", Key = "notifysound", Label = "Notification sound", About = "Play a sound when a notification appears." },
             new Option { Group = "Notifications", Key = "sessioncard", Label = "Session card", About = "Show how long you played after you close a game." },
+            new Option { Group = "Notifications", Key = "taskcards", Label = "Progress cards", About = "Show cards while downloads and library updates run. Off: only when they finish.", DefaultOn = false },
             new Option { Group = "Notifications", Key = "progresstoast", Label = "Download notifications", About = "Show downloads in a small notification instead of a window." },
             new Option { Group = "Notifications", Key = "updatecheck", Label = "Update notifications", About = "Check for a new version of Selene once a day." },
             new Option { Group = "Notifications", Key = "setuphint", Label = "Add-on tips", About = "Let you know when logos and trailers need the Extra Metadata add-on." },
             // ---- Sound & music ----
             new Option { Group = "Sound & music", Key = "sounds", Label = "Interface sounds", About = "Play sounds when you move, select and go back." },
+            new Option { Group = "Sound & music", Key = "quietdetails", Label = "Quiet details transitions", About = "Avoid extra navigation ticks when opening game details." },
+            new Option { Group = "Look", Key = "defaultbackdrop", Label = "Selene background fallback", About = "Use Selene's background when no game art is showing. Restart Playnite to apply." },
             new Option { Group = "Sound & music", Key = "soundmenu", Label = "Sound in the menu", About = "Change the volume and audio output from the menu." },
+            new Option { Group = "Sound & music", Key = "livevolume", Label = "Keep volume display in sync", About = "Keep the Sound panel in sync with Windows volume." },
             new Option { Group = "Sound & music", Key = "soundvolume", Slider = true, Label = "Interface sounds volume", About = "Set the volume of interface sounds.", Choices = new[] { "25", "50", "75", "100" }, Names = new[] { "25%", "50%", "75%", "100%" }, Default = "100" },
             new Option { Group = "Sound & music", Key = "clipvolume", Slider = true, Label = "Clip volume", About = "Set the volume of video clips in Captures.", Available = () => false /* set with Up / Down in Captures only */, Choices = new[] { "0", "10", "20", "30", "40", "50", "60", "70", "80", "90", "100" }, Names = new[] { "Off", "10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%", "100%" }, Default = "90" },
-            new Option { Group = "Sound & music", Key = "songsetup", Label = "Get game songs", About = "Opt in to songs for your library. Asks before downloading songs or about 130 MB of required tools.", DefaultOn = false, Note = SongSetup.Status, Progress = Background.SongsProgress, Available = () => HasAddon("UniPlaySong") },
-            new Option { Group = "Sound & music", Key = "songsettle", Label = "Songs wait until you stop", About = "A game's song starts once you rest on it, so holding a direction scrolls smoothly. Sets UniPlaySong's hover delay.", Available = () => HasAddon("UniPlaySong") },
+            new Option { Group = "Sound & music", Key = "songsetup", Label = "Get game songs", About = "Get missing game songs. Required tools use about 130 MB.", DefaultOn = false, Note = SongSetup.Status, Progress = Background.SongsProgress, Available = () => HasAddon("UniPlaySong") },
+            new Option { Group = "Sound & music", Key = "selenemusic", Label = "Selene OST as default music", About = "Use Selene OST when no default music file is selected." },
+            new Option { Group = "Sound & music", Key = "songsettle", Label = "Songs wait until you stop", About = "Wait until scrolling stops before changing songs.", Available = () => HasAddon("UniPlaySong") },
             new Option { Group = "Sound & music", Key = "music", Label = "Background music", About = "Play music while you browse. Requires the UniPlaySong add-on.", Available = () => HasAddon("UniPlaySong") },
+            new Option { Group = "Sound & music", Key = "independentmusic", Label = "Game music without trailers", About = "Play game songs without waiting for a trailer. Requires UniPlaySong.", DefaultOn = false },
             new Option { Group = "Sound & music", Key = "launchquiet", Label = "Quiet loading screen", About = "Keep the loading screen silent until the game appears." },
+            new Option { Group = "Games", Key = "launchchoice", Label = "Keep launch choices above loading", About = "Show launch choices before the loading screen." },
             // ---- Look ----
             new Option { Group = "Games", Key = "metasource", Label = "Metadata source per game", About = "Choose where a game's screenshots come from, in Game options." },
             new Option { Group = "Look", Key = "trimlogos", Label = "Fit game logos", About = "Remove empty space around game logos so they appear the same size." },
             new Option { Group = "Look", Key = "smartcrop", Label = "Smart cover crop", About = "Crop covers around their most detailed area." },
+            new Option { Group = "Look", Key = "activitycoverfit", Label = "Keep whole covers in Activity", About = "Show complete covers in Activity." },
+            new Option { Group = "Look", Key = "trailerlogogap", Label = "Keep logos below trailers", About = "Keep game logos clear of expanded trailers." },
+            new Option { Group = "Look", Key = "detailsbadges", Label = "Round game-page button badges", About = "Use round button badges on game pages." },
+            new Option { Group = "Look", Key = "captureplayerfit", Label = "Fit capture controls to screen", About = "Fit playback controls to your screen." },
             new Option { Group = "Look", Key = "backgroundfit", Label = "Background sizing", About = "Choose how background images fill the screen.", Choices = new[] { "fill", "fit", "stretch" }, Names = new[] { "Fill", "Fit", "Stretch" }, Default = "fill" },
             new Option { Group = "Look", Key = "language", Label = "Language", About = "Choose the language for Selene.", Choices = new[] { "auto", "en", "de", "es", "fr", "pt_BR", "zh_CN", "ja", "fil" }, Names = new[] { "Follow Playnite", "English", "Deutsch", "Español", "Français", "Português (Brasil)", "简体中文", "日本語", "Filipino" }, Default = "auto" },
+            new Option { Group = "Look", Key = "languagerestart", Label = "Ask to restart only when the language changes", About = "Selene asks to restart Playnite after you pick a language only if it would show different words. Off: it asks after every change." },
             new Option { Group = "Games", Key = "guidefocus", Label = "Focus on Guide", About = "Bring Selene to the front when you press the Guide button. Turn this off if another overlay uses the Guide button." },
             new Option { Group = "Look", Key = "homebackground", Label = "Spotlight background", About = "Choose what appears behind the selected game.", Choices = new[] { "art", "wallpaper" }, Names = new[] { "Game art", "Wallpaper only" }, Default = "art" },
             new Option { Group = "Look", Key = "glow", Label = "Animated background", About = "Show a moving background behind the profile screen and cards." },
@@ -400,6 +430,10 @@ namespace Selene
             new Option { Group = "Games", Key = "launchstyle", Label = "Launch screen style", About = "Choose what appears while a game starts.", Choices = new[] { "artlogo", "art", "logo", "minimal" }, Names = new[] { "Art and logo", "Art only", "Logo on black", "Minimal" }, Default = "artlogo" },
             new Option { Group = "Games", Key = "launchmotion", Label = "Launch screen motion", About = "Slowly zoom the artwork while a game starts." },
             new Option { Group = "Games", Key = "launchshade", Label = "Launch screen shade", About = "Darken the artwork so the game's logo stands out.", Choices = new[] { "0", "0.5", "1" }, Names = new[] { "None", "Soft", "Dark" }, Default = "0.5" },
+            new Option { Group = "Games", Key = "gamesget", Label = "Download game media", About = "Download missing media for your library.", Action = "Open", Note = MediaDownloads.SettingStatus, Progress = () => MediaDownloads.Unified ? MediaDownloads.Progress() : Background.ArtProgress() },
+            new Option { Group = "Advanced", Key = "downloadprogress", Label = "Combined media downloads", About = "Use one download control in Games. Turn off for individual controls." },
+            new Option { Group = "Look", Key = "previewartfit", Label = "Keep trailer-card artwork proportional", About = "Prevent stretched artwork in trailer cards. Restart Playnite to apply." },
+            new Option { Group = "Games", Key = "gamesask", Label = "Offer to get art for a new library", About = "Offer media downloads when setting up a new library." },
             new Option { Group = "Games", Key = "loadingscreen", Label = "Loading screen", About = "Show the game's artwork and logo while it starts." },
             new Option { Group = "Games", Key = "aftergame", Label = "After a game", About = "Choose where you return to after you close a game.", Choices = new[] { "spotlight", "where" }, Names = new[] { "Spotlight, on that game", "Where you were" }, Default = "spotlight" },
             new Option { Group = "Games", Key = "freeze", Label = "Pause games on Guide", About = "Pause offline games when you press the Guide button. When this is off, games are only muted." },
@@ -414,14 +448,21 @@ namespace Selene
             new Option { Group = "Games", Key = "quietbackups", Label = "Automatic save backups", About = "Back up your saves with Ludusavi after you play, without asking." },
             // ---- Advanced ----
             new Option { Group = "Advanced", Key = "report", Label = "Report a problem", About = "Tell us about a problem in a few steps. No account needed.", Action = "Open" },
-            new Option { Group = "Advanced", Key = "perflog", Available = () => System.IO.File.Exists(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "selene-dev-perflog")) || Features.On("perflog"), Label = "Record performance", About = "Record memory, CPU, responsiveness and downloads while you use Selene. Stops after 20 minutes. Nothing is uploaded.", DefaultOn = false, Note = PerformanceRecorder.Note },
+            new Option { Group = "Advanced", Key = "perflog", Available = () => System.IO.File.Exists(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "selene-dev-perflog")) || Features.On("perflog"), Label = "Record performance", About = "Record performance locally for up to 20 minutes.", DefaultOn = false, Note = PerformanceRecorder.Note },
+            new Option { Group = "Games", Key = "menuclosegame", Label = "Close game in the menu", About = "Show Close for the running game at the top of the menu, hidden games too." },
+            new Option { Group = "Advanced", Key = "xboxsignin", Label = "Xbox sign-in", About = "Offer to sign Playnite in to Xbox so Game Pass games show up." },
+            new Option { Group = "Advanced", Key = "gamesfolder", Label = "Find games in Games folders", About = "With no game folder set, look in a Games folder on each drive for games no store knows about." },
+            new Option { Group = "Advanced", Key = "storelibraries", Label = "Offer store libraries", About = "Offer Playnite's library add-ons for the stores on this PC in the setup check." },
             new Option { Group = "Advanced", Key = "setupcheck", Label = "Setup check", About = "Check Playnite's settings and add-ons, and fix what Selene can.", Action = "Open" },
+            new Option { Group = "Advanced", Key = "shortaddonask", Label = "Short add-on question", About = "Use a shorter add-on installation prompt." },
             new Option { Group = "Advanced", Key = "reportchord", Label = "Report with both sticks", About = "Press both sticks at the same time to report a problem with a screenshot." },
             new Option { Group = "Advanced", Key = "legacytasks", Label = "Old administrator tasks", About = "Remove the administrator tasks that older versions of Selene left on this PC.", Action = "Remove", Available = () => LegacyTasks.Any, Note = LegacyTasks.Summary },
             new Option { Group = "Advanced", Key = "fullrate", Label = "Match the screen's refresh rate", About = "Move at 120 or 144 Hz on high refresh rate screens." },
+            new Option { Group = "Advanced", Key = "calmmotion", Label = "Calm background motion", About = "Reduce background animation to 30 FPS. Restart Playnite to apply." },
+            new Option { Group = "Advanced", Key = "presence", Label = "Pause when out of view", About = "Pause background motion and trailers while Selene is out of view." },
             new Option { Group = "Look", Key = "perfmode", Label = "Performance mode", About = "For slower PCs: no moving background or trailer previews. Motion and art stay. Applies after restarting Playnite.", DefaultOn = false },
             new Option { Group = "Advanced", Key = "asynccovers", Label = "Load covers in the background", About = "Covers load without holding up scrolling and fade in. Applies after restarting Playnite." },
-            new Option { Group = "Advanced", Key = "lightweight", Label = "Reduce memory use", About = "Keep fewer screenshots cached and preload one nearby game. Keeps smooth animations, backgrounds, trailers and image quality.", DefaultOn = false },
+            new Option { Group = "Advanced", Key = "lightweight", Label = "Reduce memory use", About = "Cache fewer images and preload fewer games.", DefaultOn = false },
             new Option { Group = "Advanced", Key = "viewswitch", Label = "View button", About = "Press to switch between Spotlight and Collection. Hold to search." },
             new Option { Group = "Advanced", Key = "playnitesettings", Label = "Selene Playnite settings", About = "Show Playnite's settings in Selene's style." },
             new Option { Group = "Advanced", Key = "translatecollect", Label = "Collect words to translate", About = "Save every phrase Selene shows to a file on your Desktop, ready to translate.", DefaultOn = false },
@@ -530,6 +571,18 @@ namespace Selene
         }
 
         public static void Remember(string name, string value) { SetValue(name, value); }
+
+        // a captures folder added, or taken out when it's in the list already (Selene settings > Spotlight > Captures folders)
+        public static bool ToggleCapturesFolder(string folder)
+        {
+            if (settings == null || string.IsNullOrWhiteSpace(folder)) return false;
+            if (settings.CapturesFolders == null) settings.CapturesFolders = new List<string>();
+            var have = settings.CapturesFolders.FirstOrDefault(f => string.Equals(f.TrimEnd('\\'), folder.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase));
+            bool added = have == null;
+            if (added) settings.CapturesFolders.Add(folder); else settings.CapturesFolders.Remove(have);
+            if (save != null) save();
+            return added;
+        }
 
         public static void SetValue(string key, string value)
         {

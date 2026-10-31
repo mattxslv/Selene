@@ -21,6 +21,28 @@ namespace Selene
 
         public static bool Active { get { return table != null && table.Count > 0; } }
 
+        // The language a choice stands for, worked out the way Load does it ("Follow Playnite" is Playnite's own language).
+        private static string Resolve(string choice)
+        {
+            var l = choice;
+            if (l == "auto" || string.IsNullOrEmpty(l)) l = PlayniteLanguage(HomeNav.Api);
+            if (string.IsNullOrEmpty(l)) l = System.Globalization.CultureInfo.CurrentUICulture.Name;
+            if (string.Equals(l, "english", StringComparison.OrdinalIgnoreCase)) l = "en_US";
+            return l.Replace('-', '_');
+        }
+
+        // Picking this language would show different words than Selene shows now, so a restart is worth asking for. Words are read
+        // once at start, so the language Selene started in is the one to compare with: "English" on a Playnite that is in English
+        // (a new install\u0027s first choice) changes nothing, and choosing the language it started in again needs no restart either.
+        // Without the switch (Advanced > Ask to restart only when the language changes), or if the start language is not known: yes.
+        public static bool WouldChange(string choice)
+        {
+            if (!Features.On("languagerestart") || Language == null) return true;
+            var next = Resolve(choice);
+            if (string.Equals(Language, next, StringComparison.OrdinalIgnoreCase)) return false;
+            return !(!Active && Language.StartsWith("en", StringComparison.OrdinalIgnoreCase) && next.StartsWith("en", StringComparison.OrdinalIgnoreCase));   // both the built-in English
+        }
+
         public static void Load(object api)
         {
             try

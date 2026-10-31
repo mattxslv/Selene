@@ -125,7 +125,7 @@ namespace Selene
         }
 
         // the covers of a row of tiles, decoded one after another off the UI thread
-        public static void FillCovers(IList<Game> games, IList<Tile> tiles, int width)
+        public static void FillCovers(IList<Game> games, IList<Tile> tiles, int width, bool wholeCover = false)
         {
             var files = games.Select(CoverPath).ToList();
             var want = new List<string>();
@@ -136,10 +136,15 @@ namespace Selene
             {
                 int idx = at[i];
                 if (idx >= tiles.Count) return;
-                var fill = new System.Windows.Controls.Border { CornerRadius = new System.Windows.CornerRadius(11), Background = new ImageBrush(pic) { Stretch = Stretch.UniformToFill }, Opacity = 0 };
+                var fill = CoverFace(pic, wholeCover);
                 tiles[idx].Face.Child = fill;
                 Ui.Fade(fill, 1, 240);
             });
+        }
+
+        private static System.Windows.Controls.Border CoverFace(ImageSource picture, bool wholeCover)
+        {
+            return new System.Windows.Controls.Border { CornerRadius = new System.Windows.CornerRadius(11), Background = new ImageBrush(picture) { Stretch = wholeCover ? Stretch.Uniform : Stretch.UniformToFill }, Opacity = 0 };
         }
 
         // the numbers on the Activity card: games played in the last seven days, and all the play time

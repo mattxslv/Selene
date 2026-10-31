@@ -9,5 +9,5 @@ Copy-Item -LiteralPath $sdk -Destination $output -Force
 $references = @('System.dll','System.Core.dll','System.Xaml.dll',"$framework\WPF\WindowsBase.dll","$framework\WPF\PresentationCore.dll","$framework\WPF\PresentationFramework.dll",$sdk,(Join-Path $output 'SeleneCore.dll')) | ForEach-Object { "/r:$_" }
 & "$framework\csc.exe" /nologo /target:exe "/out:$output\Interaction.Check.exe" $references (Join-Path $PSScriptRoot 'Interaction.Check.cs')
 if ($LASTEXITCODE -ne 0) { throw 'UI checks did not compile' }
-& (Join-Path $output 'Interaction.Check.exe') $output
+& (Join-Path $output 'Interaction.Check.exe') $output (Join-Path $repo 'theme\Views\Main.xaml')
 if ($LASTEXITCODE -ne 0) { throw 'UI checks failed' }

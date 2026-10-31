@@ -126,6 +126,12 @@ namespace Selene
             Wire("SeleneNav_achievements", () => new AchievementsHub());
             HomeNav.ApplyValueSettings();
             Ui.WatchFullRate(main);            // the screen's own refresh rate while Playnite is in front
+            // minimized, in the tray or behind a game: the background video, trailers, dust and light pause (ScreenPresence)
+            ScreenPresence.Changed += LoginScene.SetAmbient;
+            ScreenPresence.Changed += LibraryStage.PresenceChanged;
+            ScreenPresence.Changed += HomeNav.PresenceChanged;
+
+            ScreenPresence.Watch(main);
             DetailsStage.Attach(main);         // the details page's lower half
             ApplyNowPlaying();
             ProgressToast.WatchLibraryStatus(main);   // the library update's words as a notification card
@@ -183,11 +189,7 @@ namespace Selene
                     text = days <= 0 ? "Today" : days == 1 ? "Yesterday" : days < 7 ? days + " days ago" : when.Value.ToLocalTime().ToString("MMM d, yyyy");
                 }
                 Application.Current.Resources["SeleneLastPlayed"] = text;
-                // the store's flat logo by "platform"
-                var source = game != null ? game.GetType().GetProperty("Source") : null;
-                var src = source != null ? source.GetValue(game, null) : null;
-                var name = src != null ? src.GetType().GetProperty("Name").GetValue(src, null) as string : null;
-                PlatformIcons.Publish(name);
+                PlatformIcons.PublishGame(game);
             }
             catch (Exception ex) { HomeNav.Log("last played: " + ex.Message); }
         }

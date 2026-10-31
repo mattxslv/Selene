@@ -30,7 +30,7 @@
                                              From="1.05" To="1" Duration="0:0:0.2"/>
                         </Storyboard>
                     </ControlTemplate.Resources>
-                    <Grid Margin="14,18,0,18"
+                    <Grid Margin="14,10.5,0,10.5"
                           RenderTransformOrigin="0.5,0.5"
                           d:DataContext="{x:Static DesignMainViewModel.DesignSelectedGameIntance}">
                         <!-- Cache the face/ring once; the focus transform and row slide then move its texture. -->

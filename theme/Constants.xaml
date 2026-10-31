@@ -6,6 +6,11 @@
                     xmlns:sys="clr-namespace:System;assembly=mscorlib"
                     mc:Ignorable="d">
 
+    <sys:Boolean x:Key="SeleneAmbientMotionEnabled">True</sys:Boolean>
+    <sys:String x:Key="SelenePlatformFallbackGlyph">&#xEA12;</sys:String>
+    <Thickness x:Key="SeleneSpotlightLogoMargin">0,-45,0,0</Thickness>
+    <sys:Double x:Key="SeleneDetailsBadgeWidth">48</sys:Double>
+
     <Stretch x:Key="SeleneBackgroundStretch">UniformToFill</Stretch>
 
     <!-- Google's Material Icons, for the menus Playnite builds (game options, its settings) -->

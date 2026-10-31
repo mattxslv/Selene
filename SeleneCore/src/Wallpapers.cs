@@ -5,6 +5,24 @@ using System.Linq;
 
 namespace Selene
 {
+    // A single still from the bundled backdrop video, beneath game art and the existing ambient player.
+    // Keeps previews and selection gaps consistent without another video decoder or timer.
+    internal static class DefaultBackdrop
+    {
+        private static System.Windows.Media.ImageSource picture;
+        public static string FileForTheme(string id)
+        {
+            if (!Features.On("defaultbackdrop") || !string.Equals(id, ThemePalettes.DefaultId, StringComparison.OrdinalIgnoreCase)) return "";
+            return SelenePaths.ThemeFile("Images", "SeleneDefaultBackground.jpg");
+        }
+        public static System.Windows.Media.ImageSource ForTheme(string id)
+        {
+            var file = FileForTheme(id);
+            if (file == "") return null;
+            return picture ?? (picture = Wallpapers.Load(file));
+        }
+    }
+
     public class WallpaperChoice
     {
         public string File { get; set; }

@@ -4,6 +4,10 @@ Selene does not start optional game-media downloads simply because you installed
 upgrades start with trailers, screenshots, logos/backgrounds, missing metadata and game-song setup off.
 Previously downloaded files are kept. They can still be displayed or played while downloads are off.
 
+When your library has games but no Selene art yet, Selene asks one question once, "Get art for your games?". Yes is the
+consent for art, screenshots, trailers for the games you select and missing details together (it lists the sources and the save
+folders); songs are separate. Not now leaves everything off and puts a red dot on Selene settings; Games > Get art for your games asks again, and the dot goes once the art is allowed. The same choices stay in Selene settings.
+
 Choose what you want in Selene settings:
 
 - **Spotlight > Download trailers:** Off, Games you select, or Whole library. Changing the enabled scope asks

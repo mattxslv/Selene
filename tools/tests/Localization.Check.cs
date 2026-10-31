@@ -8,8 +8,8 @@ using System.Windows.Media;
 namespace Selene
 {
     // Isolated collaborators: the production Lang.cs and BackgroundFit.cs are compiled unchanged.
-    public static class Features { public static string Language = "auto", Fit = "fill"; public static string Value(string key) { return key == "language" ? Language : Fit; } public static bool On(string key) { return false; } }
-    public static class HomeNav { public static void Log(string message) { } }
+    public static class Features { public static string Language = "auto", Fit = "fill"; public static string Value(string key) { return key == "language" ? Language : Fit; } public static bool RestartSwitch = true; public static bool On(string key) { return key == "languagerestart" && RestartSwitch; } }
+    public static class HomeNav { public static object Api; public static void Log(string message) { } }
     public static class NewsCard { public static void Refresh(bool force) { } }
     public static class Ui { public static bool PadCopy; public static bool PressFromPad; public static bool KeyIsPadCopy() { return PadCopy; } }
     public class GameControllerInputEventArgs : System.Windows.Input.KeyEventArgs
@@ -89,6 +89,15 @@ namespace Selene
                 Features.Language = "en"; Lang.Load(api); var english = new TextBlock { Text = "Back" }; Lang.Track(english);
                 Equal("en", Lang.Language, "Explicit language overrides Playnite"); Equal("Back", english.Text, "English stays English");
                 Features.Language = "auto"; api.ApplicationSettings.Language = "english"; Lang.Load(api); Equal("en_US", Lang.Language, "Playnite English does not follow OS language");
+                // the restart question after picking a language: only when the words would change
+                HomeNav.Api = api; Features.RestartSwitch = true;
+                Equal("False", Lang.WouldChange("auto").ToString(), "First setup: following an English Playnite needs no restart");
+                Equal("False", Lang.WouldChange("en").ToString(), "First setup: choosing English on an English start needs no restart");
+                Equal("True", Lang.WouldChange("de").ToString(), "Choosing another language still asks");
+                Features.RestartSwitch = false; Equal("True", Lang.WouldChange("en").ToString(), "Switch off: always asks, as before"); Features.RestartSwitch = true;
+                Features.Language = "de"; Lang.Load(api); Equal("False", Lang.WouldChange("de").ToString(), "Going back to the language Selene started in needs no restart");
+                Equal("True", Lang.WouldChange("en").ToString(), "Leaving the language Selene started in asks");
+                Features.Language = "auto"; api.ApplicationSettings.Language = "english"; Lang.Load(api); HomeNav.Api = null;
                 Features.Fit = "fill"; Equal(Stretch.UniformToFill, BackgroundFit.Current, "Fill crops proportionally");
                 Features.Fit = "fit"; BackgroundFit.Apply(); Equal(Stretch.Uniform, app.Resources["SeleneBackgroundStretch"], "Fit updates resource");
                 Features.Fit = "stretch"; BackgroundFit.Apply(); Equal(Stretch.Fill, app.Resources["SeleneBackgroundStretch"], "Stretch updates resource");

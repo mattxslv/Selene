@@ -14,7 +14,18 @@ namespace Selene
 {
     public static class LocalGames
     {
-        private static string[] Roots { get { return SelenePaths.GameFolders; } }
+        // the folders set on the add-on page; none set: a Games folder at the root of each drive (like D:\Games), where
+        // people tend to keep what no store installed
+        private static string[] Roots
+        {
+            get
+            {
+                var set = SelenePaths.GameFolders;
+                if (set.Length > 0 || !Features.On("gamesfolder")) return set;
+                try { return DriveInfo.GetDrives().Where(d => d.DriveType == DriveType.Fixed && d.IsReady).Select(d => Path.Combine(d.RootDirectory.FullName, "Games")).Where(Directory.Exists).ToArray(); }
+                catch { return set; }
+            }
+        }
         private static readonly Regex NotTheGame = new Regex(
             @"unins|setup|install|crash|crs-handler|redist|vc_|vcredist|dxsetup|directx|dotnet|prereq|helper|report|easyanticheat|^eac|battleye|update|patch|config|launcherhelper|cefprocess|subprocess",
             RegexOptions.IgnoreCase);
@@ -53,6 +64,7 @@ namespace Selene
                         var name = Path.GetFileName(dir);
                         if (names.Contains(Norm(name))) continue;  // a store copy already in the library
                         if (IsXboxAppFolder(dir)) continue;  // the Xbox library lists it already
+                        if (IsStoreLibraryFolder(dir)) continue;  // a store's own library folder (G:\Games\steamapps came in as a game)
                         if (IsInstallerFolder(dir)) continue;  // a downloaded installer, not an installed game
                         var exe = PickExe(dir);
                         if (exe == null) continue;
@@ -208,6 +220,14 @@ namespace Selene
 
         // a game folder can also be the Xbox app's install folder (.GamingRoot): its games carry MicrosoftGame.Config and the
         // Xbox library integration already lists them (they showed up twice more as local games)
+        private static readonly Regex StoreFolder = new Regex(@"^(steamapps|steamlibrary|steam|epic ?games|xboxgames|windowsapps|gog( galaxy| games)?|ea( games| app)?|origin( games)?|ubisoft( game launcher)?|battle\.net|amazon games|itch|rockstar games)$", RegexOptions.IgnoreCase);
+        private static bool IsStoreLibraryFolder(string dir)
+        {
+            if (StoreFolder.IsMatch(Path.GetFileName(dir))) return true;
+            try { return Directory.Exists(Path.Combine(dir, "steamapps")) || File.Exists(Path.Combine(dir, "libraryfolder.vdf")) || File.Exists(Path.Combine(dir, ".egstore")); }
+            catch { return false; }
+        }
+
         private static bool IsXboxAppFolder(string dir)
         {
             foreach (var d in new[] { dir, Path.Combine(dir, "Content") })
@@ -382,18 +402,31 @@ namespace Selene
             runningTimer.Start();
         }
 
-        // path of every process, elevated ones too (limited-information access works across integrity levels)
-        private static List<string> ProcessPaths()
+        [System.Runtime.InteropServices.DllImport("psapi.dll")] private static extern bool EnumProcesses([System.Runtime.InteropServices.Out] int[] ids, int bytes, out int needed);
+
+        // (id, lower-case exe path) of every process, elevated ones too (limited-information access works across integrity levels).
+        // EnumProcesses instead of Process.GetProcesses: no Process object per process (~90 KB of garbage a look) and about 3x
+        // quicker (8 ms -> 3 ms with 326 processes, measured). Safe on any thread.
+        private static List<KeyValuePair<int, string>> ProcessImages()
         {
-            var list = new List<string>();
-            foreach (var p in System.Diagnostics.Process.GetProcesses())
+            var list = new List<KeyValuePair<int, string>>();
+            var ids = new int[1024]; int needed = 0;
+            while (true)
             {
-                var h = OpenProcess(0x1000 /* PROCESS_QUERY_LIMITED_INFORMATION */, false, p.Id);
+                if (!EnumProcesses(ids, ids.Length * sizeof(int), out needed)) return list;
+                if (needed < ids.Length * sizeof(int) || ids.Length >= 65536) break;
+                ids = new int[ids.Length * 4];   // (full: there may be more)
+            }
+            var sb = new System.Text.StringBuilder(1024);
+            for (int i = 0; i < Math.Min(ids.Length, needed / sizeof(int)); i++)
+            {
+                if (ids[i] == 0) continue;
+                var h = OpenProcess(0x1000 /* PROCESS_QUERY_LIMITED_INFORMATION */, false, ids[i]);
                 if (h == IntPtr.Zero) continue;
                 try
                 {
-                    var sb = new System.Text.StringBuilder(1024); int n = sb.Capacity;
-                    if (QueryFullProcessImageName(h, 0, sb, ref n)) list.Add(sb.ToString().ToLowerInvariant());
+                    sb.Length = 0; int n = sb.Capacity;
+                    if (QueryFullProcessImageName(h, 0, sb, ref n)) list.Add(new KeyValuePair<int, string>(ids[i], sb.ToString().ToLowerInvariant()));
                 }
                 finally { CloseHandle(h); }
             }
@@ -418,48 +451,92 @@ namespace Selene
             var folder = GameFolder(g);
             if (string.IsNullOrWhiteSpace(folder)) return list;
             var dir = Full(folder) + "\\";
-            foreach (var p in System.Diagnostics.Process.GetProcesses())
-            {
-                var h = OpenProcess(0x1000, false, p.Id);
-                if (h == IntPtr.Zero) continue;
-                try
-                {
-                    var sb = new System.Text.StringBuilder(1024); int n = sb.Capacity;
-                    if (QueryFullProcessImageName(h, 0, sb, ref n) && sb.ToString().ToLowerInvariant().StartsWith(dir)) list.Add(p.Id);
-                }
-                finally { CloseHandle(h); }
-            }
+            foreach (var p in ProcessImages()) if (p.Value.StartsWith(dir, StringComparison.Ordinal)) list.Add(p.Key);
             return list;
         }
 
+        // Every 4 s, for as long as Playnite runs (a game in front included): only the cheap part (which folders to watch) is on the
+        // UI thread. Looking at every process and matching them against every watched folder is on a worker, and the UI thread
+        // is handed the few games whose state may change. It used to be ~8 ms on the UI thread each time, with a Process object
+        // per process, and grew with the number of local games.
+        private sealed class Watched { public Guid Id; public string Dir, Install, PlayPath; public GameActionType PlayType; }
+        private static readonly Dictionary<Guid, Watched> watchCache = new Dictionary<Guid, Watched>();
+        private static bool checkingRunning;
+
+        // the folder a game is watched by, worked out again only when what it comes from (install folder, Play action) changed
+        private static Watched WatchOf(Game x)
+        {
+            var play = x.GameActions != null ? x.GameActions.FirstOrDefault(a => a.IsPlayAction) : null;
+            string playPath = play != null ? play.Path : null;
+            var type = play != null ? play.Type : GameActionType.File;
+            Watched w;
+            if (watchCache.TryGetValue(x.Id, out w) && w.Install == x.InstallDirectory && w.PlayPath == playPath && w.PlayType == type) return w;
+            var folder = Full(GameFolder(x));
+            w = new Watched { Id = x.Id, Dir = folder != null ? folder + "\\" : null, Install = x.InstallDirectory, PlayPath = playPath, PlayType = type };
+            watchCache[x.Id] = w;
+            return w;
+        }
+
         private static void CheckRunning()
+        {
+            var api = HomeNav.Api;
+            if (api == null || checkingRunning) return;
+            List<Watched> watched;
+            try
+            {
+                watched = api.Database.Games.Where(x => x.PluginId == Guid.Empty && x.IsInstalled && !string.IsNullOrWhiteSpace(x.InstallDirectory)
+                                                        && x.InstallDirectory.IndexOf(@"\WindowsApps\", StringComparison.OrdinalIgnoreCase) < 0)
+                    .Select(WatchOf).ToList();
+            }
+            catch (Exception ex) { HomeNav.Log("running check failed: " + ex.Message); return; }
+            if (watched.Count == 0) return;
+            checkingRunning = true;
+            var ui = System.Windows.Application.Current.Dispatcher;
+            System.Threading.Tasks.Task.Factory.StartNew(() =>
+            {
+                Dictionary<Guid, string> found = null;
+                try
+                {
+                    var images = ProcessImages();
+                    found = new Dictionary<Guid, string>();
+                    foreach (var w in watched)
+                    {
+                        if (w.Dir == null) continue;   // (no folder to go by: nothing is a match)
+                        var match = images.FirstOrDefault(p => p.Value.StartsWith(w.Dir, StringComparison.Ordinal));
+                        if (match.Value != null) found[w.Id] = match.Value;
+                    }
+                }
+                catch (Exception ex) { HomeNav.Log("running check failed: " + ex.Message); }
+                ui.BeginInvoke(new Action(() => { checkingRunning = false; if (found != null) ApplyRunning(watched, found); }), System.Windows.Threading.DispatcherPriority.Background);
+            });
+        }
+
+        // on the UI thread, with the games as they are now (the database is Playnite's, not ours to touch from the worker)
+        private static void ApplyRunning(List<Watched> watched, Dictionary<Guid, string> found)
         {
             var api = HomeNav.Api;
             if (api == null) return;
             try
             {
                 var db = api.Database;
-                var candidates = db.Games.Where(x => x.PluginId == Guid.Empty && x.IsInstalled && !string.IsNullOrWhiteSpace(x.InstallDirectory)
-                                                     && x.InstallDirectory.IndexOf(@"\WindowsApps\", StringComparison.OrdinalIgnoreCase) < 0).ToList();
-                if (candidates.Count == 0) return;
-                var paths = ProcessPaths();
-                foreach (var g in candidates)
+                // first look after start: a "running" mark left in the database from last session is ours to manage
+                if (firstCheck)
+                    foreach (var w in watched) { var old = db.Games.Get(w.Id); if (old != null && old.IsRunning && !old.IsLaunching) markedRunning.Add(old.Id); }
+                foreach (var hit in found)
                 {
-                    var dir = Full(GameFolder(g)) + "\\";
-                    var match = paths.FirstOrDefault(pp => pp.StartsWith(dir));
-                    bool running = match != null;
-                    // first look after start: a "running" mark left in the database from last session is ours to manage
-                    if (firstCheck && g.IsRunning && !g.IsLaunching) markedRunning.Add(g.Id);
-                    if (running && !g.IsRunning && !g.IsLaunching)
-                    {
-                        g.IsRunning = true; db.Games.Update(g); markedRunning.Add(g.Id);
-                        HomeNav.Log("running game found (not started by Playnite): " + g.Name + " <- " + match + " [install dir: " + g.InstallDirectory + ", watching " + GameFolder(g) + "]");
-                    }
-                    else if (!running && g.IsRunning && markedRunning.Contains(g.Id))
-                    {
-                        g.IsRunning = false; db.Games.Update(g); markedRunning.Remove(g.Id);
-                        HomeNav.Log("running game closed: " + g.Name);
-                    }
+                    var g = db.Games.Get(hit.Key);
+                    if (g == null || g.IsRunning || g.IsLaunching) continue;
+                    g.IsRunning = true; db.Games.Update(g); markedRunning.Add(g.Id);
+                    HomeNav.Log("running game found (not started by Playnite): " + g.Name + " <- " + hit.Value + " [install dir: " + g.InstallDirectory + ", watching " + GameFolder(g) + "]");
+                }
+                var watchedIds = new HashSet<Guid>(watched.Select(w => w.Id));
+                foreach (var id in markedRunning.Where(i => watchedIds.Contains(i) && !found.ContainsKey(i)).ToList())
+                {
+                    var g = db.Games.Get(id);
+                    markedRunning.Remove(id);
+                    if (g == null || !g.IsRunning) continue;
+                    g.IsRunning = false; db.Games.Update(g);
+                    HomeNav.Log("running game closed: " + g.Name);
                 }
             }
             catch (Exception ex) { HomeNav.Log("running check failed: " + ex.Message); }

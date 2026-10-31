@@ -45,6 +45,12 @@ namespace Selene
         private readonly List<Border> powerRows = new List<Border>();
         private int index, powerIndex;
         private bool leaving;
+        private DispatcherTimer soundRefresh;
+        private bool readingSound;
+        private int soundGeneration, soundRevision;
+        private double shownVolume = double.NaN;
+        private bool shownMute;
+        private TextBlock soundSummary;
 
         private static readonly object[][] PowerItems =
         {
@@ -76,12 +82,15 @@ namespace Selene
 
         public MenuScreen(bool returning = false)
         {
+            Root.Unloaded += (s, e) => StopSoundRefresh();
             var profile = Profiles.Active;
+            var running = Features.On("menuclosegame") ? HomeNav.RunningGame() : null;
+            if (running != null) items.Add(new Item { Icon = Ui.Icon(0xe5cd), Label = "Close " + running.Name, Sub = "Close game", Run = () => Later(HomeNav.CloseRunningGame) });
             items.Add(new Item { Icon = Ui.Icon(0xe853), Label = profile != null ? profile.Name : "Switch profile", Sub = profile != null ? "Switch profile" : null, Picture = profile != null ? WhoScreen.Avatar(profile, 52) : null, Run = () => LoginScene.Show(new WhoScreen(null), 1) });
             items.Add(new Item { Icon = Ui.Icon(0xe3c9), Label = "Edit profile", Run = EditProfile });
             items.Add(new Item { Icon = Ui.Icon(0xe40a), Label = "Theme", Run = ChangeTheme });
             items.Add(new Item { Icon = Ui.Icon(0xe429), Label = "Selene settings", Badge = Background.Any, Run = () => LoginScene.Show(new SettingsScreen(true), 1) });   // (the dot: something still running behind the scenes)
-            if (Features.On("soundmenu")) items.Add(new Item { Icon = Ui.Icon(0xe050), Label = "Sound", Sub = SystemAudio.Summary(), Run = OpenSound });   // Windows' volume and output
+            if (Features.On("soundmenu")) items.Add(new Item { Icon = Ui.Icon(0xe050), Label = "Sound", Sub = SystemAudio.Summary() ?? (Features.On("livevolume") ? "\u2014" : null), Run = OpenSound });   // Windows' volume and output
             items.Add(new Item { Icon = Ui.Icon(0xe8ac), Label = "Power", Run = OpenPower });
             // the add-ons' own menus (Playnite's Extensions menu): audio switchers, metadata tools...
             items.Add(new Item { Icon = Ui.Icon(0xe87b), Picture = Ui.Glyph(Ui.Icon(0xe87b), Ui.Icons, 34, Ink.Brush("SeleneInkColor"), true), Label = "Extensions", Run = () => LoginScene.Show(GameOptionsScreen.Extensions(), 1) });   // (the piece centred by its body, not its knobs)
@@ -100,7 +109,12 @@ namespace Selene
                 // the name floats above the icon, wider than the cell; the profile's has its action under it
                 var words = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
                 words.Children.Add(new TextBlock { Text = item.Label, FontSize = 18, FontWeight = FontWeights.SemiBold, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor"), HorizontalAlignment = HorizontalAlignment.Center });
-                if (item.Sub != null) words.Children.Add(new TextBlock { Text = item.Sub, FontSize = 14, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.6), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 1, 0, 0) });
+                if (item.Sub != null)
+                {
+                    var summary = new TextBlock { Text = item.Sub, FontSize = 14, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.6), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 1, 0, 0) };
+                    words.Children.Add(summary);
+                    if (item.Label == "Sound") soundSummary = summary;
+                }
                 var pill = new Border { Child = words, Padding = new Thickness(16, 7, 16, 8), HorizontalAlignment = HorizontalAlignment.Center };
                 var label = new Grid
                 {
@@ -143,11 +157,14 @@ namespace Selene
 
         public override void Shown()
         {
+            if (soundList != null) StartSoundRefresh();
             // the icons rise in from the bottom one after another
             for (int i = 0; i < cells.Count; i++) Ui.Rise(cells[i], 40 + i * 25, 24, 260);
             Ui.Play("OpenPanel.wav", 0.8);
             ShowFocus(false);
         }
+
+        public override void Hidden() { StopSoundRefresh(); }
 
         private void ShowFocus(bool animate)
         {
@@ -285,6 +302,7 @@ namespace Selene
             soundRows.Clear();
             // the volume: the settings' slider look, its figure and line
             soundSlider = new SliderBar();
+            shownVolume = double.NaN;   // a fresh control needs its initial value even when Windows volume is unchanged
             soundRows.Add(SoundRow(list, "Volume", soundSlider.Root));
             // the output: the device playing, the arrows either side say Left / Right change it
             var pick = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(24, 0, 6, 0) };
@@ -311,6 +329,7 @@ namespace Selene
             outputs = SystemAudio.Outputs();
             ShowSound(false);
             ShowSoundFocus();
+            StartSoundRefresh();
         }
 
         private static Border SoundRow(StackPanel list, string label, UIElement control)
@@ -326,11 +345,61 @@ namespace Selene
 
         private void ShowSound(bool animate)
         {
+            soundRevision++;   // a local volume change takes precedence over an older background read
             double v = SystemAudio.Volume;
             bool muted = v >= 0 && SystemAudio.Muted;
-            if (soundSlider != null) soundSlider.Set(v < 0 ? 0 : (int)Math.Round(v * 20), 21, v < 0 ? "\u2014" : muted ? "Muted" : (int)Math.Round(v * 100) + "%", animate);
+            ApplySoundVolume(v, muted, animate);
             var now = outputs.Find(d => d.Default);
             if (soundOut != null) soundOut.Text = now != null ? now.Name : outputs.Count > 0 ? outputs[0].Name : "No playback device";
+        }
+
+        private void ApplySoundVolume(double volume, bool muted, bool animate)
+        {
+            if (volume == shownVolume && muted == shownMute) return;
+            shownVolume = volume; shownMute = muted;
+            if (Features.On("livevolume") && soundSummary != null) soundSummary.Text = volume < 0 ? "\u2014" : muted ? "Muted" : (int)Math.Round(volume * 100) + "%";
+            if (soundSlider != null) soundSlider.Set(volume < 0 ? 0 : (int)Math.Round(volume * 20), 21,
+                volume < 0 ? "\u2014" : muted ? "Muted" : (int)Math.Round(volume * 100) + "%", animate);
+        }
+
+        private void StartSoundRefresh()
+        {
+            if (!Features.On("livevolume") || soundList == null || leaving) return;
+            if (soundRefresh == null)
+            {
+                soundRefresh = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(500) };
+                soundRefresh.Tick += (s, e) => RefreshSound();
+            }
+            soundRefresh.Start();
+        }
+
+        private void StopSoundRefresh()
+        {
+            soundGeneration++;
+            if (soundRefresh != null) soundRefresh.Stop();
+        }
+
+        private void RefreshSound()
+        {
+            if (soundList == null || leaving || !Root.IsVisible || !Features.On("livevolume")) { StopSoundRefresh(); return; }
+            if (!ScreenPresence.InView) return;
+            if (readingSound) return;
+            readingSound = true;
+            int generation = soundGeneration, revision = soundRevision;
+            var dispatcher = Root.Dispatcher;
+            // Core Audio lookup runs on a worker; no device enumeration, UI-thread polling or overlapping reads.
+            System.Threading.Tasks.Task.Factory.StartNew(() =>
+            {
+                double volume = SystemAudio.Volume;
+                bool muted = volume >= 0 && SystemAudio.Muted;
+                if (dispatcher.HasShutdownStarted) return;
+                dispatcher.BeginInvoke(new Action(() =>
+                {
+                    readingSound = false;
+                    if (generation != soundGeneration || revision != soundRevision || soundList == null || leaving || !Root.IsVisible || !ScreenPresence.InView || !Features.On("livevolume")) return;
+                    ApplySoundVolume(volume, muted, false);
+                }), DispatcherPriority.Background);
+            });
         }
 
         private void ShowSoundFocus()
@@ -348,7 +417,7 @@ namespace Selene
         {
             if (soundPicker != null && soundPicker.IsOpen) { soundPicker.Handle(b); return; }   // the devices' list has the buttons
             if (b == "B") { Ui.Back(); CloseSound(); return; }
-            if (b == "Start") { leaving = true; Ui.Back(); if (!LoginScene.CloseMenuOver()) LoginScene.Finish(); return; }
+            if (b == "Start") { leaving = true; StopSoundRefresh(); Ui.Back(); if (!LoginScene.CloseMenuOver()) LoginScene.Finish(); return; }
             if (b == "DPadUp" || b == "DPadDown")
             {
                 int next = soundIndex + (b == "DPadUp" ? -1 : 1);
@@ -417,6 +486,7 @@ namespace Selene
 
         private void CloseSound()
         {
+            StopSoundRefresh();
             var list = soundList;
             soundList = null;
             Ui.Fade(list, 0, 150, 0, () => Root.Children.Remove(list));

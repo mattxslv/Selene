@@ -15,12 +15,12 @@ namespace Selene
     // hand or by a script stay bare (no description, genres, cover...). A while after the start, every game missing its main
     // details gets each empty field filled from the metadata add-ons, in the order Playnite's own metadata settings give for
     // that field (IGDB for the words, SteamGridDB for the pictures, say). Nothing already there is replaced. A game is tried
-    // again two weeks later at the soonest (metadata-tried-2.txt). What the add-ons leave empty (IGDB finds nothing for a game
+    // again two weeks later at the soonest (metadata-tried-4.txt). What the add-ons leave empty (IGDB finds nothing for a game
     // it can't match on its own) comes from the Steam store when a game there has exactly the same name.
     internal static class GameInfo
     {
         private const int PerStart = 120;   // games looked up per start at most (the rest next time)
-        private static string TriedFile { get { return Path.Combine(SelenePaths.DataFolder, "metadata-tried-2.txt"); } }   // (2: every game once more, with the Steam store as well)
+        private static string TriedFile { get { return Path.Combine(SelenePaths.DataFolder, "metadata-tried-4.txt"); } }   // (4: every game once more, with hashed picture names and edition matching)
 
         public static void CompleteLater()
         {
@@ -29,6 +29,7 @@ namespace Selene
             t.Tick += (s, e) => { t.Stop(); Start(); };
             t.Start();
         }
+        public static void CompleteLibrary() { Start(int.MaxValue); }
 
         // a game missing its main details
         private static bool Bare(Game g)
@@ -37,43 +38,60 @@ namespace Selene
                 || g.GenreIds == null || g.GenreIds.Count == 0 || !g.ReleaseDate.HasValue || g.DeveloperIds == null || g.DeveloperIds.Count == 0;
         }
 
-        private static void Start()
+        private static void Start() { Start(PerStart); }
+        private static volatile bool completing;
+        private static volatile int checkedGames, plannedGames;
+        public static bool Busy { get { return completing; } }
+        public static int CheckedGames { get { return checkedGames; } }
+        public static int PlannedGames { get { return plannedGames; } }
+        public static double Progress { get { return plannedGames > 0 ? Math.Min(1, (double)checkedGames / plannedGames) : 1; } }
+        public static string CompletionStatus { get { return plannedGames > 0 ? checkedGames + " of " + plannedGames + " checked" + (completing ? "" : " · Done") : "None queued"; } }
+        private static void Start(int limit)
         {
-            if (!DownloadConsent.Allowed("metadatacomplete")) return;
+            if (!DownloadConsent.Allowed("metadatacomplete") || completing) return;
             try
             {
                 var api = HomeNav.Api;
                 if (api == null) return;
                 var plugins = api.Addons.Plugins.OfType<MetadataPlugin>().ToList();
-                if (plugins.Count == 0) { HomeNav.Log("game info: no metadata add-ons"); return; }
+                if (plugins.Count == 0) { HomeNav.Log("game info: no metadata add-ons" + (limit == int.MaxValue ? "; explicit library request uses the Steam fallback" : "")); if (limit != int.MaxValue) return; }
                 var tried = ReadTried();
-                var due = api.Database.Games.Where(g => g != null && !string.IsNullOrEmpty(g.Name) && Bare(g))
+                var due = api.Database.Games.Where(g => g != null && (limit != int.MaxValue || !g.Hidden) && !string.IsNullOrEmpty(g.Name) && Bare(g))
                     .Where(g => { DateTime when; return !tried.TryGetValue(g.Id, out when) || (DateTime.UtcNow - when).TotalDays >= 14; })
                     .OrderByDescending(g => g.IsInstalled).ThenByDescending(g => g.LastActivity ?? DateTime.MinValue)
-                    .Take(PerStart).Select(g => g.Id).ToList();
+                    .Take(limit).Select(g => g.Id).ToList();
                 HomeNav.Log("game info: " + due.Count + " games missing details");
+                plannedGames = due.Count; checkedGames = 0;
                 if (due.Count == 0) return;
                 var order = SourceOrder(api, plugins);
                 var ui = Dispatcher.CurrentDispatcher;
+                completing = true;
                 Task.Factory.StartNew(() =>
                 {
-                    int filled = 0;
-                    foreach (var id in due)
+                    try
                     {
-                        if (!DownloadConsent.Allowed("metadatacomplete")) break;
-                        Game game = null;
-                        ui.Invoke(new Action(() => game = api.Database.Games.Get(id)));
-                        if (game == null) continue;
-                        try { if (Fill(api, game, order, ui)) filled++; }
-                        catch (Exception ex) { HomeNav.Log("game info: " + game.Name + ": " + ex.Message); }
-                        tried[id] = DateTime.UtcNow;
+                        int filled = 0;
+                        foreach (var id in due)
+                        {
+                            while (limit == int.MaxValue && MediaDownloads.Unified && DownloadConsent.Allowed("metadatacomplete") && HomeNav.GameRunning()) System.Threading.Thread.Sleep(1000);
+                            if (!DownloadConsent.Allowed("metadatacomplete")) break;
+                            Game game = null;
+                            ui.Invoke(new Action(() => game = api.Database.Games.Get(id)));
+                            if (game == null) { checkedGames++; continue; }
+                            try { if (Fill(api, game, order, ui)) filled++; }
+                            catch (Exception ex) { HomeNav.Log("game info: " + game.Name + ": " + ex.Message); }
+                            checkedGames++;
+                            tried[id] = DateTime.UtcNow;
+                        }
+                        WriteTried(tried);
+                        int done = filled;
+                        ui.BeginInvoke(new Action(() =>
+                        {
+                            HomeNav.Log("game info: filled in " + done + " of " + due.Count);
+                        }));
                     }
-                    WriteTried(tried);
-                    int done = filled;
-                    ui.BeginInvoke(new Action(() =>
-                    {
-                        HomeNav.Log("game info: filled in " + done + " of " + due.Count);
-                    }));
+                    catch (Exception ex) { HomeNav.Log("game info: library pass failed: " + ex.Message); }
+                    finally { completing = false; }
                 });
             }
             catch (Exception ex) { HomeNav.Log("game info: " + ex.Message); }
@@ -241,6 +259,13 @@ namespace Selene
                 var found = At(Json("https://store.steampowered.com/api/storesearch/?term=" + Uri.EscapeDataString(name) + "&l=english&cc=US"), "items") as IEnumerable;
                 string appId = null;
                 foreach (var item in found ?? new object[0]) if (Plain(Convert.ToString(At(item, "name"))) == plain) { appId = Convert.ToString(At(item, "id")); break; }
+                // not word for word ("Control" is "CONTROL Ultimate Edition" there): the same title matching the trailers use
+                if (appId == null)
+                {
+                    var candidates = new List<KeyValuePair<string, string>>();
+                    foreach (var item in found ?? new object[0]) candidates.Add(new KeyValuePair<string, string>(Convert.ToString(At(item, "id")), Convert.ToString(At(item, "name"))));
+                    appId = GameTitleMatch.Select(name, candidates);
+                }
                 if (appId == null) { HomeNav.Log("game info: " + name + ": not on the Steam store by that name"); return; }
                 var data = At(Json("https://store.steampowered.com/api/appdetails?appids=" + appId + "&l=english"), appId, "data");
                 if (data == null) return;
@@ -257,9 +282,16 @@ namespace Selene
                 var score = At(data, "metacritic", "score");
                 if (score != null) put(MetadataField.CriticScore, (int?)Convert.ToInt32(score));
                 var cdn = "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/" + appId + "/";
+                // newer games' pictures sit in hashed folders (the plain address is a 404 for them): the store service names them
+                Dictionary<string, object> assets = null;
+                try { assets = TrailerFetch.StoreAssets(appId, Json); } catch (Exception ex) { HomeNav.Log("game info: " + name + ": store service: " + ex.Message); }
+                Func<string, string> asset = key => assets != null && assets.ContainsKey(key) ? TrailerFetch.AssetUrl(appId, assets, (string)assets[key]) : null;
+                Func<string, string> fetch = address => address != null ? Local(new MetadataFile(address)) : null;
                 object had2;
-                if (wants.TryGetValue(MetadataField.CoverImage, out had2) && had2 == null) wants[MetadataField.CoverImage] = Local(new MetadataFile(cdn + "library_600x900_2x.jpg")) ?? Local(new MetadataFile(cdn + "library_600x900.jpg"));
-                if (wants.TryGetValue(MetadataField.BackgroundImage, out had2) && had2 == null) wants[MetadataField.BackgroundImage] = Local(new MetadataFile(cdn + "library_hero.jpg")) ?? Local(new MetadataFile(Convert.ToString(At(data, "background_raw"))));
+                if (wants.TryGetValue(MetadataField.CoverImage, out had2) && had2 == null)
+                    wants[MetadataField.CoverImage] = fetch(asset("library_capsule_2x")) ?? fetch(asset("library_capsule")) ?? fetch(cdn + "library_600x900_2x.jpg") ?? fetch(cdn + "library_600x900.jpg");
+                if (wants.TryGetValue(MetadataField.BackgroundImage, out had2) && had2 == null)
+                    wants[MetadataField.BackgroundImage] = fetch(asset("library_hero")) ?? fetch(cdn + "library_hero.jpg") ?? fetch(Convert.ToString(At(data, "background_raw")));
                 HomeNav.Log("game info: " + name + ": Steam store page " + appId);
             }
             catch (Exception ex) { HomeNav.Log("game info: " + name + ": Steam store: " + ex.Message); }
@@ -271,7 +303,7 @@ namespace Selene
             if (file == null) return null;
             try
             {
-                var name = string.IsNullOrEmpty(file.FileName) ? Guid.NewGuid() + ".jpg" : Guid.NewGuid() + "_" + Path.GetFileName(file.FileName);
+                var name = string.IsNullOrEmpty(file.FileName) ? Guid.NewGuid() + ".jpg" : Guid.NewGuid() + "_" + Path.GetFileName(file.FileName.Split('?')[0]);   // (store addresses end in ?t=...)
                 var temp = Path.Combine(Path.GetTempPath(), "selene-meta-" + name);
                 if (file.HasContent && file.Content != null) { File.WriteAllBytes(temp, file.Content); return temp; }
                 if (string.IsNullOrEmpty(file.Path)) return null;

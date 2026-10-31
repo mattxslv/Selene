@@ -80,6 +80,41 @@ namespace Selene
             };
             HookArtCrossfade(grid);
             HookGlide();
+            HookLogoSize(HomeNav.FindByName(library, "SeleneLibraryLogo") as Image);
+        }
+
+        // Logos sized by how much they cover, not by a wide box: a tall one (Monster Hunter Wilds, Path of Exile 2) hit the
+        // box's height while still narrow and looked small next to the wide ones. A tall logo grows upward over the art.
+        // Switch: Look > Even logo sizes.
+        private const double LogoArea = 600 * 200, LogoMaxWidth = 600, LogoMaxHeight = 320, LogoSlot = 250, ThemeMaxHeight = 240;
+        private static void HookLogoSize(Image logo)
+        {
+            if (logo == null) return;
+            System.ComponentModel.DependencyPropertyDescriptor.FromProperty(Image.SourceProperty, typeof(Image)).AddValueChanged(logo, (s, e) => SizeLogo(logo));
+            SizeLogo(logo);
+        }
+
+        internal static Size LogoBox(double pixelWidth, double pixelHeight)
+        {
+            double r = pixelWidth / pixelHeight;
+            double before = Math.Min(LogoMaxWidth, ThemeMaxHeight * r) / r;   // the theme's 600 x 240 box: never smaller than that
+            double h = Math.Max(before, Math.Min(LogoMaxHeight, Math.Sqrt(LogoArea / r)));
+            double w = Math.Min(LogoMaxWidth, h * r);
+            return new Size(w, w / r);
+        }
+
+        private static void SizeLogo(Image logo)
+        {
+            var pic = logo.Source as System.Windows.Media.Imaging.BitmapSource;
+            if (!Features.On("logosize") || pic == null || pic.PixelHeight == 0)
+            {
+                logo.MaxWidth = LogoMaxWidth; logo.MaxHeight = ThemeMaxHeight; logo.Margin = new Thickness(0);
+                return;
+            }
+            var box = LogoBox(pic.PixelWidth, pic.PixelHeight);
+            logo.MaxWidth = box.Width;
+            logo.MaxHeight = box.Height;
+            logo.Margin = new Thickness(0, -Math.Max(0, box.Height - LogoSlot), 0, 0);   // (room above the slot: it grows up, the lines under it stay)
         }
 
         // Browsing past a cover should not start its downloads/metadata work in the input handler.
@@ -231,6 +266,8 @@ namespace Selene
             if (sv == null || ReferenceEquals(hooked, sv)) return;
             hooked = sv;
             rowPresenter = FindChild<ItemsPresenter>(list);
+            // room after the last cover: selected it grows and gets its ring and glow, and the row's edge cut them off
+            if (rowPresenter != null) rowPresenter.Margin = new Thickness(0, 0, 36, 0);
             rowPanel = FindChild<VirtualizingPanel>(list);
             measuredPitch = 0;
             if (rowPanel != null)
@@ -446,7 +483,7 @@ namespace Selene
         {
             try
             {
-                if (!library.IsVisible || !Features.On("librarytrailer") || HomeNav.Light) return;
+                if (!library.IsVisible || !Features.On("librarytrailer") || HomeNav.Light || !ScreenPresence.InView) return;
                 var w = Window.GetWindow(library);
                 var details = w != null ? HomeNav.FindByName(w, "PART_ElemGameDetails") : null;
                 if (details != null && details.IsVisible) return;
@@ -458,7 +495,7 @@ namespace Selene
                     Source = new Uri(path), LoadedBehavior = MediaState.Manual, UnloadedBehavior = MediaState.Manual,
                     Stretch = Stretch.UniformToFill, IsMuted = true, IsHitTestVisible = false   // the game's song plays instead (R3: its own sound)
                 };
-                player.MediaEnded += (s, e) => { player.Position = TimeSpan.Zero; player.Play(); };
+                player.MediaEnded += (s, e) => { player.Position = TimeSpan.Zero; if (video == player && ScreenPresence.InView) player.Play(); };
                 player.MediaOpened += (s, e) =>
                 {
                     if (video != player) return;
@@ -516,6 +553,7 @@ namespace Selene
             look.Tick += (s, e) =>
             {
                 if (video != player) { look.Stop(); return; }
+                if (!ScreenPresence.InView) return;
                 double scale = BarZoom(player);
                 if (first == 0) { first = scale; look.Interval = TimeSpan.FromMilliseconds(300); return; }
                 look.Stop();
@@ -577,6 +615,21 @@ namespace Selene
         }
 
         public static void Stop() { Stop(false); }
+
+        // Selene out of view (minimized, in the tray, behind a game): the trailer stops decoding where it is and no new one starts;
+        // back in view it plays on, or the wait for the selected game's trailer begins again if that is what it was doing
+        private static bool armedWhenLeft;
+        public static void PresenceChanged(bool inView)
+        {
+            try
+            {
+                var playing = video;
+                if (!inView) { armedWhenLeft = arm != null && arm.IsEnabled; if (arm != null) arm.Stop(); if (playing != null) playing.Pause(); return; }
+                if (playing != null) playing.Play();
+                else if (armedWhenLeft && library != null && library.IsVisible) Rearm(false);
+            }
+            catch (Exception ex) { HomeNav.Log("library trailer: " + ex.Message); }
+        }
 
         // a trailer just downloaded for the game the art is showing: it plays as if the wait had just started
         public static void TrailerReady(Guid id)

@@ -44,6 +44,11 @@ class InteractionCheck
             Wait(250); Render(settings.Root,Path.Combine(args[0],"language-restart.png"));
             settings.Handle("B"); Assert(Field(settings,"ask")==null,"Later dismisses restart modal");
             Assert(Features.Value("language")=="en","Later keeps the chosen language saved");
+            Features.Set("downloadprogress", false); // Explicitly exercise the retained individual/legacy flow below.
+            var gamesAsk = new GamesAskScreen(); window.Content = gamesAsk.Root; Pump(); gamesAsk.Shown(); Wait(300); Render(gamesAsk.Root, Path.Combine(args[0], "games-question.png"));
+            Assert(((FrameworkElement)Field((Dialog)Field(gamesAsk, "ask"), "panel")).ActualHeight < 560, "The games question is a short card, not a scrolling list");
+            GamesSetup.Decline(); var gamesRow = new SettingsScreen(false, "Games", "gamesget"); window.Content = gamesRow.Root; Pump(); gamesRow.Shown(); Wait(350); Render(gamesRow.Root, Path.Combine(args[0], "games-row-dot.png"));
+            Features.Remember("gamesask-done", "");
             var downloads = new SettingsScreen(false, "Spotlight", "screenshotsdownload");
             window.Content = downloads.Root; Pump(); downloads.Shown(); Pump();
             downloads.Handle("A");
@@ -66,6 +71,60 @@ class InteractionCheck
             var firstRow=new TranslateTransform();var secondRow=new TranslateTransform();
             glide.Invoke(null,new object[]{firstRow,256.0,false,20.0});glide.Invoke(null,new object[]{secondRow,256.0,false,0.0});
             Assert(firstRow.X==20,"Switching between Collection and Spotlight settles the previous row");
+            // Repeated hide/restore must preserve the visual tree and publish ambient state exactly once per transition.
+            Features.Set("presence", true);
+            ScreenPresence.Watch(window);
+            int presenceChanges = 0;
+            Action<bool> presenceObserver = value => presenceChanges++;
+            ScreenPresence.Changed += presenceObserver;
+            var retainedContent = window.Content;
+            for (int cycle = 0; cycle < 4; cycle++)
+            {
+                window.Hide(); Pump(); ScreenPresence.Evaluate();
+                Assert(!ScreenPresence.InView && Equals(app.Resources["SeleneAmbientMotionEnabled"], false), "Hidden window stops ambient work");
+                int beforeRepeat = presenceChanges; ScreenPresence.Evaluate();
+                Assert(presenceChanges == beforeRepeat, "Unchanged visibility does not notify subscribers again");
+                window.Show(); Pump(); ScreenPresence.Evaluate();
+                Assert(ScreenPresence.InView && ReferenceEquals(window.Content, retainedContent), "Restore preserves the same content tree");
+            }
+            window.Hide(); ScreenPresence.Evaluate(); Features.Set("presence", false); ScreenPresence.Evaluate();
+            Assert(ScreenPresence.InView, "Turning presence off resumes media even while hidden");
+            Features.Set("presence", true); ScreenPresence.Evaluate();
+            Assert(!ScreenPresence.InView, "Turning presence back on applies current visibility");
+            ScreenPresence.Changed -= presenceObserver; window.Show(); ScreenPresence.Evaluate();
+            Ui.Poke(5000); Assert(Ui.RecentlyActive, "Input wakes the active frame window");
+            // Byte budget must evict high-DPI portraits as well as many small covers, without changing decode quality.
+            var remember = typeof(TileCovers).GetMethod("Remember", BindingFlags.Static | BindingFlags.NonPublic);
+            var covers = (System.Collections.IDictionary)typeof(TileCovers).GetField("cache", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+            var pixels = new byte[1024 * 1024 * 4];
+            var bitmap = BitmapSource.Create(1024, 1024, 96, 96, PixelFormats.Bgra32, null, pixels, 4096); bitmap.Freeze();
+            for (int i = 0; i < 30; i++) remember.Invoke(null, new object[] { "cover-" + i, bitmap });
+            Assert(covers.Count == 20 && !covers.Contains("cover-0") && covers.Contains("cover-29"), "80 MiB pixel budget evicts least recent covers");
+            remember.Invoke(null, new object[] { "cover-29", bitmap });
+            Assert(covers.Count == 20, "Replacing a cached cover does not double-count its pixel storage");
+            var small = BitmapSource.Create(1, 1, 96, 96, PixelFormats.Bgra32, null, new byte[4], 4); small.Freeze();
+            for (int i = 0; i < 100; i++) remember.Invoke(null, new object[] { "small-" + i, small });
+            Assert(covers.Count == 80, "Entry count also bounds very small covers");
+            // Load the production tile template: ambient clocks must stop without undoing selected scale/focus.
+            var xml = new System.Xml.XmlDocument(); xml.Load(args[1]);
+            var ns = new System.Xml.XmlNamespaceManager(xml.NameTable);
+            ns.AddNamespace("p", "http://schemas.microsoft.com/winfx/2006/xaml/presentation");
+            ns.AddNamespace("x", "http://schemas.microsoft.com/winfx/2006/xaml");
+            var templateXml = (System.Xml.XmlElement)xml.SelectSingleNode("//p:Style[@x:Key='SeleneTileStyle']/p:Setter[@Property='Template']/p:Setter.Value/p:ControlTemplate", ns);
+            templateXml.SetAttribute("xmlns:x", "http://schemas.microsoft.com/winfx/2006/xaml");
+            var template = (ControlTemplate)System.Windows.Markup.XamlReader.Parse(templateXml.OuterXml);
+            app.Resources["SeleneAmbientMotionEnabled"] = true;
+            var selected = new ListBoxItem { Template = template, IsSelected = true };
+            window.Content = selected; Wait(250);
+            var ring = (RotateTransform)template.FindName("RingSpin", selected);
+            var selectedScale = (ScaleTransform)template.FindName("TileScale", selected);
+            Assert(ring.HasAnimatedProperties, "Visible selected tile runs its ambient ring");
+            app.Resources["SeleneAmbientMotionEnabled"] = false; Wait(50);
+            Assert(!ring.HasAnimatedProperties && selected.IsSelected && selectedScale.ScaleX > 1.29, "Hidden ambient state removes clocks and preserves selected scale");
+            app.Resources["SeleneAmbientMotionEnabled"] = true; Wait(50);
+            Assert(ring.HasAnimatedProperties, "Restoring ambient state restarts the selected ring");
+            selected.Visibility = Visibility.Collapsed; Wait(50);
+            Assert(!ring.HasAnimatedProperties, "An invisible selected tile has no ambient clocks");
             Console.WriteLine("Passed "+checks+" UI interaction checks; rendered first-language and restart screens."); return 0;
         }
         finally { window.Close(); if(Directory.Exists(scratch))Directory.Delete(scratch,true); }

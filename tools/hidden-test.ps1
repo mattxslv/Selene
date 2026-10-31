@@ -6,10 +6,13 @@
 #   -Keys   button presses after start (selene-dev-keys: "menu", "A", "B", "DPadDown", "type:abc"...)
 #   -Shots  "10,20": seconds after start at which a picture of the test Playnite is saved as <Root>\shots\shot-<s>.png
 #   -Values "filtertabs=playnite;shade=1": Selene settings for the run
+#   -Theme   the fullscreen theme's folder name (default Selene; 'Default' is Playnite's own, to compare Selene against plain Playnite)
 #   -Relaunch <s>: a second, normal start of the test Playnite <s> seconds in (as a user starting it again right after quitting)
 #   -Visible on the real desktop instead (it takes the screen!); -Shots are then pictures of the whole main screen
+#   -Login  keep the sign-in (and a new copy's first-run setup) instead of skipping it
 #   -Wait   seconds to let it run; still running then = closed by PID (the result says so)
-param([string]$Keys = "", [string]$Values = "", [switch]$Visible, [int]$Relaunch = 0, [int]$Wait = 40, [string]$Shots = "", [string]$Root = "$env:USERPROFILE\selene-fresh", [scriptblock]$Prep = $null,
+param([string]$Keys = "", [string]$Values = "", [string]$Theme = 'Selene_a98e0027-fa6a-4f5e-a087-bad8d69f2443', [switch]$Visible, [int]$Relaunch = 0, [int]$Wait = 40, [string]$Shots = "", [string]$Root = "$env:USERPROFILE\selene-fresh", [scriptblock]$Prep = $null,
+      [switch]$Login,
       [string[]]$Disable = @('PlayniteAudioSwitcher_708b6ec4-bf96-4c0d-bd9d-fe0aa04d6bf1', 'UniPlaySong.a1b2c3d4-e5f6-7890-abcd-ef1234567890'))
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
@@ -42,13 +45,14 @@ public static class HiddenDesk {
 $files = @((Join-Path $pn 'config.json'), (Join-Path $pn 'fullscreenConfig.json'), (Join-Path $pn 'ExtensionsData\cd424c29-97f4-4dd0-aa66-4d8e01cc8724\config.json'), (Join-Path $pn 'selene-row-filter.txt'))
 foreach ($f in $files) { if (Test-Path $f) { Copy-Item $f "$f.bak-hidden" -Force } }
 $desk = [IntPtr]::Zero
+$originalTemp = $env:TEMP; $originalTmp = $env:TMP
 $procId = 0
 try {
     $cfg = Get-Content $files[0] -Raw | ConvertFrom-Json
     $cfg | Add-Member -NotePropertyName DisabledPlugins -NotePropertyValue $Disable -Force
     $cfg | ConvertTo-Json -Depth 20 | Set-Content $files[0] -Encoding UTF8
     $full = if (Test-Path $files[1]) { Get-Content $files[1] -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }
-    foreach ($kv in @{ Theme = 'Selene_a98e0027-fa6a-4f5e-a087-bad8d69f2443'; EnableGameControllerSupport = $false; InterfaceVolume = 0.0; BackgroundVolume = 0.0; MuteInBackground = $true }.GetEnumerator()) {
+    foreach ($kv in @{ Theme = $Theme; EnableGameControllerSupport = $false; InterfaceVolume = 0.0; BackgroundVolume = 0.0; MuteInBackground = $true }.GetEnumerator()) {
         $full | Add-Member -NotePropertyName $kv.Key -NotePropertyValue $kv.Value -Force
     }
     $full | ConvertTo-Json -Depth 20 | Set-Content $files[1] -Encoding UTF8
@@ -65,7 +69,8 @@ try {
     $temp = Join-Path $Root 'temp'
     New-Item -ItemType Directory -Force $temp | Out-Null
     Remove-Item (Join-Path $temp 'selene.log'), (Join-Path $temp 'selene-dev-keys'), (Join-Path $pn 'safestart.flag') -ErrorAction SilentlyContinue
-    New-Item -ItemType File -Force (Join-Path $temp 'selene-dev-isolated'), (Join-Path $temp 'selene-skip-login') | Out-Null
+    New-Item -ItemType File -Force (Join-Path $temp 'selene-dev-isolated') | Out-Null
+    if (-not $Login) { New-Item -ItemType File -Force (Join-Path $temp 'selene-skip-login') | Out-Null }   # (-Login: the sign-in / first-run setup shows)
     if ($Keys) { Set-Content (Join-Path $temp 'selene-dev-keys') $Keys }
     if ($Prep) { & $Prep $pn $temp }
     $shotDir = Join-Path $Root 'shots'
@@ -139,4 +144,5 @@ finally {
     foreach ($flag in 'selene-dev-isolated', 'selene-skip-login', 'selene-dev-keys') { Remove-Item (Join-Path $Root "temp\$flag") -ErrorAction SilentlyContinue }
     if ($desk -ne [IntPtr]::Zero) { [HiddenDesk]::CloseDesktop($desk) | Out-Null }
     "log: $(Join-Path $Root 'temp\selene.log')"
+    $env:TEMP = $originalTemp; $env:TMP = $originalTmp
 }

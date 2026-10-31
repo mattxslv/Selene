@@ -510,10 +510,21 @@ namespace Selene
             catch (Exception ex) { HomeNav.Log("smooth: setup failed " + ex.Message); }
             HomeNav.Log("smooth: render tier " + Tier());
             System.Windows.Media.RenderCapability.TierChanged += (s, e) => HomeNav.Log("smooth: render tier changed -> " + Tier());
-            System.Windows.Media.CompositionTarget.Rendering += OnFrame;
+            // (the frame callback is added by Listen, while Playnite is in use)
             tierTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
             tierTimer.Tick += (s, e) => CheckSoftware();
             tierTimer.Start();
+        }
+
+        private static bool frameHooked;
+        // the watchdog listens to every frame only while Playnite is in front and being used (Ui.FullRateChanged decides): a
+        // Rendering handler keeps WPF drawing on every frame of the screen, also when nothing moves
+        public static void Listen(bool on)
+        {
+            if (on == frameHooked) return;
+            frameHooked = on;
+            if (on) { lastFrame = 0; frames = 0; sum = 0; System.Windows.Media.CompositionTarget.Rendering += OnFrame; }
+            else System.Windows.Media.CompositionTarget.Rendering -= OnFrame;
         }
 
         private static int Tier() { return System.Windows.Media.RenderCapability.Tier >> 16; }  // 2 = full GPU, 0 = software

@@ -218,9 +218,9 @@ namespace Selene
                     + "var v=document.getElementById('v'),c=document.getElementById('c'),x=c?c.getContext('2d'):null,n=0;"
                     + "function fit(){if(c){c.width=innerWidth;c.height=innerHeight;}}fit();addEventListener('resize',fit);"
                     // cover: the picture fills the view, cut at the sides or top and bottom (as the trailer cards' own player does)
-                    + "function draw(){if(x&&v.videoWidth>0){var s=Math.max(c.width/v.videoWidth,c.height/v.videoHeight),w=v.videoWidth*s,h=v.videoHeight*s;"
-                    + "x.drawImage(v,(c.width-w)/2,(c.height-h)/2,w,h);n++;}requestAnimationFrame(draw);}requestAnimationFrame(draw);"
-                    + "v.addEventListener('playing',function(){document.title='playing '+v.videoWidth+'x'+v.videoHeight;});"
+                    + "var raf=0;function draw(){raf=0;if(v.paused||!x)return;if(v.videoWidth>0){var s=Math.max(c.width/v.videoWidth,c.height/v.videoHeight),w=v.videoWidth*s,h=v.videoHeight*s;"
+                    + "x.drawImage(v,(c.width-w)/2,(c.height-h)/2,w,h);n++;}raf=requestAnimationFrame(draw);}v.addEventListener('pause',function(){cancelAnimationFrame(raf);raf=0;});"
+                    + "v.addEventListener('playing',function(){if(x&&!raf)raf=requestAnimationFrame(draw);document.title='playing '+v.videoWidth+'x'+v.videoHeight;});"
                     + "v.addEventListener('error',function(){document.title='failed: '+(v.error?v.error.code+' '+v.error.message:'');});"
                     + "setInterval(function(){if(v.readyState>0)document.title='p='+v.currentTime.toFixed(1)+'|'+(isFinite(v.duration)?v.duration.toFixed(1):'0')+'|'+(v.paused?1:0)+'|'+n+'|'+(v.webkitAudioDecodedByteCount||0)+'|muted='+(v.muted?1:0);},500);"
                     + "window.selene={mute:function(m){v.muted=m;if(!m){var q=v.play();if(q&&q.catch)q.catch(function(e){document.title='unmute refused: '+e;});}},"
@@ -301,6 +301,7 @@ namespace Selene
         // where a clip is, how long it is, whether it's paused (twice a second, on the UI thread)
         public Action<double, double, bool> Progress;
 
+        public void SetPaused(bool paused) { Run(paused ? "selene.pause()" : "selene.play()"); }
         public void TogglePause() { Run("selene.toggle()"); }
         public void Seek(double seconds) { Run("selene.seek(" + seconds.ToString(System.Globalization.CultureInfo.InvariantCulture) + ")"); }
         public void SeekTo(double at) { Run("selene.seekTo(" + at.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) + ")"); }

@@ -227,6 +227,11 @@ namespace Selene
                 else if (step[1] == "refresh") HomeNav.ScreenRefresh("dev key");
                 else if (step[1] == "screen:extensions") OpenWith(() => GameOptionsScreen.Extensions());
                 else if (step[1] == "screen:currency") OpenWith(() => new StoreCurrencyScreen(false, null));
+                else if (step[1] == "screen:games") OpenWith(() => new SettingsScreen(false, "Games", "gamesget"));
+                else if (step[1].StartsWith("screen:settings:")) { var group = step[1].Substring(16); OpenWith(() => new SettingsScreen(false, group, null)); }
+                else if (step[1] == "minimize" || step[1] == "restore") { var mw = Application.Current.MainWindow; if (mw != null) { mw.WindowState = step[1] == "minimize" ? WindowState.Minimized : WindowState.Normal; HomeNav.Log("dev lifecycle: " + step[1] + " state=" + mw.WindowState); } }   // lifecycle runs (tools/perf-bench.ps1)
+                else if (step[1] == "hidetray") { CloseToTray.HideToTray(); HomeNav.Log("dev lifecycle: hidetray"); }
+                else if (step[1] == "showtray") { CloseToTray.ShowFromTray(); HomeNav.Log("dev lifecycle: showtray"); }
                 else if (step[1] == "windows?") foreach (Window x in Application.Current.Windows) HomeNav.Log("dev window: '" + x.Title + "' " + x.GetType().Name + " #" + x.GetHashCode() + " visible=" + x.IsVisible + " topmost=" + x.Topmost + " opacity=" + x.Opacity.ToString("0.00") + " content=" + (x.Content != null ? x.Content.GetType().Name : "null"));
                 else if (step[1] == "r3") { if (!LibraryStage.ToggleSound()) HomeNav.DevR3(); }
                 else if (step[1].StartsWith("filter:")) { int d; if (int.TryParse(step[1].Substring(7), out d)) HomeNav.DevCycleFilter(d); }
@@ -558,6 +563,10 @@ namespace Selene
             gradient.SetResourceReference(Border.BackgroundProperty, "SeleneBaseBrush");
             backdropHost.Children.Add(gradient);
             backdrop.Add(gradient);
+            var defaultBackdrop = new Image { Stretch = Stretch.UniformToFill };
+            defaultBackdrop.SetResourceReference(Image.SourceProperty, "SeleneDefaultBackdrop");
+            backdropHost.Children.Add(defaultBackdrop);
+            backdrop.Add(defaultBackdrop);
             var wallpaper = new Image { Stretch = Stretch.UniformToFill };
             wallpaper.SetResourceReference(Image.SourceProperty, "SeleneWallpaper");
             RenderOptions.SetBitmapScalingMode(wallpaper, BitmapScalingMode.HighQuality);
@@ -594,31 +603,88 @@ namespace Selene
             if (videoAllowed) return;
             videoAllowed = true;
             ShowBackdropKind();
-            foreach (var pair in backdrops) if (pair.Key != null && pair.Key.IsVisible) pair.Key.Play();
+            foreach (var pair in backdrops) if (pair.Key != null && pair.Key.IsVisible && ambientOn) pair.Key.Play();
         }
 
         // the same moving background for a window of its own (Playnite's progress window); gone again with the window
         public static Grid BackdropFor(Window w)
         {
-            int pairs = backdrops.Count, dustCount = dusts.Count;
+            int pairs = backdrops.Count, dustCount = dusts.Count, breathCount = breathing.Count;
             var g = BuildGlow();
             var mine = backdrops.Skip(pairs).ToList();
             var myDust = dusts.Skip(dustCount).ToList();
+            var myLight = breathing.Skip(breathCount).ToList();
             w.Closed += (s, e) =>
             {
                 foreach (var p in mine) { backdrops.Remove(p); if (p.Key != null) { p.Key.Stop(); p.Key.Close(); } }
                 foreach (var d in myDust) { dusts.Remove(d); d.Stop(); }
+                foreach (var l in myLight) { l.BeginAnimation(UIElement.OpacityProperty, null); breathing.Remove(l); }
             };
             return g;
+        }
+
+        // ---- ambient motion follows ScreenPresence: paused while Selene's window is minimized, in the tray or behind a game ----
+        // (WPF would go on ticking 390 dust animations and decoding the looping video for a window nobody sees)
+        private static bool ambientOn = true;
+        private static readonly List<Border> breathing = new List<Border>();
+
+        private static void Breathe(Border layer, bool on)
+        {
+            layer.BeginAnimation(UIElement.OpacityProperty, !on ? null : Ui.Ambient(new DoubleAnimation(0.75, 1, TimeSpan.FromSeconds(9)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = new SineEase() }));
+        }
+
+        // the motes and their animations go (a cleared canvas keeps no clocks); the same seed lays the same dust out again
+        private static void ClearParticles(Canvas canvas)
+        {
+            foreach (UIElement dot in canvas.Children)
+            {
+                var tr = dot.RenderTransform as TranslateTransform;
+                if (tr != null) { tr.BeginAnimation(TranslateTransform.XProperty, null); tr.BeginAnimation(TranslateTransform.YProperty, null); }
+                dot.BeginAnimation(UIElement.OpacityProperty, null);
+            }
+            canvas.Children.Clear();
+        }
+
+        public static void SetAmbient(bool on)
+        {
+            if (ambientOn == on) return;
+            ambientOn = on;
+            foreach (var pair in backdrops)
+            {
+                var v = pair.Key;
+                if (v == null) continue;
+                try { if (on) { if (videoAllowed && v.IsVisible) v.Play(); } else v.Pause(); } catch { }
+            }
+            foreach (var layer in breathing) Breathe(layer, on);
+            if (HomeNav.Light) return;
+            var accent = Ink.Of("GlyphColor"); var ink = Ink.Of("SeleneInkColor");
+            foreach (var d in dusts)
+            {
+                var dust = d;
+                dust.Run(el =>
+                {
+                    var c = el as Canvas;
+                    if (c == null) return;
+                    ClearParticles(c);
+                    if (on) FillParticles(c, dust.CurrentSize, new Random(7), accent, ink);
+                });
+            }
+            HomeNav.Log("backdrop: ambient motion " + (on ? "resumed" : "paused"));
+        }
+        // developer switch: %TEMP%\selene-dev-leaveout holds "video" and / or "dust": built without them, to see what each costs (tools\perf-bench.ps1)
+        internal static bool DevLeaveOut(string part)
+        {
+            try { var file = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "selene-dev-leaveout"); return System.IO.File.Exists(file) && System.IO.File.ReadAllText(file).IndexOf(part, StringComparison.OrdinalIgnoreCase) >= 0; }
+            catch { return false; }
         }
 
         private static Grid BuildGlow()
         {
             var outer = new Grid { IsHitTestVisible = false };
-            if (HomeNav.Light) return outer; // keep the theme's still gradient; no decoder or particle thread
+            if (HomeNav.Light || DevLeaveOut("glow")) return outer; // keep the theme's still gradient; no decoder or particle thread
             MediaElement video = null;
             var file = SelenePaths.ThemeFile("Media", "selene-background.mp4");
-            if (System.IO.File.Exists(file))
+            if (System.IO.File.Exists(file) && !DevLeaveOut("video"))
             {
                 video = new MediaElement { Source = new Uri(file), LoadedBehavior = MediaState.Manual, UnloadedBehavior = MediaState.Manual, IsMuted = true, Stretch = Stretch.UniformToFill, Opacity = 0 };
                 // fades in once its first frame is there (it was black until then), over the drawn backdrop, which melts away under
@@ -639,9 +705,9 @@ namespace Selene
                     };
                     drawn.BeginAnimation(UIElement.OpacityProperty, melt);
                 };
-                video.MediaEnded += (s, e) => { video.Position = TimeSpan.Zero; video.Play(); };
+                video.MediaEnded += (s, e) => { video.Position = TimeSpan.Zero; if (videoAllowed && ambientOn && video.IsVisible) video.Play(); };
                 // plays only while it's on screen
-                video.IsVisibleChanged += (s, e) => { if ((bool)e.NewValue && videoAllowed) video.Play(); else video.Pause(); };
+                video.IsVisibleChanged += (s, e) => { if ((bool)e.NewValue && videoAllowed && ambientOn) video.Play(); else video.Pause(); };
                 outer.Children.Add(video);
             }
             var glow = new Grid { IsHitTestVisible = false };
@@ -660,7 +726,8 @@ namespace Selene
             wash.GradientStops.Add(Ink.Stop("GlyphColor", 0, 1));
             glow.Children.Add(new Border { Background = wash });
             var spotLayer = new Border { Background = spot };
-            spotLayer.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0.75, 1, TimeSpan.FromSeconds(9)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = new SineEase() });
+            Breathe(spotLayer, ambientOn);
+            breathing.Add(spotLayer);
             glow.Children.Add(spotLayer);
 
             // hazy floor glow
@@ -672,11 +739,12 @@ namespace Selene
             // no dust when WPF draws in software (no usable graphics card: a VM, a remote desktop, an old driver): it can't keep
             // 130 moving motes smooth, and the glow alone still reads as the animated background
             if ((System.Windows.Media.RenderCapability.Tier >> 16) < 2) { HomeNav.Log("glow: software rendering, no dust"); return outer; }
+            if (DevLeaveOut("dust")) return outer;
             // the dust on the main thread: on a thread of its own it halved the whole window's rate (30 fps on a 60 Hz TV)
             var accent = Ink.Of("GlyphColor");
             var inkColor = Ink.Of("SeleneInkColor");
             var dust = new OffThread(sz => Dust(sz, accent, inkColor), "Selene dust", inline: true);
-            dust.Resized = (el, sz) => { var c = el as Canvas; if (c != null) { c.Children.Clear(); FillParticles(c, sz, new Random(7), accent, inkColor); } };
+            dust.Resized = (el, sz) => { var c = el as Canvas; if (c != null) { ClearParticles(c); if (ambientOn) FillParticles(c, sz, new Random(7), accent, inkColor); } };
             glow.Children.Add(dust);
             dusts.Add(dust);
             return outer;
@@ -687,7 +755,7 @@ namespace Selene
         private static Canvas Dust(Size size, Color accent, Color inkColor)
         {
             var c = new Canvas { IsHitTestVisible = false };
-            FillParticles(c, size, new Random(7), accent, inkColor);
+            if (ambientOn) FillParticles(c, size, new Random(7), accent, inkColor);   // (out of view at start: laid out when it comes into view)
             return c;
         }
 
@@ -798,11 +866,11 @@ namespace Selene
                 double dur = 16 + rnd.NextDouble() * 18;
                 var begin = TimeSpan.FromSeconds(-rnd.NextDouble() * dur);
                 var drift = new DoubleAnimation(0, -size.Height * (0.10 + rnd.NextDouble() * 0.18), TimeSpan.FromSeconds(dur)) { RepeatBehavior = RepeatBehavior.Forever, BeginTime = begin };
-                Timeline.SetDesiredFrameRate(drift, Ui.FrameRate);
+                Timeline.SetDesiredFrameRate(drift, Ui.AmbientRate);
                 tr.BeginAnimation(TranslateTransform.YProperty, drift);
-                tr.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(-14, 14 + rnd.NextDouble() * 20, TimeSpan.FromSeconds(5 + rnd.NextDouble() * 6)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, BeginTime = begin, EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut } });
+                tr.BeginAnimation(TranslateTransform.XProperty, Ui.Ambient(new DoubleAnimation(-14, 14 + rnd.NextDouble() * 20, TimeSpan.FromSeconds(5 + rnd.NextDouble() * 6)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, BeginTime = begin, EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut } }));
                 double peak = bokeh ? 0.25 + rnd.NextDouble() * 0.3 : 0.4 + rnd.NextDouble() * 0.6;
-                var op = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromSeconds(dur), RepeatBehavior = RepeatBehavior.Forever, BeginTime = begin };
+                var op = Ui.Ambient(new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromSeconds(dur), RepeatBehavior = RepeatBehavior.Forever, BeginTime = begin });
                 op.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromPercent(0)));
                 op.KeyFrames.Add(new LinearDoubleKeyFrame(peak, KeyTime.FromPercent(0.18)));
                 op.KeyFrames.Add(new LinearDoubleKeyFrame(peak * 0.7, KeyTime.FromPercent(0.6)));
@@ -907,7 +975,7 @@ namespace Selene
             if (Profiles.LoadError != null)
                 col.Children.Add(Ui.Sub("Profiles couldn't be loaded (" + Profiles.LoadError + "). You can still play; nothing is saved this time."));
             var row = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 70, 0, 0) };
-            foreach (var p in profiles) AddItem(row, Avatar(p, 170), p.Name, Accent(p));
+            foreach (var p in profiles) AddItem(row, Avatar(p, 168), p.Name, Accent(p));   // (168: inside the tile face's 1 px border; 170 lost its right and bottom edge)
             if (Profiles.LoadError != null) AddItem(row, Glyph("\uE72A", 54), "Continue", null);
             else AddItem(row, Glyph("\uE710", 60), "Add", null);
             col.Children.Add(row);

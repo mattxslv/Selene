@@ -33,7 +33,37 @@ namespace Selene
     // and add-ons that do the same job as Selene Core (they would fight it)
     public static class SetupCheck
     {
-        public static readonly AddonInfo[] Included =
+        // Playnite 10 ships no store libraries: a fresh copy started in fullscreen imported nothing until someone found "Steam
+        // library" in Desktop's add-on browser. The ones for launchers on this PC come first (installed with the rest; Playnite
+        // imports the installed games on its next start). Switch: Advanced > Offer store libraries.
+        private class Store { public string Id, Name; public Func<bool> Here; }
+        private static readonly Store[] Stores =
+        {
+            new Store { Id = "SteamLibrary_Builtin", Name = "Steam", Here = () => Reg(@"HKEY_CURRENT_USER\Software\Valve\Steam", "SteamPath") },
+            new Store { Id = "EpicGamesLibrary_Builtin", Name = "Epic Games", Here = () => Dir(@"%ProgramData%\Epic\EpicGamesLauncher") },
+            new Store { Id = "GogLibrary_Builtin", Name = "GOG", Here = () => Reg(@"HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\GOG.com\GalaxyClient\paths", "client") || Dir(@"%ProgramData%\GOG.com\Galaxy") },
+            new Store { Id = "XboxLibrary_Builtin", Name = "Xbox", Here = () => Dir(@"%LOCALAPPDATA%\Packages\Microsoft.GamingApp_8wekyb3d8bbwe") },
+            new Store { Id = "OriginLibrary_Builtin", Name = "EA app", Here = () => Dir(@"%ProgramData%\EA Desktop") || Dir(@"%ProgramData%\Origin") },
+            new Store { Id = "UplayLibrary_Builtin", Name = "Ubisoft Connect", Here = () => Reg(@"HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Ubisoft\Launcher", "InstallDir") },
+            new Store { Id = "BattlenetLibrary_Builtin", Name = "Battle.net", Here = () => Dir(@"%ProgramData%\Battle.net") },
+            new Store { Id = "ItchioLibrary_Builtin", Name = "itch.io", Here = () => Dir(@"%APPDATA%\itch") },
+        };
+        private static bool Reg(string key, string value) { try { return !string.IsNullOrEmpty(Microsoft.Win32.Registry.GetValue(key, value, null) as string); } catch { return false; } }
+        private static bool Dir(string path) { try { return System.IO.Directory.Exists(Environment.ExpandEnvironmentVariables(path)); } catch { return false; } }
+        private static AddonInfo[] stores;   // (looked for once a session)
+        private static AddonInfo[] StoresHere
+        {
+            get
+            {
+                if (!Features.On("storelibraries")) return new AddonInfo[0];
+                if (stores == null) stores = Stores.Where(st => st.Here()).Select(st => new AddonInfo { Id = st.Id, Name = st.Name + " library", About = "Brings your " + st.Name + " games into Playnite." }).ToArray();
+                return stores;
+            }
+        }
+
+        public static AddonInfo[] Included { get { return StoresHere.Concat(Extras).ToArray(); } }
+
+        private static readonly AddonInfo[] Extras =
         {
             new AddonInfo { Id = "ExtraMetadataLoader_705fdbca-e1fc-4004-b839-1d040b8b4429", Name = "Extra Metadata Loader",
                 About = "Game logos and trailers for the home and game details." },
@@ -69,6 +99,14 @@ namespace Selene
             var items = new List<SetupItem>();
             items.AddRange(Included.Select(a => IncludedAddon(api, a)));
             if (Enabled(api, "mtkennerly.ludusavi")) items.Add(LudusaviProgram(api));
+            if (Features.On("xboxsignin") && Enabled(api, "XboxLibrary_Builtin"))
+                items.Add(new SetupItem
+                {
+                    Key = "xbox-signin", Title = "Xbox sign-in",
+                    About = "Xbox and Game Pass games show up once Playnite is signed in to your Xbox account.",
+                    State = XboxSignIn.SignedIn ? SetupState.Ready : SetupState.Missing,
+                    Detail = XboxSignIn.SignedIn ? "Signed in" : "Not signed in"
+                });
             items.AddRange(Clashes.Where(c => Enabled(api, c.Id)).Select(c => new SetupItem
             {
                 Key = "clash:" + c.Id,

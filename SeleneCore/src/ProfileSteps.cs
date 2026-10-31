@@ -349,6 +349,7 @@ namespace Selene
             baseFill.Background = (previewTheme != null ? ThemePalettes.Peek(previewTheme, "SeleneBaseBrush") : res["SeleneBaseBrush"]) as Brush ?? PB("SeleneScrimColor");
             root.Children.Add(baseFill);
             var wall = previewTheme != null ? Wallpapers.Decoded(previewWallpaper) : res["SeleneWallpaper"] as ImageSource;
+            if (wall == null) wall = previewTheme != null ? DefaultBackdrop.ForTheme(previewTheme) : res["SeleneDefaultBackdrop"] as ImageSource;
             if (wall != null) root.Children.Add(new Image { Source = wall, Stretch = Stretch.UniformToFill });
             var artOff = previewLook != null ? previewLook == "wallpaper" : res["SeleneArtOpacity"] is double && (double)res["SeleneArtOpacity"] < 0.05;
             var art = HomeNav.SamplePicture;
@@ -1060,6 +1061,7 @@ namespace Selene
                     groups.Add(w.Group);
                 }
                 var defaultFile = ThemePalettes.DefaultWallpaper(Owner.Theme);
+                if (defaultFile == "") defaultFile = DefaultBackdrop.FileForTheme(Owner.Theme);
                 foreach (var f in files)
                 {
                     var t = new Tile(204, 115, 12, 5) { FocusScale = 1.06 };

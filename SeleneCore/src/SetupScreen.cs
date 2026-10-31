@@ -19,6 +19,8 @@ namespace Selene
         private DateTime bottomArrivedAt = DateTime.MinValue;   // the last move onto the bottom row of cards
         private Dialog ask;            // Install all's question, then the restart question
         private bool batchRunning;     // Install all is downloading
+        private WorkBar batchBar;      // how far Install all is (the settings' progress bar)
+        private Action batchInfo;      // the panel's text while it runs (kept when focus moves)
         private const int Columns = 6;
         private readonly bool firstRun;
         // where each card sits: its row and its x from the centre (rows are centred, so a short last row sits in the middle)
@@ -66,7 +68,13 @@ namespace Selene
             info.Root.Margin = new Thickness(0, 34, 0, 0);
             info.Root.Height = 156;   // fixed: a taller or shorter text must not shift the centred screen
             col.Children.Add(info.Root);
-            var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 30, 0, 0) };
+            // the bar's own fixed slot: it appearing doesn't move the screen
+            var barSlot = new Grid { Height = 30, Width = 640, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 0) };
+            batchBar = new WorkBar();
+            batchBar.Root.VerticalAlignment = VerticalAlignment.Center;
+            barSlot.Children.Add(batchBar.Root);
+            col.Children.Add(barSlot);
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 6, 0, 0) };
             installAll = new Pill("Install all", 240);
             carryOn = new Pill(firstRun ? "Continue" : "Done", 200);
             buttons.Children.Add(installAll.Root);
@@ -106,6 +114,7 @@ namespace Selene
         private static string Icon(string key)
         {
             if (key == "ludusavi-program") return "\uE896";
+            if (key == "xbox-signin") return "\uE990";
             if (key.StartsWith("clash:")) return "\uE7BA";
             return "\uE74C";   // an add-on
         }
@@ -138,6 +147,7 @@ namespace Selene
         private static string Short(SetupItem item)
         {
             if (item.Key == "ludusavi-program") return item.State == SetupState.Ready ? "Ready" : "Not set up";
+            if (item.Key == "xbox-signin") return item.State == SetupState.Ready ? "Signed in" : "Not signed in";
             if (item.Detail == SetupCheck.PendingRestart) return "Restart to finish";
             if (item.Key.StartsWith("clash:")) return "Clashes";
             if (item.State == SetupState.Ready) return "Installed";
@@ -185,6 +195,7 @@ namespace Selene
 
         private void Apply(List<SetupItem> fresh)
         {
+            if (batchRunning) return;   // (the cards say DOWNLOADING / RESTART TO FINISH until the batch is over)
             if (fresh.Count != items.Count) return;   // the list itself changed (an add-on that clashes appeared): next time the screen opens
             for (int i = 0; i < fresh.Count; i++)
             {
@@ -203,6 +214,7 @@ namespace Selene
 
         private void UpdateInstallAll()
         {
+            if (batchRunning) return;   // (it counts the download along: a refresh had put "Install all (9)" back mid-download)
             int missing = Missing().Count;
             installAll.Text = missing > 0 ? "Install all (" + missing + ")" : "All add-ons installed";
             installAll.Root.Opacity = missing > 0 ? 1 : 0.5;
@@ -218,6 +230,7 @@ namespace Selene
                 var item = items[index];
                 Describe(item);
             }
+            else if (batchRunning && batchInfo != null) batchInfo();
             else if (index == ButtonsStart)
             {
                 // which add-ons the button installs, by name (the button itself is right below)
@@ -251,6 +264,7 @@ namespace Selene
             if (item.Detail == SetupCheck.PendingRestart) { info.Show(icon, Tone.Success, item.Title, "Restart to finish", item.About, "Installed. It starts working after Playnite restarts; install the others first to restart only once."); return; }
             if (item.AddonId != null) { info.Show(icon, Tone.Accent, item.Title, "Not installed", item.About, "Playnite asks you to confirm. It works after a restart.", "A", "Install"); return; }
             if (item.Key == "ludusavi-program") { info.Show(icon, Tone.Accent, item.Title, "Not set up", item.About, "Downloads the free Ludusavi program and connects it.", "A", "Set up"); return; }
+            if (item.Key == "xbox-signin" && item.State != SetupState.Ready) { info.Show(icon, Tone.Accent, item.Title, "Not signed in", item.About, "Done in Playnite Desktop.", "A", "How"); return; }
             info.Show(icon, Tone.Warning, item.Title, "Turned off", item.About, "Turn it on in Playnite's Add-ons.");
         }
 
@@ -316,7 +330,9 @@ namespace Selene
             if (index == ButtonsStart + 1)
             {
                 Ui.Confirm();
-                if (firstRun) LoginScene.Show(new ProfileSteps(null, () => new SetupScreen(true), p => LoginScene.Show(new WhoScreen(p.Id), 1)), 1);
+                Action profile = () => LoginScene.Show(new ProfileSteps(null, () => new SetupScreen(true), p => LoginScene.Show(new WhoScreen(p.Id), 1)), 1);
+                if (firstRun && SquareKeyScreen.Wanted) LoginScene.Show(new SquareKeyScreen(profile), 1);   // square tile art needs the user's own key
+                else if (firstRun) profile();
                 else LoginScene.Finish();
                 return;
             }
@@ -327,7 +343,7 @@ namespace Selene
                 Ui.Confirm();
                 // one question for all of them (Playnite's own link asked once per add-on, with a restart question each time)
                 ask = new Dialog("\uE896", "Install " + missing.Count + (missing.Count == 1 ? " add-on?" : " add-ons?"),
-                    string.Join(" \u00B7 ", missing.Select(m => m.Name)) + "\n\nSelene downloads them now. Playnite installs them all on its next restart.",
+                    Features.On("shortaddonask") ? "" : string.Join(" \u00B7 ", missing.Select(m => m.Name)) + "\n\nSelene downloads them now. Playnite installs them all on its next restart.",
                     "Install all", "Not now", () => { ask = null; StartBatch(missing); }, () => ask = null, false).StartOnYes();
                 ask.Open(Root);
                 return;
@@ -335,6 +351,13 @@ namespace Selene
             var item = items[index];
             if (item.AddonId != null) { Ui.Confirm(); ShowOpening(item.AddonId); SetupCheck.Install(item.AddonId); return; }
             if (item.Key == "ludusavi-program" && item.State != SetupState.Ready) { SetUpLudusavi(index); return; }
+            if (item.Key == "xbox-signin" && item.State != SetupState.Ready)
+            {
+                Ui.Confirm();
+                ask = new Dialog("\uE990", "Sign in to Xbox", XboxSignIn.Steps, "Got it", "Later", () => ask = null, () => ask = null, false).StartOnYes();
+                ask.Open(Root);
+                return;
+            }
             if (item.State == SetupState.Ready) { Ui.Pop(cards[index].Root); Ui.Tick(); return; }
             Ui.Shake(cards[index].Root);   // nothing to do from here; the hint says where
         }
@@ -395,13 +418,14 @@ namespace Selene
         private void StartBatch(List<AddonInfo> addons)
         {
             batchRunning = true;
-            installAll.Text = "Downloading\u2026";
+            batchBar.Set(0);
+            installAll.Text = "Installing\u2026";
             Breathe(installAll.Root, true);
             int busyCard = -1;
             AddonBatch.Run(addons,
                 (i, count, id) =>
                 {
-                    installAll.Text = "Downloading " + (i + 1) + " of " + count + "\u2026";
+                    installAll.Text = "Installing " + (i + 1) + " of " + count + "\u2026";
                     busyCard = items.FindIndex(it => it.Key == "addon:" + id);
                     if (busyCard >= 0)
                     {
@@ -410,7 +434,9 @@ namespace Selene
                         Breathe(statuses[busyCard].Parent as UIElement ?? statuses[busyCard], true);
                     }
                     var name = addons[i].Name;
-                    info.Show("\uE896", Tone.Accent, "Installing add-ons", (i + 1) + " of " + count, "Downloading " + name + "\u2026", "Playnite installs them all on its next restart.");
+                    int n = i + 1;
+                    batchInfo = () => info.Show("\uE896", Tone.Accent, "Installing add-ons", n + " of " + count, "Downloading " + name + "\u2026", "Playnite installs them all on its next restart.");
+                    batchInfo();
                 },
                 (id, ok) =>
                 {
@@ -436,6 +462,11 @@ namespace Selene
                 (queued, failed) =>
                 {
                     batchRunning = false;
+                    batchInfo = null;
+                    batchBar.Set(1);
+                    var hide = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(900) };
+                    hide.Tick += (s, e) => { hide.Stop(); if (!batchRunning) batchBar.Set(-1); };
+                    hide.Start();
                     Breathe(installAll.Root, false);
                     missingCache = null;
                     UpdateInstallAll();
@@ -451,7 +482,8 @@ namespace Selene
                         () => { ask = null; if (!AddonBatch.RestartPlaynite()) Ui.Notice("Restart Playnite to finish installing.", 7000); },
                         () => ask = null, false).StartOnYes();
                     ask.Open(Root);
-                });
+                },
+                share => batchBar.Set(share));
         }
 
         private static void Breathe(UIElement el, bool on)

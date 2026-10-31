@@ -1,12 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.Collections;
+using System.Linq;
 using System.Windows;
 using System.Windows.Media;
 
 namespace Selene
 {
-    // Flat white store logos for "platform" (Spotlight and Collection): Simple Icons shapes (CC0, simpleicons.org),
-    // published as the SelenePlatformIcon resource for the selected game; stores without one get Selene's storefront icon.
+    // Store marks reused by store screens and the legacy source display. The selected game's Platform field uses
+    // actual platform metadata by default; the previous source display remains available in settings.
     public static class PlatformIcons
     {
         private static readonly Dictionary<string, string> Paths = new Dictionary<string, string>
@@ -55,10 +57,37 @@ namespace Selene
             return g;
         }
 
+        // Playnite's selected entry may wrap a Game. Platforms and Source are separate metadata fields.
+        public static void PublishGame(object selected)
+        {
+            var wrapped = selected != null ? selected.GetType().GetProperty("Game") : null;
+            var game = wrapped != null ? wrapped.GetValue(selected, null) : selected;
+            var sourceProp = game != null ? game.GetType().GetProperty("Source") : null;
+            var source = sourceProp != null ? sourceProp.GetValue(game, null) : null;
+            var sourceName = Named(source);
+            if (!Features.On("actualplatform")) { Publish(sourceName); return; }
+            var platformsProp = game != null ? game.GetType().GetProperty("Platforms") : null;
+            var platforms = platformsProp != null ? platformsProp.GetValue(game, null) as IEnumerable : null;
+            var names = platforms != null ? platforms.Cast<object>().Select(Named).Where(n => !string.IsNullOrWhiteSpace(n)).Distinct().ToArray() : new string[0];
+            // Do not label Steam/GOG as a platform, or invent PC when platform metadata is missing.
+            var res = Application.Current.Resources;
+            res["SelenePlatformName"] = names.Length > 0 ? string.Join(" / ", names) : "Unknown";
+            res["SelenePlatformIcon"] = Geometry.Empty;
+            res["SelenePlatformFallback"] = Visibility.Visible;
+            res["SelenePlatformFallbackGlyph"] = "\uE338";
+        }
+
+        private static string Named(object value)
+        {
+            var prop = value != null ? value.GetType().GetProperty("Name") : null;
+            return prop != null ? prop.GetValue(value, null) as string : null;
+        }
+
         public static void Publish(string source)
         {
             string key = KeyFor(source), d = null;
             var res = Application.Current.Resources;
+            res["SelenePlatformFallbackGlyph"] = "\uEA12";
             res["SelenePlatformName"] = string.IsNullOrWhiteSpace(source) ? "Local" : source;
             if (string.IsNullOrWhiteSpace(source)) key = "crescent";
             if (key == "crescent") d = Crescent;

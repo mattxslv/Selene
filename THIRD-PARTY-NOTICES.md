@@ -14,6 +14,13 @@ Playnite - https://github.com/JosefNemec/Playnite - MIT License, Copyright (c) J
 FANTASY XVI, CRISIS CORE, KINGDOM HEARTS III), (c) SQUARE ENIX. They are not free to reuse: they are here by the
 maintainer's choice and will be replaced if asked.
 
+## Background music
+`theme/Media/Selene OST.mp3` is the login music (`audio/LoginOST.mp3`) of the Aniki ReMake Playnite theme by Mike Aniki
+(https://github.com/Mike-Aniki/Aniki-ReMake, MIT License). It is the default music Selene sets in UniPlaySong when no default file is
+chosen. The file's own tag reads "UI#12 (UI/UI058_Equip_Off)" (2008) and Aniki ReMake does not say where the audio comes from, so it may
+not be Mike Aniki's to license: it is here by the maintainer's choice and will be removed or replaced if he or a rights holder asks
+(the swap is one file).
+
 ## Cinzel
 The "SELENE" lettering in the logo and banner (`tools/art/selene-wordmark.svg`, `docs/logo`) is set in Cinzel and converted
 to outlines (the font itself isn't included). Cinzel - https://github.com/NDISCOVER/Cinzel -

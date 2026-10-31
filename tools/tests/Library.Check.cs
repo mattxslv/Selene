@@ -49,7 +49,25 @@ class LibraryCheck
         DownloadConsent.Revoke("artdownload");
         Assert(!DownloadConsent.Allowed("artdownload"), "Revocation immediately blocks further requests");
         Features.Init(new SeleneSettings(), () => {}); Features.Set("sounds", false); Features.Set("collectionglide", false);
-        var cachedFiles = typeof(GameMedia).GetMethod("CachedFiles", BindingFlags.Static | BindingFlags.NonPublic);
+        // process lookups (Local games running watch, launch/close safety): EnumProcesses based, no Process objects
+        {
+            var images = (System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<int, string>>)typeof(LocalGames).GetMethod("ProcessImages", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, null);
+            using (var me = System.Diagnostics.Process.GetCurrentProcess())
+            {
+                var exe = me.MainModule.FileName;
+                Assert(images.Any(p => p.Key == me.Id && string.Equals(p.Value, exe, StringComparison.OrdinalIgnoreCase)), "The process list contains this process with its full exe path");
+                Assert(images.All(p => p.Value == p.Value.ToLowerInvariant()), "Paths come back lower-case, as the folder matching expects");
+                Assert(images.Count(p => p.Key == me.Id) == 1, "Each process is listed once");
+                var folder = Path.GetDirectoryName(exe);
+                var folderProbe = new Playnite.SDK.Models.Game("Probe") { InstallDirectory = folder, GameActions = new System.Collections.ObjectModel.ObservableCollection<Playnite.SDK.Models.GameAction> { new Playnite.SDK.Models.GameAction { IsPlayAction = true, Type = Playnite.SDK.Models.GameActionType.File, Path = exe } } };
+                Assert(LocalGames.ProcessesInGameFolder(folderProbe).Contains(me.Id), "A game whose folder holds a running exe finds that process (close/cancel safety relies on it)");
+                folderProbe.InstallDirectory = Path.Combine(folder, "no-such-subfolder"); folderProbe.GameActions[0].Path = Path.Combine(folder, "no-such-subfolder", "game.exe");
+                Assert(!LocalGames.ProcessesInGameFolder(folderProbe).Contains(me.Id), "A sibling folder with a similar start does not match");
+                var shortFolder = Path.GetDirectoryName(folder);
+                folderProbe.InstallDirectory = folder.Substring(0, folder.Length - 1); folderProbe.GameActions[0].Path = Path.Combine(folderProbe.InstallDirectory, "game.exe");
+                Assert(!LocalGames.ProcessesInGameFolder(folderProbe).Contains(me.Id), "A folder name that is only the start of the real one does not match");
+            }
+        }        var cachedFiles = typeof(GameMedia).GetMethod("CachedFiles", BindingFlags.Static | BindingFlags.NonPublic);
         var uncachedId = Guid.NewGuid();
         var noFiles = (System.Collections.Generic.List<string>)cachedFiles.Invoke(null, new object[] { uncachedId, "No network test", "", "", true });
         Assert(noFiles.Count == 0, "Unconsented screenshot request returns without a network lookup");

@@ -97,7 +97,8 @@ namespace Selene
             if (game.IsInstalled) l.Entries.Add(new Entry { Label = "Play", Icon = 0xe037, Run = () => { var id = game.Id; LoginScene.FinishThen(() => HomeNav.StartGameNow(id)); } });
             else l.Entries.Add(new Entry { Label = "Install", Icon = 0xe2c4, Run = () => { var id = game.Id; LoginScene.FinishThen(() => api.InstallGame(id)); } });
             if (move != null) { var m = move; l.Entries.Add(new Entry { Label = "Move", Sub = "Change its place on Spotlight.", Icon = 0xe8d4, Run = () => LoginScene.FinishThen(m) }); }
-            l.Entries.Add(new Entry { Label = "Favorite", Sub = "On your Favorites tab.", Icon = 0xe838, Toggle = () => game.Favorite, Run = () => { game.Favorite = !game.Favorite; Save(); } });
+            l.Entries.Add(new Entry { Label = "Favorite", Sub = "On your Favorites tab.", Icon = 0xe838,
+                Toggle = () => FavoriteChoice.Read(game, Profiles.Active), Run = ToggleFavoriteOption });
             l.Entries.Add(new Entry { Label = "Hidden", Sub = "Hidden games stay out of your lists.", Icon = 0xe8f5, Toggle = () => game.Hidden, Run = () => { game.Hidden = !game.Hidden; Save(); } });
             l.Entries.Add(new Entry { Label = "HDR", Sub = "Windows' HDR switched on while this game runs.", Icon = 0xe3ee, Toggle = () => game.EnableSystemHdr, Run = () => { game.EnableSystemHdr = !game.EnableSystemHdr; Save(); } });
             l.Entries.Add(new Entry { Label = "Completion status", Icon = 0xe86c, Value = () => Name(api.Database.CompletionStatuses, game.CompletionStatusId, "Not set"), Run = () => PickOne("Completion status", api.Database.CompletionStatuses.OrderBy(c => c.Name).Cast<DatabaseObject>(), game.CompletionStatusId, id => game.CompletionStatusId = id) });
@@ -397,6 +398,12 @@ namespace Selene
         }
 
         // ---- the list ----
+        private void ToggleFavoriteOption()
+        {
+            bool now = FavoriteChoice.Toggle(game, Profiles.Active, () => Profiles.ToggleFavorite(game.Id), Save);
+            if (Features.On("consistentfavorites")) HomeNav.FavoriteChanged(game, now);
+        }
+
         private void Save()
         {
             try { HomeNav.Api.Database.Games.Update(game); } catch (Exception ex) { HomeNav.Log("game options: saving failed: " + ex.Message); }

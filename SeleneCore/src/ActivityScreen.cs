@@ -309,7 +309,7 @@ namespace Selene
             rowNames.Add(title);
             rowShift.Add(shift);
             rowAlong.Add(0);
-            GameFacts.FillCovers(games, list, 300);
+            GameFacts.FillCovers(games, list, 300, Features.On("activitycoverfit"));
         }
 
         private Game Focused { get { return zone < rows.Count && col < rows[zone].Count ? rows[zone][col] : null; } }

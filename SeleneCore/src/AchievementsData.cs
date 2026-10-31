@@ -307,8 +307,16 @@ namespace Selene
         public static void SetUpLater()
         {
             if (!Features.On("achsetup") || (!Features.On("achievements") && !Features.On("cardachievements"))) return;
+            // 20 s after start, and only while Selene is in view with no game running: the add-on reads and decodes the achievements of
+            // the games played last inside Playnite's own process (about 330 MB of short-lived memory and a burst of network, measured),
+            // which is no help to a game that is starting or to a Playnite that was started hidden in the tray. It asks again every 2 minutes.
             var t = new DispatcherTimer { Interval = TimeSpan.FromSeconds(20) };
-            t.Tick += (s, e) => { t.Stop(); SetUp(); };
+            t.Tick += (s, e) =>
+            {
+                if (!Features.On("achsetup") || (!Features.On("achievements") && !Features.On("cardachievements"))) { t.Stop(); return; }
+                if (!ScreenPresence.InView || HomeNav.GameRunning() || HomeNav.Launching) { t.Interval = TimeSpan.FromMinutes(2); return; }
+                t.Stop(); SetUp();
+            };
             t.Start();
         }
 
@@ -505,7 +513,7 @@ namespace Selene
                 entry.GetType().GetMethod("ExecuteAsync", any, null, new[] { request.GetType(), pt }, null).Invoke(entry, new[] { request, policy });
                 if (recentOnly) { HomeNav.Log("achievements: checking the games played last"); return; }
                 HomeNav.Log("achievements: " + (resumeFrom > 0 ? "going on with the check cut short, " + resumeFrom + " games done before" : fullAgain ? "checking every game in full" : "Playnite Achievements set up, checking every game"));
-                ProgressToast.ShowNote("Achievements", "Checking", 0xea23);
+                if (Features.On("taskcards")) ProgressToast.ShowNote("Achievements", "Checking", 0xea23);
             }
             catch (Exception ex) { HomeNav.Log("achievements: setting up failed: " + (ex.InnerException ?? ex).Message); }
         }

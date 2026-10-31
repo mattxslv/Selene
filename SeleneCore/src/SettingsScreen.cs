@@ -24,7 +24,7 @@ namespace Selene
         private readonly TextBlock groupTitle;
         private readonly List<Border> rows = new List<Border>();
         // the rows' live parts: the dot, the note and the bar follow the work while the screen is up (people wait here for it)
-        private class LiveRow { public Features.Option Opt; public UIElement Dot; public TextBlock Note; public WorkBar Bar; }
+        private class LiveRow { public Features.Option Opt; public UIElement Dot; public TextBlock Note; public WorkBar Bar; public MediaStages Stages; }
         private readonly List<LiveRow> live = new List<LiveRow>();
         private readonly List<UIElement> groupDots = new List<UIElement>();
         private System.Windows.Threading.DispatcherTimer liveTimer;
@@ -42,22 +42,23 @@ namespace Selene
         private static readonly Dictionary<string, string[][]> Sections = new Dictionary<string, string[][]>
         {
             { "Spotlight", new[] {
-                new[] { "Row", "steadyhold", "pickscroll", "rowedges", "filtertabs", "shade", "idle" },
-                new[] { "Cards", "cardactivity", "activitysessions", "cardcaptures", "cardachievements", "cardsurprise", "cardnews", "newsfeeds", "cardpictures" },
+                new[] { "Row", "steadyhold", "pickscroll", "rowedges", "filtertabs", "fullscreenpresets", "consistentfavorites", "shade", "idle" },
+                new[] { "Cards", "cardactivity", "actualplatform", "activitysessions", "cardcaptures", "capturesfolders", "cardachievements", "cardsurprise", "cardnews", "newsfeeds", "cardpictures" },
                 new[] { "Trailers and downloads", "trailerdelay", "trailersound", "trailerdownload", "artdownload", "screenshotsdownload" } } },
             { "Games", new[] {
-                new[] { "Launching", "launchstyle", "launchmotion", "launchshade", "loadingscreen", "aftergame", "guidefocus" },
+                new[] { "Your library", "gamesget", "gamesask" },
+                new[] { "Launching", "launchstyle", "launchmotion", "launchshade", "loadingscreen", "launchchoice", "aftergame", "guidefocus" },
                 new[] { "While playing", "freeze", "powerconfirm", "tray", "quietbackups" },
                 new[] { "Game pages", "gameoptions", "achievements", "achcelebrate", "achsetup", "hltb", "hltbauto", "metadatacomplete", "metasource" },
                 new[] { "Store", "storepage", "storetrailers", "storetab", "storeregion" },
                 new[] { "Surprise me", "surprisepool", "surprisenorepeat" } } },
             { "Look", new[] {
                 new[] { "Background", "homebackground", "glow", "backgroundfit", "guidefade", "smoothswitch", "perfmode" },
-                new[] { "Art", "trimlogos", "smartcrop", "screenshotskeleton" },
-                new[] { "Text and hints", "textshadow", "hints", "prompts", "dialogs", "topprofile", "language" } } },
+                new[] { "Art", "trimlogos", "logosize", "squareart", "steamgridkey", "smartcrop", "previewartfit", "activitycoverfit", "trailerlogogap", "screenshotskeleton" },
+                new[] { "Text and hints", "textshadow", "hints", "prompts", "detailsbadges", "captureplayerfit", "dialogs", "topprofile", "language", "languagerestart" } } },
             { "Advanced", new[] {
-                new[] { "Help", "report", "setupcheck", "reportchord", "perflog" },
-                new[] { "Performance", "fullrate", "asynccovers", "lightweight" },
+                new[] { "Help", "report", "setupcheck", "storelibraries", "xboxsignin", "gamesfolder", "shortaddonask", "reportchord", "perflog" },
+                new[] { "Performance", "fullrate", "calmmotion", "presence", "asynccovers", "lightweight" },
                 new[] { "Controls and Playnite", "viewswitch", "playnitesettings", "legacytasks" },
                 new[] { "Language", "translate", "translatecollect" },
                 new[] { "Reset", "reset" } } },
@@ -189,6 +190,17 @@ namespace Selene
         // the switches of the chosen group, rising in
         // a row's button, when it has one: its own (Setup check...), or Shade over the art's "Adjust" when the home is behind the
         // settings (set with the home in view, in ShadePreviewScreen); elsewhere that row keeps its slider
+        // the key is copied from steamgriddb.com (on this PC, or sent from a phone) and pasted: no typing 32 letters with a pad
+        private void AskSteamGridKey()
+        {
+            ask = new Dialog("\uE8D7", "SteamGridDB key", "Get a free key at steamgriddb.com > Preferences > API.\nCopy it, then choose Paste.", "Paste", "Not now", () =>
+            {
+                ask = null;
+                SquareFetch.PasteKey(ok => { if (ok) try { ShowGroup(false); ShowFocus(); } catch (Exception ex) { HomeNav.Log("settings: refresh after the key: " + ex.Message); } });
+            }, () => ask = null, false, false);
+            ask.Open(Root);
+        }
+
         private string ActionOf(Features.Option o)
         {
             return o.Action ?? (o.Key == "shade" && LoginScene.KeepHome ? "Adjust" : null);
@@ -197,7 +209,7 @@ namespace Selene
         private void ShowGroup(bool animate)
         {
             var name = GroupName;
-            var available = Features.All.Where(o => o.Available == null || o.Available());
+            var available = Features.All.Where(o => MediaDownloads.ShowSetting(o.Key) && (o.Available == null || o.Available()));
             if (name == ChangedGroup) options = available.Where(IsChanged).OrderBy(o => Array.IndexOf(Features.Groups, o.Group)).ThenBy(SectionPlace).ToList();
             else if (name == SearchGroup) options = new List<Features.Option>();
             else options = available.Where(o => o.Group == name).OrderBy(SectionPlace).ToList();   // (stable: each section keeps its order)
@@ -233,9 +245,11 @@ namespace Selene
                 // the note (a count, a state) and, while the work runs, its bar: a thin line filled as far as it has got, with the percentage
                 var noteBlock = new TextBlock { FontSize = 15, FontWeight = FontWeights.SemiBold, FontFamily = Ui.Body, Foreground = Ink.Brush("GlyphColor"), Margin = new Thickness(0, 5, 0, 0), Visibility = Visibility.Collapsed };
                 text.Children.Add(noteBlock);
+                MediaStages stages = null;
+                if (f.Key == "gamesget" && MediaDownloads.Unified && MediaDownloads.Enabled) { stages = new MediaStages(); text.Children.Add(stages.Root); }
                 WorkBar bar = null;
                 if (f.Progress != null) { bar = new WorkBar(); text.Children.Add(bar.Root); }
-                var liveRow = new LiveRow { Opt = f, Dot = dot, Note = noteBlock, Bar = bar };
+                var liveRow = new LiveRow { Opt = f, Dot = dot, Note = noteBlock, Bar = bar, Stages = stages };
                 Refresh(liveRow);
                 live.Add(liveRow);
                 var knob = new Border { Width = 22, Height = 22, CornerRadius = new CornerRadius(11), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(4, 0, 0, 0), Background = Brushes.White, RenderTransform = new TranslateTransform() };
@@ -245,9 +259,8 @@ namespace Selene
                 var action = ActionOf(f);
                 if (action != null)
                 {
-                    // a row that does something: its button's label in a pill
-                    track = new Border { CornerRadius = new CornerRadius(17), Padding = new Thickness(16, 4, 16, 5), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(24, 0, 0, 0), Background = Ink.Brush("SeleneInkColor", 0.12), Child = new TextBlock { Text = action, FontSize = 17, FontWeight = FontWeights.SemiBold, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor") } };
-                    if (f.Action == null) { track.Background = Brushes.Transparent; track.Padding = new Thickness(0, 4, 6, 5); }   // (Adjust: the word alone, no pill)
+                    // The row itself is the action; only settings with a value need a right-hand control.
+                    track = new Border { Width = 0, Visibility = Visibility.Collapsed };
                     knob = null;
                 }
                 else if (f.IsChoice && f.Slider)
@@ -286,6 +299,13 @@ namespace Selene
         }
 
         private Dialog ask;
+        private void ConfirmStopDownloads()
+        {
+            ask = new Dialog("\uE896", "Stop downloads?", "Stops new requests. Active transfers and queued songs may finish. Downloaded files stay.",
+                "Stop", "Keep running", () => { ask = null; MediaDownloads.Stop(); ShowGroup(false); ShowFocus(); },
+                () => { ask = null; ShowFocus(); }, false);
+            ask.Open(Root);
+        }
 
         private void ShowSwitch(int i, bool animate)
         {
@@ -339,7 +359,8 @@ namespace Selene
         private static void Refresh(LiveRow r)
         {
             string note = null;
-            if (r.Opt.Note != null) { try { note = r.Opt.Note(); } catch { } }
+            if (r.Stages != null) r.Stages.Update();   // (the strip says it all: no note lines)
+            else if (r.Opt.Note != null) { try { note = r.Opt.Note(); } catch { } }
             r.Note.Text = note ?? "";
             r.Note.Visibility = string.IsNullOrEmpty(note) ? Visibility.Collapsed : Visibility.Visible;
             double share = -1;
@@ -363,116 +384,6 @@ namespace Selene
         public override void Hidden()
         {
             if (liveTimer != null) liveTimer.Stop();
-        }
-
-        // the bar under a setting whose work runs: across the words' width to the control, filled as far as it has got, the
-        // percentage at its end, a soft light sweeping along it (so it reads as going, not stuck) while it's on screen
-        private class WorkBar
-        {
-            public readonly DockPanel Root = new DockPanel { Margin = new Thickness(0, 9, 0, 2), Visibility = Visibility.Collapsed, LastChildFill = true };
-            private readonly Grid bar;
-            private readonly Border fill;
-            private readonly Border light;   // the band of light gliding along the fill
-            private readonly TextBlock percent;
-            private readonly TranslateTransform slide = new TranslateTransform(-1.2, 0);
-            private bool running;
-            private double share = -1;   // where it stands (the fill glides there)
-            private int shownPercent = -1;
-
-            public WorkBar()
-            {
-                // (the figure's box sits lower than its digits: lifted a little, so the digits centre on the bar)
-                percent = new TextBlock { FontSize = 13, FontWeight = FontWeights.SemiBold, FontFamily = Ui.Body, Foreground = Ink.Brush("GlyphColor"), VerticalAlignment = VerticalAlignment.Center, TextAlignment = TextAlignment.Right, MinWidth = 36, Margin = new Thickness(12, 0, 0, 3) };
-                DockPanel.SetDock(percent, Dock.Right);
-                Root.Children.Add(percent);
-                bar = new Grid { Height = 6, ClipToBounds = true, VerticalAlignment = VerticalAlignment.Center };
-                bar.Children.Add(new Border { CornerRadius = new CornerRadius(3), Background = Ink.Brush("SeleneInkColor", 0.14) });
-                fill = new Border { CornerRadius = new CornerRadius(3), Background = Ink.Brush("GlyphColor"), Width = 6, HorizontalAlignment = HorizontalAlignment.Left, ClipToBounds = true };
-                // the light: a band gliding along the filled part, wide and strong, in the colour that stands out from the fill (white on
-                // a dark fill, dark on a light one: white on a light theme's cream fill was invisible)
-                light = new Border
-                {
-                    Opacity = 0.8, IsHitTestVisible = false,
-                    OpacityMask = new LinearGradientBrush(new GradientStopCollection
-                    {
-                        new GradientStop(Color.FromArgb(0x00, 255, 255, 255), 0.05), new GradientStop(Color.FromArgb(0xFF, 255, 255, 255), 0.5), new GradientStop(Color.FromArgb(0x00, 255, 255, 255), 0.95)
-                    }, new Point(0, 0.5), new Point(1, 0.5)) { RelativeTransform = slide }
-                };
-                Tone();
-                fill.Child = light;
-                bar.Children.Add(fill);
-                Root.Children.Add(bar);
-                bar.SizeChanged += (s, e) => Place(false);   // its width known (or changed): the fill set straight there
-                Root.Loaded += (s, e) => { if (Root.Visibility == Visibility.Visible) Start(); };
-                Root.Unloaded += (s, e) => Stop();   // (nothing ticking for a row gone)
-            }
-
-            private void Tone()
-            {
-                var c = Ink.Of("GlyphColor");
-                double luminance = (0.2126 * c.R + 0.7152 * c.G + 0.0722 * c.B) / 255;
-                light.Background = luminance > 0.5 ? Brushes.Black : Brushes.White;
-                light.Opacity = luminance > 0.5 ? 0.45 : 0.8;
-            }
-
-            // how far: 0..1 shows it so (the fill gliding on to it, the figure counting to it), below 0 takes it away
-            public void Set(double next)
-            {
-                if (next < 0) { Root.Visibility = Visibility.Collapsed; Stop(); share = -1; return; }
-                next = Math.Max(0, Math.Min(1, next));
-                bool first = share < 0 || Root.Visibility != Visibility.Visible;
-                share = next;
-                Root.Visibility = Visibility.Visible;
-                Tone();   // (the theme may have changed)
-                Place(!first);
-                Count((int)Math.Round(share * 100), !first);
-                if (Root.IsLoaded) Start();
-            }
-
-            // the fill to where it stands: gliding there (eased, 600 ms), or set at once (first shown, or the bar resized)
-            private void Place(bool glide)
-            {
-                if (share < 0 || bar.ActualWidth < 1) return;
-                double to = Math.Max(6, Math.Round(bar.ActualWidth * share));
-                if (!glide) { fill.BeginAnimation(FrameworkElement.WidthProperty, null); fill.Width = to; return; }
-                if (Math.Abs(to - fill.Width) < 0.5) return;
-                var move = new DoubleAnimation(to, TimeSpan.FromMilliseconds(600)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
-                move.Completed += (s, e) => { fill.BeginAnimation(FrameworkElement.WidthProperty, null); fill.Width = to; };   // settled: the next glide starts from here
-                fill.BeginAnimation(FrameworkElement.WidthProperty, move);
-            }
-
-            // the figure counts to the new one (a step every few frames) rather than jumping
-            private System.Windows.Threading.DispatcherTimer counter;
-            private void Count(int to, bool glide)
-            {
-                if (!glide || shownPercent < 0) { if (counter != null) counter.Stop(); shownPercent = to; percent.Text = to + "%"; return; }
-                if (counter == null)
-                {
-                    counter = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(40) };
-                    counter.Tick += (s, e) =>
-                    {
-                        int goal = (int)Math.Round(Math.Max(0, share) * 100);
-                        if (shownPercent == goal) { counter.Stop(); return; }
-                        shownPercent += Math.Sign(goal - shownPercent);
-                        percent.Text = shownPercent + "%";
-                    };
-                }
-                if (to != shownPercent) counter.Start();
-            }
-
-            private void Start()
-            {
-                if (running) return;
-                running = true;
-                slide.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(-1.2, 1.2, TimeSpan.FromMilliseconds(1600)) { RepeatBehavior = RepeatBehavior.Forever, EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut } });
-            }
-
-            private void Stop()
-            {
-                running = false;
-                slide.BeginAnimation(TranslateTransform.XProperty, null);
-                if (counter != null) counter.Stop();
-            }
         }
 
         public override void Handle(string b)
@@ -527,12 +438,35 @@ namespace Selene
             if (acts)
             {
                 if (b != "A") { MoveRow(b); return; }
+                if (opt.Key == "gamesget" && MediaDownloads.Unified && MediaDownloads.Enabled && Background.ForOption("gamesget")) return;   // (downloading: the row only shows progress)
                 Ui.Confirm();
                 if (opt.Key == "shade") LoginScene.Show(new ShadePreviewScreen(fromMenu), 1);   // set with the home in view
                 else if (opt.Key == "setupcheck") { bool back = fromMenu; LoginScene.Show(new SetupScreen(false) { Back = () => new SettingsScreen(back, "Advanced", "setupcheck") }, 1); }
                 else if (opt.Key == "report") { bool back = fromMenu; LoginScene.Show(new ReportScreen(() => new SettingsScreen(back, "Advanced", "report")), 1); }
                 else if (opt.Key == "newsfeeds") LoginScene.Show(new NewsFeedsScreen(() => new SettingsScreen(fromMenu, "Spotlight", "newsfeeds")), 1);
                 else if (opt.Key == "storeregion") LoginScene.Show(new StoreCurrencyScreen(false, () => new SettingsScreen(true, "Games", "storeregion")), 1);
+                else if (opt.Key == "steamgridkey") AskSteamGridKey();
+                else if (opt.Key == "capturesfolders")
+                {
+                    // Windows' folder picker (Playnite's own call): mouse or keyboard
+                    var folder = HomeNav.Api != null ? HomeNav.Api.Dialogs.SelectFolder() : null;
+                    if (!string.IsNullOrEmpty(folder))
+                    {
+                        bool added = Features.ToggleCapturesFolder(folder);
+                        CapturesScreen.Known = new List<CapturesScreen.Capture>();   // (looked through again next time)
+                        Ui.Notice(added ? "Folder added" : "Folder removed", 3000);
+                        try { ShowGroup(false); ShowFocus(); } catch (Exception ex) { HomeNav.Log("settings: refresh after a captures folder: " + ex.Message); }
+                    }
+                }
+                else if (opt.Key == "gamesget")
+                {
+                    if (MediaDownloads.Unified && MediaDownloads.Enabled)
+                    {
+                        ConfirmStopDownloads(); return;
+                    }
+                    ask = GamesSetup.Question(() => { ask = null; try { ShowGroup(false); ShowFocus(); } catch (Exception ex) { HomeNav.Log("settings: refresh after the games question: " + ex.Message); } });
+                    ask.Open(Root);
+                }
                 else if (opt.Key == "legacytasks")
                 {
                     ask = new Dialog("\uE002", "Remove old administrator tasks?", "Windows will ask for permission for each task.",
@@ -568,18 +502,25 @@ namespace Selene
                 if (DownloadConsent.IsControlled(key) && !Features.On(key)) DownloadConsent.Revoke(key);
                 if (DownloadConsent.IsControlled(key)) DownloadConsent.Changed(key);
                 if (key == "brand") Brand.Apply();
+                if (key == "downloadprogress") { ShowGroup(false); ShowFocus(); }
                 if (key == "topprofile") TopProfile.Refresh();
                 if (key == "hltb" || key == "achievements" || key == "rowedges" || key == "collectioninfo" || key == "collectionhints") SeleneShell.ApplyNowPlaying();
                 if (key == "translatecollect") { Lang.Collect(Features.On(key)); if (Features.On(key)) Ui.Notice("Phrases are saved to \"Selene phrases.txt\" on your Desktop."); }
                 Ui.Key();
                 ShowSwitch(index, true);
                 if (key == "hints") HomeHints.Update();
+                if (key == "detailsbadges") Ui.PublishPrompts();
+                if (key == "fullscreenpresets") HomeNav.ApplyValueSettings();
                 if (key == "fullrate") Ui.FullRateChanged();
+                if (key == "presence") ScreenPresence.Evaluate();
+                if (key == "calmmotion") Ui.Notice("Restart Playnite to apply.");
                 if (key == "lightweight") HomeNav.ApplyPerformanceMode();
                 if (key == "perflog") { PerformanceRecorder.SetRecording(Features.On(key)); Ui.Notice(Features.On(key) ? "Performance recording started. Use Selene normally, then turn this off." : "Performance recording stopped.", 6000); }
                 if (key == "collectionglide") LibraryStage.ApplyNavigationSettings();
                 if (key == "glow") LoginScene.RefreshBackdrop();
                 if (key == "songsettle") SongSetup.ApplySongSettle();
+                if (key == "selenemusic") { SongSetup.ApplyDefaultMusic(); Ui.Notice("Restart Playnite to hear it.", 5000); }
+                if (key == "independentmusic") HomeNav.RefreshMusicPolicy();
                 if (key == "perfmode") Ui.Notice("Restart Playnite to apply.");
                 if (key == "music")
                 {
@@ -587,6 +528,7 @@ namespace Selene
                     else HomeNav.ReleaseMusicQuietly();
                 }
                 if (key == "cardpictures") { GameFacts.CardStats(); CapturesScreen.CountInBackground(); }
+                if (key.StartsWith("card") && key != "cardpictures") HomeNav.RefreshCards();   // (the row behind settings follows at once)
                 HomeNav.Log("settings: " + key + " " + (Features.On(key) ? "on" : "off"));
                 return;
             }
@@ -603,7 +545,7 @@ namespace Selene
                 Back = () => LoginScene.Show(new SettingsScreen(back, SearchGroup), -1),
                 Max = 4, Shade = Ink.Brush("SeleneScrimColor", 0.94),   // four cards fit the screen's width; as dark as the settings
                 Find = q => Features.All
-                    .Where(o => (o.Available == null || o.Available()) && Matches(o, q))
+                    .Where(o => MediaDownloads.ShowSetting(o.Key) && (o.Available == null || o.Available()) && Matches(o, q))
                     .OrderBy(o => o.Label.StartsWith(q, StringComparison.OrdinalIgnoreCase) ? 0 : o.Label.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0 ? 1 : 2)
                     .Select(o => new SearchScreen.Hit { Build = () => SettingTile(o), Open = () => LoginScene.Show(new SettingsScreen(back, o.Group, o.Key), 1) })
                     .ToList()
@@ -668,7 +610,7 @@ namespace Selene
                     () => { Features.SetValue(opt.Key, "off"); ShowSwitch(index, true); DownloadConsent.Changed(opt.Key); });
                 return;
             }
-            if (opt.Key == "language") ask = LanguageSetup.Restart(Root, () => ask = null, () => { });
+            if (opt.Key == "language" && Lang.WouldChange(Features.Value("language"))) ask = LanguageSetup.Restart(Root, () => ask = null, () => { });
             if (opt.Key == "trailersound") HomeNav.ApplyValueSettings();
             if (opt.Key == "shade") Contrast.Apply();
             if (opt.Key == "prompts") Ui.RefreshPrompts();   // the hints show the new button names

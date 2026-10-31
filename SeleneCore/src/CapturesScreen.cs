@@ -144,6 +144,7 @@ namespace Selene
             progressTrack = new Border { Height = 6, CornerRadius = new CornerRadius(3), Background = new SolidColorBrush(Color.FromArgb(0x59, 0xFF, 0xFF, 0xFF)), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(Side, 0, 0, BarBottom), Width = 1920 - 2 * Side - 150 };
             progress.Background = Ink.Brush("SeleneFocusColor");
             progressTrack.Child = progress;
+            BindPlayerTrack(progressTrack, viewer);
             controls.Children.Add(progressTrack);
             timeText = new TextBlock { FontSize = 17, FontFamily = Ui.Body, Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, Side, BarBottom - 8) };
             controls.Children.Add(timeText);
@@ -215,6 +216,13 @@ namespace Selene
 
         // ---- a clip's player: its buttons (icons with the controller button under each), volume, holding to scrub ----
         private const double BarBottom = 122;
+        private static void BindPlayerTrack(Border track, Grid player)
+        {
+            Action resize = () => track.Width = Features.On("captureplayerfit")
+                ? Math.Max(0, player.ActualWidth - 2 * Side - 150) : 1920 - 2 * Side - 150;
+            player.SizeChanged += (s, e) => resize();
+            resize();
+        }
         private static double clipVolume = Features.Number("clipvolume") / 100.0;   // the Clip volume setting (Up / Down change it too)
         public static void ClipVolumeChanged() { clipVolume = Features.Number("clipvolume") / 100.0; }
         private TextBlock playGlyph, scrubTime, volumeGlyph;

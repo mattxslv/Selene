@@ -145,7 +145,9 @@ namespace Selene
             if (options != null) { args.Text = options.Text; args.IsIndeterminate = options.IsIndeterminate; }
             var holder = new ProgressHolder { ProgressArgs = args };
             Exception error = null;
-            try { ProgressToast.ShowTask(holder); } catch (Exception ex) { HomeNav.Log("notification: " + ex.Message); }
+            // background work (library update, an add-on's downloads) runs quietly unless its cards are wanted
+            if (Features.On("taskcards")) { try { ProgressToast.ShowTask(holder); } catch (Exception ex) { HomeNav.Log("notification: " + ex.Message); } }
+            else HomeNav.Log("task in the background: " + (options != null ? options.Text : "?"));
             var frame = new DispatcherFrame();
             Task task = null;
             try { task = start(args); }

@@ -181,6 +181,9 @@ namespace Selene
         public static void PublishPrompts()
         {
             var app = Application.Current; if (app == null) return;
+            app.Resources["SeleneDetailsBadgeWidth"] = Features.On("detailsbadges") ? 32.0 : 48.0;
+            // the Scroll hint: a controller's two-letter stick label fits a round 32 px badge; "Wheel" and "PgUp/Dn" are longer and widen it
+            app.Resources["SeleneScrollBadgeWidth"] = Features.On("detailsbadges") && InputHints.Kind == InputKind.Controller ? 32.0 : 48.0;
             foreach (var button in new[] { "A", "B", "X", "Y", "LB", "RB", "LT", "RT", "RS", "Start", "View" }) app.Resources["SelenePrompt" + button] = PromptLabel(button);
             app.Resources["SeleneScrollPrompt"] = InputHints.Kind == InputKind.Controller ? PromptLabel("RS") : InputHints.Kind == InputKind.Mouse ? "Wheel" : "PgUp/Dn";
         }
@@ -294,6 +297,22 @@ namespace Selene
         // 120 / 144). Exactly the screen's rate: asking 144 on a 60 Hz TV ticked animations ~2x per refresh, unevenly (judder)
         public static T Fast<T>(T t) where T : Timeline { Timeline.SetDesiredFrameRate(t, FrameRate); return t; }
         public static int FrameRate { get { int r = ScreenRate(); return r >= 48 && r <= 360 ? r : 60; } }
+
+        // Motion that runs on its own (the dust, the breathing light, the focus ring's glint) drifts a few pixels a second: it
+        // doesn't need the screen's full rate, and every frame it asks for is one WPF has to compute on the UI thread (about 2 ms
+        // for the whole backdrop, measured) and the GPU has to present. It runs at the largest even share of the refresh rate
+        // that is 40 or less (30 on 60 Hz, 36 on 144, 40 on 120) so the frames stay evenly spaced. Presses and transitions keep
+        // Fast's full rate. Switch: Advanced > Calm background motion ("calmmotion"); off, ambient motion asks for the full rate.
+        public static int AmbientRate
+        {
+            get
+            {
+                int r = FrameRate;
+                if (!Features.On("calmmotion")) return r;
+                return Math.Max(15, r / Math.Max(1, (int)Math.Ceiling(r / 40.0)));
+            }
+        }
+        public static T Ambient<T>(T t) where T : Timeline { Timeline.SetDesiredFrameRate(t, AmbientRate); return t; }
 
         public static void Fade(UIElement el, double to, int ms, int delay = 0, Action done = null)
         {
@@ -447,7 +466,7 @@ namespace Selene
 
         // Playnite is what's in front: any of its windows has the foreground (its hidden progress window takes the activation
         // while a notification shows: going by the main window's own "active", the full rate went off just then)
-        private static bool PlayniteInFront(Window main)
+        internal static bool PlayniteInFront(Window main)
         {
             if (main == null || !main.IsVisible || main.WindowState == WindowState.Minimized) return false;
             uint pid;
@@ -460,14 +479,39 @@ namespace Selene
         {
             if (main == null || ReferenceEquals(main, fullRateWatched)) return;
             fullRateWatched = main;
-            main.Activated += (s, e) => FullRateChanged();
+            main.Activated += (s, e) => { Poke(); FullRateChanged(); };
             main.Deactivated += (s, e) => FullRateChanged();
             main.StateChanged += (s, e) => FullRateChanged();
             main.IsVisibleChanged += (s, e) => FullRateChanged();
             var check = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(500) };
-            check.Tick += (s, e) => FullRateChanged();
+            check.Tick += (s, e) => { FullRateChanged(); ScreenPresence.Evaluate(); };
             check.Start();
+            System.Windows.Input.InputManager.Current.PreProcessInput += OnInput;
+            Poke(15000);   // start-up: the logo and the first screens move at the full rate
             FullRateChanged();
+        }
+
+        // ---- active / quiet ----
+        // A Rendering handler, even an empty one, keeps WPF's render loop running on every frame of the screen, also on a window
+        // where nothing moves (measured with a probe: 0 render passes a second without one, one per frame with it). The two Selene
+        // keeps (the full-refresh-rate one and the slow-frame watchdog) are on only while something is being pressed or just was;
+        // quiet, the background motion runs at its own calm rate and nothing asks for more.
+        private static DateTime activeUntil = DateTime.MinValue;
+        public static bool RecentlyActive { get { return DateTime.Now < activeUntil; } }
+
+        public static void Poke(int ms = 3500)
+        {
+            bool wasQuiet = !RecentlyActive;
+            var until = DateTime.Now.AddMilliseconds(ms);
+            if (until > activeUntil) activeUntil = until;
+            if (wasQuiet && fullRateWatched != null) FullRateChanged();
+        }
+
+        private static void OnInput(object sender, System.Windows.Input.PreProcessInputEventArgs e)
+        {
+            var input = e.StagingItem != null ? e.StagingItem.Input : null;
+            // Controller presses arrive as key events; mouse navigation also wakes full-rate transitions.
+            if (input is System.Windows.Input.KeyEventArgs || input is System.Windows.Input.MouseEventArgs) Poke();
         }
 
         // The display containing Playnite, not necessarily the primary monitor (the TV may have a different rate).
@@ -487,6 +531,9 @@ namespace Selene
         private static string screenDevice;
         public static int ScreenRate()
         {
+            // asked for by every animation made (Fast, Ambient) and every half second: answered from the last look for 2 s, before
+            // any window or display is touched (the lookup below allocates a Screen each time)
+            if (screenRate > 0 && (DateTime.Now - screenRateAt).TotalSeconds < 2) return screenRate;
             try
             {
                 var main = Application.Current != null ? Application.Current.MainWindow : null;
@@ -503,14 +550,18 @@ namespace Selene
 
         public static void FullRateChanged()
         {
+            // in front and in use (pressed lately): the slow-frame watchdog listens too; quiet, neither does (see Poke)
+            bool active = RecentlyActive && PlayniteInFront(fullRateWatched ?? Application.Current.MainWindow);
+            Smoothness.Listen(active);
             // only worth it above 60 Hz (drawing every frame keeps the GPU a little busy; on a 60 Hz TV there's nothing to gain)
-            bool want = Features.On("fullrate") && ScreenRate() > 62 && PlayniteInFront(fullRateWatched ?? Application.Current.MainWindow);
+            bool want = active && Features.On("fullrate") && ScreenRate() > 62;
             if (want == fullRateOn) return;
             fullRateOn = want;
             if (want) System.Windows.Media.CompositionTarget.Rendering += EveryFrame;
             else System.Windows.Media.CompositionTarget.Rendering -= EveryFrame;
-            HomeNav.Log("full refresh rate " + (want ? "on" : "off") + " (screen " + ScreenRate() + " Hz)");
+            if (!fullRateLogged || DevFrames) { fullRateLogged = true; HomeNav.Log("full refresh rate " + (want ? "on" : "off") + " while in use (screen " + ScreenRate() + " Hz)"); }
         }
+        private static bool fullRateLogged;
 
         // developer switch: %TEMP%\selene-dev-frames makes the log say, each second, how many frames were drawn and the longest
         // gap between two (to find what makes Selene stutter)
@@ -572,6 +623,7 @@ namespace Selene
         {
             if (!System.IO.File.Exists(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "selene-dev-frames"))) return;
             DevSampler();
+            JobCensus();
             var sw = System.Diagnostics.Stopwatch.StartNew();
             double last = 0, worst = 0, second = 0; int n = 0;
             double frameAt = -1; int unique = 0, late = 0;
@@ -646,6 +698,57 @@ namespace Selene
             t.Start();
         }
 
+        // the method a dispatcher operation will run (a timer's tick shows the handlers it calls and its interval)
+        private static string JobName(System.Windows.Threading.DispatcherOperation op)
+        {
+            string name = "?";
+            try
+            {
+                var f = typeof(System.Windows.Threading.DispatcherOperation).GetField("_method", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                var d = f != null ? f.GetValue(op) as Delegate : null;
+                if (d != null) name = (d.Method.DeclaringType != null ? d.Method.DeclaringType.FullName : "") + "." + d.Method.Name + (d.Target != null ? " on " + d.Target.GetType().Name : "");
+                var timer = d != null ? d.Target as System.Windows.Threading.DispatcherTimer : null;
+                if (timer != null)
+                {
+                    var tf = typeof(System.Windows.Threading.DispatcherTimer).GetField("Tick", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                    var tick = tf != null ? tf.GetValue(timer) as Delegate : null;
+                    if (tick != null) foreach (var h in tick.GetInvocationList()) name += " -> " + (h.Method.DeclaringType != null ? h.Method.DeclaringType.FullName : "") + "." + h.Method.Name;
+                    name += " every " + timer.Interval.TotalMilliseconds + " ms";
+                }
+            }
+            catch { }
+            return name;
+        }
+
+        // developer switch: %TEMP%\selene-dev-census (with selene-dev-frames) counts every UI-thread job by name and logs, every
+        // 30 s, how often each ran and how long it held the thread: what Selene does while nothing is pressed
+        private static void JobCensus()
+        {
+            if (!System.IO.File.Exists(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "selene-dev-census"))) return;
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            var started = new Dictionary<System.Windows.Threading.DispatcherOperation, double>();
+            var count = new Dictionary<string, int>(); var total = new Dictionary<string, double>();
+            double since = 0; int all = 0; double busy = 0;
+            var hooks = Application.Current.Dispatcher.Hooks;
+            hooks.OperationStarted += (s, e) => { started[e.Operation] = clock.Elapsed.TotalMilliseconds; };
+            hooks.OperationCompleted += (s, e) =>
+            {
+                double t0;
+                if (!started.TryGetValue(e.Operation, out t0)) return;
+                started.Remove(e.Operation);
+                double now = clock.Elapsed.TotalMilliseconds, took = now - t0;
+                var name = JobName(e.Operation) + " (" + e.Operation.Priority + ")";
+                int c; count.TryGetValue(name, out c); count[name] = c + 1;
+                double ms; total.TryGetValue(name, out ms); total[name] = ms + took;
+                all++; busy += took;
+                if (now - since < 30000) return;
+                var top = total.OrderByDescending(kv => kv.Value).Take(14).Select(kv => count[kv.Key] + "x " + kv.Value.ToString("0") + " ms " + kv.Key);
+                string memory = "";
+                try { using (var me = System.Diagnostics.Process.GetCurrentProcess()) memory = ", private " + (me.PrivateMemorySize64 >> 20) + " MB, working set " + (me.WorkingSet64 >> 20) + " MB, managed " + (GC.GetTotalMemory(false) >> 20) + " MB, collections " + GC.CollectionCount(0) + "/" + GC.CollectionCount(1) + "/" + GC.CollectionCount(2); } catch { }
+                HomeNav.Log("census " + ((now - since) / 1000).ToString("0") + " s: " + all + " jobs, UI thread busy " + (busy * 100 / (now - since)).ToString("0.0") + "%" + memory + " | " + string.Join(" | ", top));
+                count.Clear(); total.Clear(); all = 0; busy = 0; since = now;
+            };
+        }
         // every UI-thread job longer than 'threshold' ms goes to the log by name (for 'forMs' ms, 0 = for good)
         private static void WatchSlowJobs(System.Diagnostics.Stopwatch sw, double threshold, double forMs)
         {
@@ -661,22 +764,7 @@ namespace Selene
                 started.Remove(e.Operation);
                 double took = sw.Elapsed.TotalMilliseconds - t0;
                 if (took < threshold) return;
-                string name = "?";
-                try
-                {
-                    var f = typeof(System.Windows.Threading.DispatcherOperation).GetField("_method", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-                    var d = f != null ? f.GetValue(e.Operation) as Delegate : null;
-                    if (d != null) name = (d.Method.DeclaringType != null ? d.Method.DeclaringType.FullName : "") + "." + d.Method.Name + (d.Target != null ? " on " + d.Target.GetType().Name : "");
-                    var timer = d != null ? d.Target as System.Windows.Threading.DispatcherTimer : null;
-                    if (timer != null)
-                    {
-                        var tf = typeof(System.Windows.Threading.DispatcherTimer).GetField("Tick", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-                        var tick = tf != null ? tf.GetValue(timer) as Delegate : null;
-                        if (tick != null) foreach (var h in tick.GetInvocationList()) name += " -> " + (h.Method.DeclaringType != null ? h.Method.DeclaringType.FullName : "") + "." + h.Method.Name;
-                        name += " every " + timer.Interval.TotalMilliseconds + " ms";
-                    }
-                }
-                catch { }
+                string name = JobName(e.Operation);
                 HomeNav.Log("slow job " + took.ToString("0") + " ms: " + name + " (" + e.Operation.Priority + ")");
             };
             hooks.OperationStarted += onStart;
@@ -1014,7 +1102,7 @@ namespace Selene
         private readonly ScrollViewer bodyScroll;
 
         // warning: a red badge and a red Yes (Remove...); otherwise the theme's accent (Install all, Restart)
-        public Dialog(string icon, string title, string text, string yesLabel, string noLabel, Action onYes, Action onNo, bool warning = true, bool material = false, double maxBodyHeight = 0)
+        public Dialog(string icon, string title, string text, string yesLabel, string noLabel, Action onYes, Action onNo, bool warning = true, bool material = false, double maxBodyHeight = 0, double width = 640)
         {
             this.onYes = onYes;
             this.onNo = onNo;
@@ -1029,7 +1117,7 @@ namespace Selene
             badge.Children.Add(glyph);
             col.Children.Add(badge);
             col.Children.Add(new TextBlock { Text = title, FontSize = 34, FontWeight = FontWeights.SemiBold, FontFamily = Ui.Display, Foreground = Ink.Brush("SeleneInkColor"), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 22, 0, 0) });
-            var body = new TextBlock { Text = text, FontSize = 19, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.75), HorizontalAlignment = HorizontalAlignment.Center, TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap, MaxWidth = 520, Margin = new Thickness(0, 10, 0, 0) };
+            var body = new TextBlock { Text = text, FontSize = 19, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.75), HorizontalAlignment = HorizontalAlignment.Center, TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap, MaxWidth = width == 640 ? 520 : width - 80, Margin = new Thickness(0, 10, 0, 0) };
             if (maxBodyHeight > 0)
             {
                 bodyScroll = new ScrollViewer { MaxHeight = maxBodyHeight, Content = body, Focusable = false, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
@@ -1046,7 +1134,7 @@ namespace Selene
             col.Children.Add(buttons);
             panel = Ui.Lifted(new Border
             {
-                Child = col, Width = 640, CornerRadius = new CornerRadius(28), Padding = new Thickness(40, 40, 40, 36),
+                Child = col, Width = width, CornerRadius = new CornerRadius(28), Padding = new Thickness(40, 40, 40, 36),
                 Background = Ink.Brush("SeleneGlassColor", 0.96), BorderBrush = Ink.Brush("SeleneInkColor", 0.16), BorderThickness = new Thickness(1),
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
             }, 60, 0.55);   // (the shadow behind it: an Effect on the card blurred its words)

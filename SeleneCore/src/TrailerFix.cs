@@ -53,7 +53,8 @@ namespace Selene
             onSource = (s, e) => { if (!swapping && (player.Source == null || player.Source.LocalPath != path)) Stop(); };
             sourceWatch = DependencyPropertyDescriptor.FromProperty(MediaElement.SourceProperty, typeof(MediaElement));
             sourceWatch.AddValueChanged(player, onSource);
-            player.MediaEnded += (s, e) => { if (web != null) web.SeekTo(0); };   // the two loop together
+            player.MediaEnded += OnEnded;   // the two loop together
+            ScreenPresence.Changed += OnPresence;
         }
 
         private void OnOpened(object sender, RoutedEventArgs e)
@@ -122,7 +123,7 @@ namespace Selene
                 swapping = true;
                 player.Source = new Uri(pictureCopy);
                 swapping = false;
-                player.Play();
+                if (ScreenPresence.InView) player.Play();
                 HomeNav.Log("trailer fix: playing the picture from " + System.IO.Path.GetFileName(pictureCopy));
             }
             else if (pictureFrom != null && pictureFrom.StartsWith("Windows")) { HomeNav.Log("trailer fix: the copy without sound couldn't be made"); pictureFrom = null; }
@@ -155,7 +156,7 @@ namespace Selene
             if (soundFrom == "Windows (sound only)" && web != null)
             {
                 audio = ClipAudio.For(path, 0);
-                web.Progress = (at, length, paused) => { if (audio != null) audio.Sync(at, paused); };
+                web.Progress = (at, length, paused) => { lastAudioAt = at; if (audio != null) audio.Sync(at, paused || !ScreenPresence.InView); };
             }
             ApplySound();
         }
@@ -167,7 +168,18 @@ namespace Selene
             bool on = !player.IsMuted;
             if (web != null && webSound) web.Mute(!on);
             if (audio != null) audio.Volume = on ? 0.9 : 0;
+            if (!ScreenPresence.InView) OnPresence(false);
             if (web != null && webSound || audio != null) HomeNav.Log("trailer fix: sound " + (on ? "on" : "off") + " (" + (audio != null ? "Windows" : "browser") + ")");
+        }
+
+        private void OnEnded(object sender, RoutedEventArgs e) { if (web != null) web.SeekTo(0); }
+
+        private double lastAudioAt;
+        private void OnPresence(bool inView)
+        {
+            if (stopped) return;
+            if (web != null) web.SetPaused(!inView);
+            if (!inView && audio != null) audio.Sync(lastAudioAt, true);
         }
 
         private void OnUnloaded(object sender, RoutedEventArgs e) { Stop(); }
@@ -176,6 +188,8 @@ namespace Selene
         {
             if (stopped) return;
             stopped = true;
+            ScreenPresence.Changed -= OnPresence;
+            player.MediaEnded -= OnEnded;
             player.MediaOpened -= OnOpened;
             player.MediaFailed -= OnFailed;
             player.Unloaded -= OnUnloaded;

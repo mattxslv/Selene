@@ -89,6 +89,7 @@ namespace Selene
         // Selene's own look is theme\Constants.xaml itself, so it just removes any override.
         public static void Apply(string id)
         {
+            Application.Current.Resources["SeleneDefaultBackdrop"] = DefaultBackdrop.ForTheme(string.IsNullOrEmpty(id) ? DefaultId : id);
             if (string.IsNullOrEmpty(id)) id = DefaultId;
             // the same theme again does nothing (re-adding its colors redrew every screen: a flicker)
             if (string.Equals(id, current, StringComparison.OrdinalIgnoreCase)) return;

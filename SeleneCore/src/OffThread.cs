@@ -20,6 +20,8 @@ namespace Selene
         private FrameworkElement root;
         private Size size;
 
+        public Size CurrentSize { get { return size; } }
+
         // resized (the window changed): called on the drawing thread with the element and its new size
         public Action<FrameworkElement, Size> Resized;
 

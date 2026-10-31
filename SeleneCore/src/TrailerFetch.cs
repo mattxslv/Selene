@@ -26,6 +26,23 @@ namespace Selene
         private static readonly object gate = new object();
         private static System.Threading.Thread worker;
         private static bool libraryQueued;
+        private static readonly HashSet<Guid> libraryMedia = new HashSet<Guid>();
+        private static int libraryTotal, libraryChecked;
+        public static void LibraryCounts(out int done, out int total) { lock (gate) { done = libraryChecked; total = libraryTotal; } }
+        public static double LibraryProgress { get { lock (gate) return libraryTotal > 0 ? (double)libraryChecked / libraryTotal : -1; } }
+        public static string LibraryStatus { get { lock (gate) return libraryTotal > 0 ? "Art / trailers / pictures: " + libraryChecked + " of " + libraryTotal + " checked" : "No media queued"; } }
+        public static void QueueLibraryMedia()
+        {
+            if (!MediaDownloads.Enabled || HomeNav.Api == null) return;
+            var ids = HomeNav.Api.Database.Games.Where(g => !g.Hidden).OrderByDescending(g => g.LastActivity ?? DateTime.MinValue).Select(g => g.Id).ToList();
+            lock (gate)
+            {
+                libraryMedia.Clear(); libraryTotal = ids.Count; libraryChecked = 0; libraryQueued = true;
+                var queued = new HashSet<Guid>(queue);
+                foreach (var id in ids) { libraryMedia.Add(id); tried.Remove(id); if (queued.Add(id)) queue.AddLast(id); }
+            }
+            Start();
+        }
 
         private static string Mode { get { return Features.Value("trailerdownload"); } }
         private static bool WantTrailers { get { return DownloadConsent.Allowed("trailerdownload"); } }
@@ -33,7 +50,7 @@ namespace Selene
         [ThreadStatic] private static string permission;
         public static void DownloadSettingsChanged()
         {
-            lock (gate) { queue.Clear(); tried.Clear(); libraryQueued = false; }
+            lock (gate) { queue.Clear(); tried.Clear(); libraryQueued = false; libraryMedia.Clear(); libraryTotal = libraryChecked = 0; }
         }
 
         // trailers, logos or backgrounds still coming (for the red dot on the menu and the Spotlight group)
@@ -80,7 +97,7 @@ namespace Selene
             if (libraryQueued || !WantTrailers || Mode != "all") return;
             libraryQueued = true;
             var ids = HomeNav.Api.Database.Games.Where(x => !x.Hidden).OrderByDescending(x => x.LastActivity ?? DateTime.MinValue).Select(x => x.Id).ToList();
-            lock (gate) foreach (var id in ids) if (!queue.Contains(id)) queue.AddLast(id);
+            lock (gate) { var queued = new HashSet<Guid>(queue); foreach (var id in ids) if (queued.Add(id)) queue.AddLast(id); }
             Start();
         }
 
@@ -108,10 +125,13 @@ namespace Selene
                     done++;
                     if (!tried.Add(id)) continue;
                 }
+                // A library batch should not compete with a running game between transfers.
+                while (MediaDownloads.Unified && MediaDownloads.Enabled && (WantTrailers || WantArt) && HomeNav.GameRunning()) System.Threading.Thread.Sleep(1000);
                 bool looked;
                 lock (gate) looked = browsed.Contains(id);
                 PerformanceRecorder.Mark("media_queue", "game=" + id + " browsed=" + looked + " trailerScope=" + Mode + " pending=" + Pending);
                 asked = false;
+                bool retry = false;
                 try { if (Fetch(id)) made++; }
                 catch (Exception ex)
                 {
@@ -119,8 +139,9 @@ namespace Selene
                     // Steam saying "too many requests": that game goes to the back, and a minute's rest
                     var web = ex as WebException;
                     var status = web != null && web.Response is HttpWebResponse ? (int)((HttpWebResponse)web.Response).StatusCode : 0;
-                    if (status == 429) { lock (gate) { tried.Remove(id); queue.AddLast(id); } System.Threading.Thread.Sleep(60000); }
+                    if (status == 429) { retry = true; lock (gate) { tried.Remove(id); queue.AddLast(id); } System.Threading.Thread.Sleep(60000); }
                 }
+                finally { lock (gate) if (!retry && libraryMedia.Remove(id)) libraryChecked++; }
                 // the library pass goes gently (Steam limits how often it's asked); the games being looked at don't wait
                 if (!looked && asked) System.Threading.Thread.Sleep(1500);
             }
@@ -147,9 +168,11 @@ namespace Selene
                 }
                 return appId;
             };
-            bool selected; lock (gate) selected = browsed.Contains(id);
+            bool selected, bulk; lock (gate) { selected = browsed.Contains(id); bulk = libraryMedia.Contains(id) && MediaDownloads.Enabled; }
             permission = "artdownload";
-            if (WantArt && selected) { try { FetchArt(g, steamId); } catch (Exception ex) { HomeNav.Log("art download: " + g.Name + " failed: " + ex.Message); } }
+            if (WantArt && (selected || bulk)) { try { FetchArt(g, steamId); } catch (Exception ex) { HomeNav.Log("art download: " + g.Name + " failed: " + ex.Message); } }
+            if (WantArt && (selected || bulk)) { try { SquareFetch.Fetch(g, steamId); } catch (Exception ex) { HomeNav.Log("square art: " + g.Name + " failed: " + ex.Message); } }
+            if (bulk) { try { GameMedia.DownloadPictures(g); } catch (Exception ex) { HomeNav.Log("library pictures: " + g.Name + ": " + ex.Message); } }
             permission = "trailerdownload";
 
             // the trailer: a game looked at, or every game with "Whole library"
@@ -195,7 +218,11 @@ namespace Selene
             bool needLogo = !System.IO.File.Exists(logo), needHero = !System.IO.File.Exists(hero);
             if (!needLogo) TrimLogoOnce(g.Id, logo);   // (one saved on a wide canvas before the trim came in)
             if (!needHero && IsBanner(hero)) { try { System.IO.File.Delete(hero); needHero = true; } catch { } }   // a banner saved before the crop came in: fetched again, sharper
-            if (!needLogo && !needHero) return;
+            // a background copied from Steam's cache is its small banner (1102 x 620 once cut, blurry on a 4K screen): the store's
+            // double-size one asked for once
+            var sharpTried = System.IO.Path.Combine(SelenePaths.Media("Trailers"), g.Id + ".herohd");
+            bool sharpen = !needHero && !System.IO.File.Exists(sharpTried) && SmallSteamHero(hero);
+            if (!needLogo && !needHero && !sharpen) return;
             var none = System.IO.Path.Combine(SelenePaths.Media("Trailers"), g.Id + ".noart");
             if (System.IO.File.Exists(none) && (DateTime.Now - System.IO.File.GetLastWriteTime(none)).TotalDays < 7) return;
             var id = steamId();
@@ -204,26 +231,19 @@ namespace Selene
             // Steam's own library cache on this PC first (it has the logos the store page doesn't: newer games keep theirs
             // in hashed folders only Steam knows)
             if (needLogo && CopyFromSteam(id, "logo.png", logo)) { needLogo = false; TrimLogo(logo); HomeNav.Log("art download: " + g.Name + " logo (Steam's cache)"); }
-            if (needHero && CopyFromSteam(id, "library_hero.jpg", hero)) { needHero = false; Crop16x9(hero); HeroArrived(); HomeNav.Log("art download: " + g.Name + " background (Steam's cache)"); }
-            if (!needLogo && !needHero) return;
+            // (its background only when the store has none: the cache keeps just the small one)
 
             // the file names (newer games have them in hashed folders) from Steam's store service
-            string format = "steam/apps/" + id + "/${FILENAME}", heroName = "library_hero.jpg";
-            try
-            {
-                var q = "{\"ids\":[{\"appid\":" + id + "}],\"context\":{\"language\":\"english\",\"country_code\":\"US\"},\"data_request\":{\"include_assets\":true}}";
-                var root = new System.Web.Script.Serialization.JavaScriptSerializer().DeserializeObject(Text("https://api.steampowered.com/IStoreBrowseService/GetItems/v1/?input_json=" + Uri.EscapeDataString(q))) as Dictionary<string, object>;
-                var items = root != null && root.ContainsKey("response") ? ((Dictionary<string, object>)root["response"])["store_items"] as object[] : null;
-                var assets = items != null && items.Length > 0 && ((Dictionary<string, object>)items[0]).ContainsKey("assets") ? ((Dictionary<string, object>)items[0])["assets"] as Dictionary<string, object> : null;
-                if (assets != null)
-                {
-                    if (assets.ContainsKey("asset_url_format")) format = (string)assets["asset_url_format"];
-                    if (assets.ContainsKey("library_hero_2x")) heroName = (string)assets["library_hero_2x"];   // (sharper once cropped)
-                    else if (assets.ContainsKey("library_hero")) heroName = (string)assets["library_hero"];
-                }
-            }
+            string heroName = "library_hero.jpg";
+            Dictionary<string, object> assets = null;
+            try { assets = StoreAssets(id, address => new System.Web.Script.Serialization.JavaScriptSerializer().DeserializeObject(Text(address))); }
             catch (Exception ex) { HomeNav.Log("art download: " + g.Name + ": store service: " + ex.Message); }
-            Func<string, string> url = name => SteamAssets + format.Replace("${FILENAME}", name);
+            if (assets != null)
+            {
+                if (assets.ContainsKey("library_hero_2x")) heroName = (string)assets["library_hero_2x"];   // (sharper once cropped)
+                else if (assets.ContainsKey("library_hero")) heroName = (string)assets["library_hero"];
+            }
+            Func<string, string> url = name => AssetUrl(id, assets, name);
 
             bool got = false;
             if (needLogo)
@@ -234,12 +254,30 @@ namespace Selene
             if (needLogo)
                 foreach (var name in LogoNamesFromAppInfo(id))
                     if (Save(url(name), logo, true)) { got = true; needLogo = false; TrimLogo(logo); HomeNav.Log("art download: " + g.Name + " logo (app info)"); break; }
-            if (needHero && Save(url(heroName), hero, false))
+            bool heroSaved = false;
+            if (needHero)
+            {
+                try { heroSaved = Save(url(heroName), hero, false); }
+                catch (Exception ex) { HomeNav.Log("art download: " + g.Name + " background: " + ex.Message); }
+            }
+            if (heroSaved)
             {
                 got = true;
                 Crop16x9(hero);
                 HeroArrived();
                 HomeNav.Log("art download: " + g.Name + " background");
+            }
+            else if (needHero && CopyFromSteam(id, "library_hero.jpg", hero)) { got = true; Crop16x9(hero); HeroArrived(); HomeNav.Log("art download: " + g.Name + " background (Steam's cache)"); }
+            if (sharpen)
+            {
+                var fresh = hero + ".hd";
+                if (Save(url(heroName), fresh, false))
+                {
+                    Crop16x9(fresh);
+                    if (PixelWidth(fresh) > PixelWidth(hero)) { System.IO.File.Delete(hero); System.IO.File.Move(fresh, hero); HeroArrived(); HomeNav.Log("art download: " + g.Name + " sharper background"); }
+                }
+                try { System.IO.File.Delete(fresh); } catch { }
+                System.IO.File.WriteAllText(sharpTried, g.Name);
             }
             if (!got && (needLogo && !System.IO.File.Exists(logo)) && (needHero && !System.IO.File.Exists(hero))) System.IO.File.WriteAllText(none, g.Name);
         }
@@ -365,6 +403,7 @@ namespace Selene
             Application.Current.Dispatcher.BeginInvoke(new Action(() =>
             {
                 if ("".Equals(Application.Current.Resources["SeleneHeroRoot"])) SeleneShell.ApplyArtRoots();
+                SeleneCrossfade.FileChanged();   // (a sharper copy over one already shown)
             }));
         }
 
@@ -400,6 +439,48 @@ namespace Selene
                 {
                     var frame = System.Windows.Media.Imaging.BitmapFrame.Create(file, System.Windows.Media.Imaging.BitmapCreateOptions.DelayCreation, System.Windows.Media.Imaging.BitmapCacheOption.None);
                     return frame.PixelHeight > 0 && (double)frame.PixelWidth / frame.PixelHeight >= 1.9;
+                }
+            }
+            catch { return false; }
+        }
+
+        // a game's store pictures by name (library_capsule_2x, library_hero...): newer games keep them in hashed folders
+        // that only Steam's store service names; null when it can't be asked
+        // (json: the caller's own download, under the permission its work runs with)
+        internal static Dictionary<string, object> StoreAssets(string appId, Func<string, object> json)
+        {
+            var q = "{\"ids\":[{\"appid\":" + appId + "}],\"context\":{\"language\":\"english\",\"country_code\":\"US\"},\"data_request\":{\"include_assets\":true}}";
+            var root = json("https://api.steampowered.com/IStoreBrowseService/GetItems/v1/?input_json=" + Uri.EscapeDataString(q)) as Dictionary<string, object>;
+            var items = root != null && root.ContainsKey("response") ? ((Dictionary<string, object>)root["response"])["store_items"] as object[] : null;
+            return items != null && items.Length > 0 && ((Dictionary<string, object>)items[0]).ContainsKey("assets") ? ((Dictionary<string, object>)items[0])["assets"] as Dictionary<string, object> : null;
+        }
+
+        // a file's address: the hashed name the store service gave for that asset key, or the plain old one
+        internal static string AssetUrl(string appId, Dictionary<string, object> assets, string name)
+        {
+            string format = assets != null && assets.ContainsKey("asset_url_format") ? (string)assets["asset_url_format"] : "steam/apps/" + appId + "/${FILENAME}";
+            return SteamAssets + format.Replace("${FILENAME}", name);
+        }
+
+        private static int PixelWidth(string path)
+        {
+            try
+            {
+                using (var file = System.IO.File.OpenRead(path))
+                    return System.Windows.Media.Imaging.BitmapFrame.Create(file, System.Windows.Media.Imaging.BitmapCreateOptions.DelayCreation, System.Windows.Media.Imaging.BitmapCacheOption.None).PixelWidth;
+            }
+            catch { return 0; }
+        }
+
+        // Steam's small 1920 x 620 banner cut to 16:9 (what its cache keeps); other sizes are someone's choice and stay
+        internal static bool SmallSteamHero(string path)
+        {
+            try
+            {
+                using (var file = System.IO.File.OpenRead(path))
+                {
+                    var frame = System.Windows.Media.Imaging.BitmapFrame.Create(file, System.Windows.Media.Imaging.BitmapCreateOptions.DelayCreation, System.Windows.Media.Imaging.BitmapCacheOption.None);
+                    return frame.PixelHeight == 620 && Math.Abs(frame.PixelWidth - 1102) <= 1;
                 }
             }
             catch { return false; }

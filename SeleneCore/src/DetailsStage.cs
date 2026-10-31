@@ -64,6 +64,7 @@ namespace Selene
 
         private static void Opened()
         {
+            HomeNav.QuietDetailsTransition();
             var g = Selected();
             if (g == null) return;
             WatchStick(true);
@@ -278,6 +279,24 @@ namespace Selene
                 var still = c.IsVideo ? Thumbnails.Cached(c.Path) : c.Path;
                 if (still != null) { files.Add(still); where.Add(i); }
                 else if (c.IsVideo) t.Face.Child = new TextBlock { Text = "\uE768", FontFamily = Ui.Glyphs, FontSize = 36, Foreground = Ink.Brush("SeleneInkColor", 0.85), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+                if (still == null && c.IsVideo)
+                {
+                    // not made yet (only Captures made them before): asked for, and put in when it comes
+                    var tile = t; var owner = tiles[1];
+                    Thumbnails.Request(c.Path, made =>
+                    {
+                        if (made == null || !ReferenceEquals(owner, tiles[1])) return;
+                        try
+                        {
+                            var pic = new System.Windows.Media.Imaging.BitmapImage();
+                            pic.BeginInit(); pic.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad; pic.DecodePixelWidth = 560; pic.UriSource = new Uri(made); pic.EndInit(); pic.Freeze();
+                            var fill = new Border { CornerRadius = new CornerRadius(11), Background = new ImageBrush(pic) { Stretch = Stretch.UniformToFill }, Opacity = 0 };
+                            tile.Face.Child = fill;
+                            Ui.Fade(fill, 1, 240);
+                        }
+                        catch (Exception ex) { HomeNav.Log("details: capture still: " + ex.Message); }
+                    });
+                }
                 if (c.IsVideo)
                 {
                     var badge = new Border { CornerRadius = new CornerRadius(8), Background = new SolidColorBrush(Color.FromArgb(0xB0, 0, 0, 0)), Padding = new Thickness(7, 3, 7, 4), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 10, 10, 0), Child = new TextBlock { Text = "\uE768", FontFamily = Ui.Glyphs, FontSize = 12, Foreground = Brushes.White } };

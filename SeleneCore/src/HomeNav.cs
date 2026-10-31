@@ -660,6 +660,15 @@ namespace Selene
                         // library side: keep Playnite's own image (its sources are Playnite types), just no fade storyboard
                         var animLib = fi.GetType().GetProperty("AnimationEnabled");
                         if (animLib != null && animLib.CanWrite) animLib.SetValue(fi, false, null);
+                        // Collection showed Playnite's background while Spotlight showed Selene's hero art: the same picture on both
+                        if (path.IndexOf("DisplayBackgroundImageObject", StringComparison.Ordinal) >= 0 && Ancestry(fi).IndexOf("SeleneLibrary", StringComparison.Ordinal) >= 0 && Features.On("collectionhero"))
+                        {
+                            var same = new MultiBinding { Converter = new HeroOrBackground() };
+                            same.Bindings.Add(new Binding("SelectedGame.Id"));
+                            same.Bindings.Add(new Binding(be.Path.Path));
+                            BindingOperations.SetBinding(fi, dpd.DependencyProperty, same);
+                            Log("fade image: Collection uses Spotlight's hero art");
+                        }
                         continue;
                     }
                     var parent = VisualTreeHelper.GetParent(fi) as Panel;
@@ -710,6 +719,25 @@ namespace Selene
                 catch (Exception ex) { Log("fade replace failed: " + ex.Message); }
             }
             Log("fade images replaced: " + n);
+        }
+
+        // the game's hero picture (Selene's media folder) when it has one, else what Playnite would show
+        private class HeroOrBackground : IMultiValueConverter
+        {
+            public object Convert(object[] values, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+            {
+                try
+                {
+                    if (values.Length > 0 && values[0] is Guid)
+                    {
+                        var hero = System.IO.Path.Combine(SelenePaths.Media("Hero"), values[0] + ".jpg");
+                        if (System.IO.File.Exists(hero)) return hero;
+                    }
+                }
+                catch { }
+                return values.Length > 1 && values[1] != DependencyProperty.UnsetValue ? values[1] : null;
+            }
+            public object[] ConvertBack(object value, Type[] targetTypes, object parameter, System.Globalization.CultureInfo culture) { throw new NotSupportedException(); }
         }
 
         private static string Ancestry(DependencyObject d)
@@ -783,11 +811,21 @@ namespace Selene
                 // Columns: Playnite gives each cover the row's width / Columns and draws only Columns + 1 of them. Selene's one row
                 // of big covers wants as many as fit at its height (about 300 px each on a 1920 px row): fewer (the default 4)
                 // drew five covers and left the rest of the row empty, more (16) made them small, in two rows
+                // covers are 2:3 (Steam's, SteamGridDB's): Playnite's tile ratio (3:4 by default, shared with Desktop's grid)
+                // set to that, so no cover loses its top and bottom (Collection > 2:3 covers)
+                bool tall = Features.On("collection23");
+                var ratioW = settings.GetType().GetProperty("GridItemWidthRatio"); var ratioH = settings.GetType().GetProperty("GridItemHeightRatio");
+                if (tall && ratioW != null && ratioH != null && ratioW.PropertyType == typeof(int) && ((int)ratioW.GetValue(settings, null) != 2 || (int)ratioH.GetValue(settings, null) != 3))
+                {
+                    ratioW.SetValue(settings, 2, null); ratioH.SetValue(settings, 3, null);
+                    Log("library tiles -> 2:3");
+                }
                 var cols = fs.GetType().GetProperty("Columns");
                 var main = Application.Current.MainWindow;
                 var list = main != null ? FindByName(main, "PART_ListGameItems") as FrameworkElement : null;
                 double width = list != null && list.ActualWidth > 100 ? list.ActualWidth : (main != null && main.ActualWidth > 100 ? main.ActualWidth : 1920);
-                int want = Math.Max(4, (int)Math.Ceiling(width / 298.0));
+                // as many as fit: a cover may be as tall as the row (398 px), so at 2:3 at most 265 px wide
+                int want = Math.Max(4, (int)Math.Ceiling(width / (tall ? 266.0 : 298.0)));
                 if (cols != null && cols.PropertyType == typeof(int) && (int)cols.GetValue(fs, null) != want) { cols.SetValue(fs, want, null); Log("library columns -> " + want + " (row " + (int)width + " px)"); }
             }
             catch (Exception ex) { Log("horizontal: " + ex.Message); }
@@ -985,7 +1023,7 @@ namespace Selene
                     Api.Database.Games.Add(g);
                 }
                 var play = g.GameActions != null ? g.GameActions.FirstOrDefault(a => a.IsPlayAction) : null;
-                if (play != null && play.Arguments != args) { play.Arguments = args; Api.Database.Games.Update(g); }
+                if (play != null && (play.Arguments != args || play.Path != exe)) { play.Arguments = args; play.Path = exe; play.WorkingDir = System.IO.Path.GetDirectoryName(exe); g.InstallDirectory = play.WorkingDir; Api.Database.Games.Update(g); }
                 DevGameId = g.Id;
                 Log("dev test game: starting " + exe + (args != null ? " " + args : ""));
                 Api.StartGame(g.Id);
@@ -2053,6 +2091,22 @@ namespace Selene
             if (row.SelectedItem != null && !(row.SelectedItem is string)) previewArm.Start();
         }
 
+        // Selene out of view: the open trailer card stops decoding where it is and none opens; back in view it plays on
+        private static bool previewArmedWhenLeft;
+        public static void PresenceChanged(bool inView)
+        {
+            try
+            {
+                var item = previewShowing && previewItem != null ? previewItem.Target as ListBoxItem : null;
+                var video = item != null ? TileVideo(item, false) : null;
+                if (video != null) { if (inView) video.Play(); else video.Pause(); }
+                if (!inView) { previewArmedWhenLeft = previewArm != null && previewArm.IsEnabled; if (previewArm != null) previewArm.Stop(); return; }
+                var row = LiveRow();
+                if (row != null && !previewShowing && previewArmedWhenLeft) ArmPreview(row);
+            }
+            catch (Exception ex) { Log("preview: " + ex.Message); }
+        }
+
         private static string TrailerPath(object game)
         {
             var id = Prop(game, "Id");
@@ -2068,7 +2122,7 @@ namespace Selene
         {
             try
             {
-                if (previewShowing || !row.IsVisible || !row.IsKeyboardFocusWithin || movingCard != null || movingGame != null || LoginScene.IsActive) return;
+                if (previewShowing || !row.IsVisible || !row.IsKeyboardFocusWithin || movingCard != null || movingGame != null || LoginScene.IsActive || !ScreenPresence.InView) return;
                 var game = row.SelectedItem;
                 var path = CardVideo(game);
                 var item = row.ItemContainerGenerator.ContainerFromItem(game) as ListBoxItem;
@@ -2080,6 +2134,7 @@ namespace Selene
                 if (tile == null || video == null || scale == null || panel == null) return;
 
                 previewShowing = true;
+                SetPreviewLogoSpacing(true);
                 UpdateMusicOverride();  // the game's song comes with the card
                 previewRow = new WeakReference(row);
                 previewItem = new WeakReference(item);
@@ -2139,6 +2194,7 @@ namespace Selene
         private static void OnPreviewOpened(object sender, RoutedEventArgs e)
         {
             var video = (MediaElement)sender;
+            if (!ScreenPresence.InView) video.Pause();
             Log("preview: playing " + (video.Source != null ? System.IO.Path.GetFileName(video.Source.LocalPath) : "?") + " (" + (video.NaturalDuration.HasTimeSpan ? video.NaturalDuration.TimeSpan.TotalSeconds.ToString("0.0") + " s, " : "") + video.NaturalVideoWidth + "x" + video.NaturalVideoHeight + ")");
             if (pendingSeek.HasValue) { var seek = pendingSeek.Value; pendingSeek = null; try { video.Position = seek; } catch { } video.Opacity = 1; return; }
             video.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(400)) { BeginTime = TimeSpan.FromMilliseconds(200) });
@@ -2146,6 +2202,23 @@ namespace Selene
 
         // ---- trailer sound (R3) ----
         private static bool previewSound;          // stays on for the session once switched on
+
+        private static void SetPreviewLogoSpacing(bool playing)
+        {
+            if (Application.Current == null) return;
+            var target = new Thickness(0, playing && Features.On("trailerlogogap") ? 0 : -45, 0, 0);
+            // the logo eases to its new size with the card (it jumped). Where it is now is read first: the resource change
+            // below moves it at once, and an animation from there went nowhere
+            var logo = Application.Current.MainWindow != null ? FindByName(Application.Current.MainWindow, "SeleneLogo") as FrameworkElement : null;
+            var from = logo != null ? logo.Margin : target;
+            Application.Current.Resources["SeleneSpotlightLogoMargin"] = target;
+            if (logo == null) return;
+            if (from == target) { logo.BeginAnimation(FrameworkElement.MarginProperty, null); return; }
+            var glide = new ThicknessAnimation(from, target, TimeSpan.FromMilliseconds(420)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut } };
+            glide.Completed += (s, e) => { if (logo.Margin == target) logo.BeginAnimation(FrameworkElement.MarginProperty, null); };   // (back to the resource)
+            logo.BeginAnimation(FrameworkElement.MarginProperty, glide);
+            Log("logo glide: top " + from.Top + " -> " + target.Top);
+        }
 
         // the settings that are a choice of values, read once (the rest are read where they're used)
         public static void ApplyValueSettings()
@@ -2248,12 +2321,12 @@ namespace Selene
         {
             var v = (MediaElement)sender;
             v.Position = TimeSpan.Zero;  // loop while the card stays selected
-            v.Play();
+            if (ScreenPresence.InView) v.Play();
         }
 
         // What the music add-on (UniPlaySong) plays, by where the user is:
         //   "login"   behind the login screens: its default track
-        //   "home"    the home row: its default track too (like the legacy theme), never the selected game's song
+        //   "home"    browsing/details: selected-game songs; the compatibility switch retains default-only music
         //   "trailer" a game's trailer card is open: that game's song
         //   "normal"  UniPlaySong as usual
         private static string musicMode;
@@ -2363,7 +2436,9 @@ namespace Selene
             }
             catch (Exception ex) { Log("UPS empty-library music: " + ex.Message); }
         }
-        private static bool WantDefault { get { return musicMode == "login" || musicMode == "home"; } }
+        private static bool WantDefault { get { return musicMode == "login" || (musicMode == "home" && !Features.On("independentmusic")); } }
+
+        public static void RefreshMusicPolicy() { if (musicMode != null) SetMusic(musicMode); }
 
         // UniPlaySong pauses while its "video is playing" flag is up: under a trailer with sound
         private static bool? videoPause;
@@ -2683,6 +2758,8 @@ namespace Selene
                 if (settings == null) return;
                 if (!Features.On("music")) value = false;   // music control off: every pause Selene set is let go
                 var prop = settings.GetType().GetProperty(name);
+                // the same value again still counts as a change to UniPlaySong: it restarted the song as a trailer card opened
+                if (prop != null && prop.CanRead && Equals(prop.GetValue(settings, null), value)) return;
                 if (prop != null && prop.CanWrite) prop.SetValue(settings, value, null);
                 Log("UPS " + name + "=" + value + (prop == null ? " (not found)" : ""));
             }
@@ -2790,7 +2867,8 @@ namespace Selene
             if (previewArm != null) previewArm.Stop();
             if (!previewShowing) return;
             previewShowing = false;
-            UpdateMusicOverride();  // back to the default music at once
+            SetPreviewLogoSpacing(false);
+            UpdateMusicOverride();  // restore the browsing policy without tying game songs to this trailer
             var row = previewRow != null ? previewRow.Target as ListBox : null;
             var item = previewItem != null ? previewItem.Target as ListBoxItem : null;
             if (row == null || item == null) return;
@@ -3970,6 +4048,7 @@ namespace Selene
         // then details open; closing them brings the home back (WatchDetails)
         private static void OpenDetailsFromHome(ListBox row, object game, Window w)
         {
+            QuietDetailsTransition();
             PushSelected(row);
             var vm = row.DataContext;
             var cmd = vm != null ? vm.GetType().GetProperty("ToggleGameDetailsCommand") : null;
@@ -3989,6 +4068,11 @@ namespace Selene
                     Log("details button -> " + game);
                 }), System.Windows.Threading.DispatcherPriority.Background);
             }
+        }
+
+        internal static void QuietDetailsTransition()
+        {
+            if (Features.On("quietdetails")) QuietFocus(800);
         }
 
         // The details page shows Playnite's selected game, and a library update reloading the list (the one at start, a few
@@ -4276,12 +4360,16 @@ namespace Selene
                     now = g.Favorite;
                 }
                 Log("favorite " + (now ? "on" : "off") + " -> " + Prop(game, "Name"));
-                ShowHeart(game);
-                if (!now && RowFilters[RowFilter] == "favorites") RemoveFromRowAnimated(game);
+                FavoriteChanged(game, now);
             }
             catch (Exception ex) { Log("favorite: " + ex.Message); }
         }
         private static DateTime pillLockUntil = DateTime.MinValue;
+        internal static void FavoriteChanged(object game, bool now)
+        {
+            ShowHeart(game);
+            if (!now && RowFilters[RowFilter] == "favorites") RemoveFromRowAnimated(game);
+        }
         private static WeakReference pillTarget;
 
         private static void OnWindowPreviewGotFocus(object sender, KeyboardFocusChangedEventArgs e)
@@ -4647,17 +4735,17 @@ namespace Selene
         // the tabs: the five built in, then the user's own Playnite filter presets (not Selene's, by name), when the switch is on
         public static void RefreshRowFilters()
         {
-            var mode = Features.Value("filtertabs");   // selene / playnite / both
+            var mode = Features.Value("filtertabs");   // selene / playnite; removed values use the default
             var keys = new List<string>();
             var labels = new List<string>();
-            if (mode != "playnite") { keys.AddRange(BuiltInFilters); labels.AddRange(BuiltInFilterLabels); }
+            if (mode == "selene") { keys.AddRange(BuiltInFilters); labels.AddRange(BuiltInFilterLabels); }
             try
             {
-                if (Api != null && mode != "selene")
+                if (Api != null && mode == "playnite")
                 {
                     var own = new HashSet<Guid>(BuiltInFilters.Select(CollectionPresets.For));
                     own.Add(BigScreenPreset);   // Selene's own working preset
-                    foreach (var fp in Api.Database.FilterPresets.OrderBy(p => p.Name))
+                    foreach (var fp in Api.Database.FilterPresets.Where(PresetVisible).OrderBy(p => p.Name))
                     {
                         if (own.Contains(fp.Id) || string.IsNullOrWhiteSpace(fp.Name)) continue;
                         keys.Add(PresetKey + fp.Id);
@@ -4681,6 +4769,11 @@ namespace Selene
             RowFilters = keys.ToArray();
             RowFilterLabels = labels.ToArray();
             if (current != null) rowFilter = Math.Max(0, Array.IndexOf(RowFilters, current));
+        }
+
+        private static bool PresetVisible(Playnite.SDK.Models.FilterPreset preset)
+        {
+            return preset != null && (!Features.On("fullscreenpresets") || preset.ShowInFullscreeQuickSelection);
         }
 
         private static bool IsPresetTab(string key) { return key != null && key.StartsWith(PresetKey); }
@@ -4822,6 +4915,7 @@ namespace Selene
             }
             RenderFilterTabs(Window.GetWindow(row), dir);
             PlayFilterSwitch(row, dir);
+            Ui.MeasureFrames("filter switch", 450);
             Log("row filter -> " + RowFilters[rowFilter] + " (" + games.Count + " games) " + sw.ElapsedMilliseconds + " ms");
             try
             {
@@ -4977,7 +5071,7 @@ namespace Selene
                 case "recent": title = "Nothing played lately"; hint = "Games you play show up here for a month."; break;
                 case "favorites": title = "No favorites yet"; hint = "Press X on a game to add it to your favorites."; break;
                 case "unplayed": title = "You've started everything"; hint = "Every game in your library has been played at least once."; break;
-                default: title = "No games yet"; hint = "Connect a store in Playnite's settings, or run the setup check: Menu, Extensions, Selene."; break;
+                default: title = "No games yet"; hint = "Add your stores in the setup check: Menu, Extensions, Selene."; break;
             }
             var titleBlock = (TextBlock)FindByName(box, "SeleneRowEmptyTitle");
             // the row is rebuilt more than once on a tab switch: the same message already showing stays put (no second slide-in),
@@ -5171,6 +5265,41 @@ namespace Selene
             new System.Collections.Generic.KeyValuePair<string, string>("nav:news", "cardnews"),
             new System.Collections.Generic.KeyValuePair<string, string>("nav:achievements", "cardachievements"),
         };
+
+        // the cards in the theme's order (a card switched back on goes back in at its place, then the saved order applies)
+        private static readonly string[] DefaultCards = { "nav:captures", "nav:activity", "nav:achievements", "nav:surprise", "nav:news", "nav:store", "nav:library" };
+
+        // a card switched on or off in Selene settings: the row follows now (it only dropped cards when Spotlight opened, and
+        // a card switched back on never came back until Playnite restarted)
+        public static void RefreshCards()
+        {
+            try
+            {
+                var row = LiveRow();
+                var items = row != null ? row.ItemsSource as System.Windows.Data.CompositeCollection : null;
+                if (items == null) return;
+                foreach (var card in CardFeatures)
+                {
+                    bool want = Features.On(card.Value) && !(card.Key == "nav:achievements" && !AchievementsData.Available());
+                    int at = items.IndexOf(card.Key);
+                    if (want && at < 0)
+                    {
+                        int place = 0;
+                        foreach (var c in DefaultCards) { if (c == card.Key) break; if (items.IndexOf(c) >= 0) place = items.IndexOf(c) + 1; }
+                        items.Insert(place, card.Key);
+                    }
+                    else if (!want && at >= 0)
+                    {
+                        // (never the selected one: removing it re-enters the Selector and throws)
+                        if (Equals(row.SelectedItem, card.Key)) row.SelectedIndex = FirstGameIndex(row);
+                        items.RemoveAt(items.IndexOf(card.Key));
+                    }
+                }
+                ApplyCardOrder(row);
+                Log("cards: row refreshed");
+            }
+            catch (Exception ex) { Log("cards: refresh: " + ex.Message); }
+        }
 
         private static void ApplyCardOrder(ListBox row)
         {
@@ -5592,6 +5721,13 @@ namespace Selene
         // inside Playnite's own window, over everything (a window of its own was covered at once when Playnite brought its
         // main window forward as the game ended: the home cut in, still showing "Now playing")
         private static Grid closingLayer;
+
+        // the running game, hidden ones too (#67: a hidden game has no tile to press X on)
+        public static Playnite.SDK.Models.Game RunningGame()
+        {
+            try { return Api != null ? Api.Database.Games.FirstOrDefault(g => g.IsRunning) : null; } catch { return null; }
+        }
+        public static void CloseRunningGame() { var g = RunningGame(); if (g != null) CloseGame(g); }
 
         private static void CloseGame(object game)
         {
@@ -6439,16 +6575,20 @@ namespace Selene
                     QuietFocus(2500);     // the loading screen and the game take focus: not a move
                     if (previewArm != null) previewArm.Stop();   // no trailer card under the loading screen
                     if (!Features.On("loadingscreen")) { Api.StartGame(id); Log("play: Playnite's plain start (loading screen off)"); return; }
-                    HoldMusicForLaunch(true);
-                    PlayStartingSound();  // Playnite played it when IT started the game (~1 s after the press now)
-                    var swCover = System.Diagnostics.Stopwatch.StartNew();
-                    GameStarting(id);
-                    earlyCoverAt = DateTime.Now;
-                    Log("play: loading screen up at once (" + g.Name + ", built in " + swCover.ElapsedMilliseconds + " ms)");
-                    // Playnite may still refuse (error dialog behind the loading screen): never keep covering it
-                    var guard = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(8) };
-                    guard.Tick += (s, e) => { guard.Stop(); if (launching && launchGameId == id && !startingSeen) AbortLaunchCover(IntPtr.Zero, "Playnite did not start the game"); };
-                    guard.Start();
+                    if (!LaunchChoice.DeferCover(g))
+                    {
+                        HoldMusicForLaunch(true);
+                        PlayStartingSound();  // Playnite played it when IT started the game (~1 s after the press now)
+                        var swCover = System.Diagnostics.Stopwatch.StartNew();
+                        GameStarting(id);
+                        earlyCoverAt = DateTime.Now;
+                        Log("play: loading screen up at once (" + g.Name + ", built in " + swCover.ElapsedMilliseconds + " ms)");
+                        // Playnite may still refuse (error dialog behind the loading screen): never keep covering it
+                        var guard = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(8) };
+                        guard.Tick += (s, e) => { guard.Stop(); if (launching && launchGameId == id && !startingSeen) AbortLaunchCover(IntPtr.Zero, "Playnite did not start the game"); };
+                        guard.Start();
+                    }
+                    else Log("play: waiting for Playnite's launch-action choice before showing the loading screen");
                 }
                 catch (Exception ex) { Log("play: early loading screen failed " + ex.Message); }
             }
@@ -6489,6 +6629,8 @@ namespace Selene
                     Log("game starting: loading screen already up");
                     return;
                 }
+                // Deferred choices reach this hook without the early-cover music hold.
+                if (LaunchChoice.DeferCover(Api != null ? Api.Database.Games.Get(gameId) : null)) HoldMusicForLaunch(true);
                 if (previewShowing)
                 {
                     var later = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(700) };
@@ -7678,6 +7820,28 @@ namespace Selene
         {
             Children.Add(back);
             Children.Add(front);
+            lock (all) { all.RemoveAll(w => !w.IsAlive); all.Add(new WeakReference(this)); }
+        }
+
+        // a picture file replaced on disk (a sharper background downloaded): every crossfade showing it loads it again
+        private static readonly List<WeakReference> all = new List<WeakReference>();
+        private string shownKey;
+        public static void FileChanged()
+        {
+            List<WeakReference> live; lock (all) live = all.ToList();
+            foreach (var w in live)
+            {
+                var cf = w.Target as SeleneCrossfade;
+                if (cf == null || cf.shownKey == null) continue;
+                var path = cf.shownKey.Substring(0, cf.shownKey.LastIndexOf('|'));
+                if (Key(path) != cf.shownKey) { cf.shown = null; cf.Load(cf.Source); }
+            }
+        }
+        // (the file's time is part of it: a replaced file is a new picture, not the one decoded before)
+        private static string Key(string path)
+        {
+            try { return path + "|" + (path.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? 0 : System.IO.File.GetLastWriteTimeUtc(path).Ticks); }
+            catch { return path + "|0"; }
         }
 
         private void OnSource(object value)
@@ -7698,14 +7862,20 @@ namespace Selene
             if (Hub && SeleneShell.CollectionActive) return;
             if (Equals(value, shown)) return;
             shown = value;
+            shownKey = null;
             int id = ++request;
             var ready = value as ImageSource;
             if (ready != null) { Show(ready); return; }
             var path = HomeNav.FullPath(value as string);
             if (string.IsNullOrEmpty(path) || (!path.StartsWith("http", StringComparison.OrdinalIgnoreCase) && !System.IO.File.Exists(path))) { Show(null); return; }
+            var key = Key(path);
+            shownKey = key;
             ImageSource hit;
-            if (decoded.TryGetValue(path, out hit)) { decodedOrder.Remove(path); decodedOrder.AddFirst(path); Show(hit); return; }
-            int width = (int)Math.Max(1280, SystemParameters.PrimaryScreenWidth);
+            if (decoded.TryGetValue(key, out hit)) { decodedOrder.Remove(key); decodedOrder.AddFirst(key); Show(hit); return; }
+            // in real pixels: the screen width is in scaled units (a 4K screen at 300% says 1280)
+            var source = PresentationSource.FromVisual(this);
+            double scale = source != null && source.CompositionTarget != null ? source.CompositionTarget.TransformToDevice.M11 : VisualTreeHelper.GetDpi(this).DpiScaleX;
+            int width = (int)Math.Max(1280, SystemParameters.PrimaryScreenWidth * scale);
             System.Threading.Tasks.Task.Run(() =>
             {
                 try
@@ -7713,7 +7883,7 @@ namespace Selene
                     var bi = new BitmapImage();
                     bi.BeginInit();
                     bi.CacheOption = BitmapCacheOption.OnLoad;
-                    bi.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
+                    bi.CreateOptions = BitmapCreateOptions.IgnoreColorProfile | BitmapCreateOptions.IgnoreImageCache;   // (WPF's own cache kept a replaced file's old picture)
                     bi.UriSource = new Uri(path);
                     bi.DecodePixelWidth = width;
                     bi.EndInit();
@@ -7723,10 +7893,10 @@ namespace Selene
                 catch { return null; }
             }).ContinueWith(task =>
             {
-                if (task.Result != null && !decoded.ContainsKey(path))
+                if (task.Result != null && !decoded.ContainsKey(key))
                 {
-                    decoded[path] = task.Result;
-                    decodedOrder.AddFirst(path);
+                    decoded[key] = task.Result;
+                    decodedOrder.AddFirst(key);
                     while (decodedOrder.Count > DecodedMax) { decoded.Remove(decodedOrder.Last.Value); decodedOrder.RemoveLast(); }
                 }
                 if (id == request) Show(task.Result);  // a newer selection wins

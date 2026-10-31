@@ -197,6 +197,12 @@ namespace Selene
 
         // ---- background download of every game's screenshots (one game at a time, from Playnite start) ----
         private static readonly object diskLock = new object();
+        // Called only by the serial library-media worker: cache files, never decode or retain library-sized UI images.
+        internal static void DownloadPictures(Playnite.SDK.Models.Game game)
+        {
+            if (game == null || !DownloadConsent.Allowed("screenshotsdownload")) return;
+            lock (diskLock) CachedFiles(game.Id, game.Name, game.PluginId.ToString(), game.GameId, true);
+        }
         public static void DownloadSettingsChanged()
         {
             downloadGeneration++; cache.Clear(); recent.Clear(); shown = Guid.Empty;
@@ -538,7 +544,7 @@ namespace Selene
         {
             try
             {
-                if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path)) return null;
+                if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path) || LoginScene.DevLeaveOut("shots")) return null;
                 var bi = new BitmapImage();
                 bi.BeginInit();
                 bi.CacheOption = BitmapCacheOption.OnLoad;

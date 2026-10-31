@@ -23,14 +23,21 @@ namespace Selene
         // old administrator tasks still on the PC: the dot stays until they are removed
         public static bool OldTasks { get { try { return LegacyTasks.Any; } catch { return false; } } }
 
-        public static bool Any { get { return Songs || Art || Achievements || OldTasks; } }
+        // "Get art for your games?" was answered Not now: the dot stays until the art is allowed
+        public static bool GetArt { get { try { return GamesSetup.Pending; } catch { return false; } } }
+
+        // the SteamGridDB key was skipped in setup and none has come since: the Look setting waits for it
+        public static bool SquareKey { get { try { return SquareKeyScreen.Skipped; } catch { return false; } } }
+        public static bool Any { get { return Songs || Art || Achievements || OldTasks || GetArt || SquareKey; } }
 
         public static bool ForGroup(string group)
         {
-            if (group == "Sound & music") return Songs;
-            if (group == "Spotlight") return Art;
-            if (group == "Games") return Achievements;
+            // (only where the setting that owns the work is listed: combined downloads show it all under Games)
+            if (group == "Sound & music") return Songs && MediaDownloads.ShowSetting("songsetup");
+            if (group == "Spotlight") return Art && (MediaDownloads.ShowSetting("artdownload") || MediaDownloads.ShowSetting("trailerdownload"));
+            if (group == "Games") return Achievements || GetArt || (MediaDownloads.Unified && (Art || Songs));
             if (group == "Advanced") return OldTasks;
+            if (group == "Look") return SquareKey;
             return false;
         }
 
@@ -40,7 +47,9 @@ namespace Selene
             if (key == "songsetup") return Songs;
             if (key == "trailerdownload" || key == "artdownload") return Art;
             if (key == "achievements") return Achievements;
+            if (key == "gamesget") return GetArt || (MediaDownloads.Unified && (Art || Songs));
             if (key == "legacytasks") return OldTasks;
+            if (key == "steamgridkey") return SquareKey;
             return false;
         }
 

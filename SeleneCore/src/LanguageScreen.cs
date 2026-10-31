@@ -48,7 +48,7 @@ namespace Selene
         {
             if (ask != null) return;
             Ui.Confirm();
-            bool changed = Features.Value("language") != language.Choices[index];
+            bool changed = Features.Value("language") != language.Choices[index] && Lang.WouldChange(language.Choices[index]);
             try { Features.SetValue("language", language.Choices[index]); LanguageSetup.Finish(); }
             catch (Exception ex) { note.Text = "Couldn't save your language: " + ex.Message; return; }
             Action next = () => LoginScene.Show(new SetupScreen(true), 1);

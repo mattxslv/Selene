@@ -44,7 +44,7 @@ namespace Selene
         {
             var src = brush.ImageSource as BitmapSource;
             if (src == null) return;
-            if (!Features.On("smartcrop")) { brush.Viewbox = new Rect(0, 0, 1, 1); brush.AlignmentY = AlignmentY.Top; return; }
+            if (!Features.On("smartcrop")) { brush.Viewbox = new Rect(0, 0, 1, 1); brush.AlignmentY = AlignmentY.Top; if (Features.On("previewartfit")) brush.Stretch = Stretch.UniformToFill; return; }
             if (src.IsDownloading) { src.DownloadCompleted += (s, a) => Apply(brush); return; }
             object known;
             Rect window;
@@ -56,7 +56,8 @@ namespace Selene
             }
             brush.ViewboxUnits = BrushMappingMode.RelativeToBoundingBox;
             brush.Viewbox = window;
-            brush.Stretch = Stretch.Fill;   // the window is already square
+            // The selected card widens for its trailer. Fill stretches the square crop sideways during that transition.
+            brush.Stretch = Features.On("previewartfit") ? Stretch.UniformToFill : Stretch.Fill;
         }
 
         // worked out ahead, off the UI thread (TileCovers): Apply then only looks it up

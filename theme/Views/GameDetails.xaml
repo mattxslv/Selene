@@ -259,7 +259,7 @@
                                         <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
                                             <Grid Width="22" Height="22" Margin="0,0,9,0" VerticalAlignment="Center">
                                                 <Path Data="{DynamicResource SelenePlatformIcon}" Fill="{DynamicResource SeleneInkBrush}" Stretch="Uniform"/>
-                                                <TextBlock Text="&#xEA12;" FontFamily="{DynamicResource SeleneIconFont}" FontSize="21" Foreground="{DynamicResource SeleneInkBrush}" VerticalAlignment="Center" Visibility="{DynamicResource SelenePlatformFallback}"/>
+                                                <TextBlock Text="{DynamicResource SelenePlatformFallbackGlyph}" FontFamily="{DynamicResource SeleneIconFont}" FontSize="21" Foreground="{DynamicResource SeleneInkBrush}" VerticalAlignment="Center" Visibility="{DynamicResource SelenePlatformFallback}"/>
                                             </Grid>
                                             <TextBlock Text="{DynamicResource SelenePlatformName}" Foreground="{DynamicResource SeleneInkBrush}" FontSize="21" FontFamily="Segoe UI Variable Display, Segoe UI" FontWeight="SemiBold" VerticalAlignment="Center"/>
                                         </StackPanel>
@@ -410,13 +410,13 @@
 
                         <!-- the hints along the bottom -->
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="80,0,0,38">
-                            <Grid MinWidth="48" Height="32">
+                            <Grid MinWidth="{DynamicResource SeleneDetailsBadgeWidth}" Height="32">
                                 <Ellipse Fill="{DynamicResource SeleneInkBrush}"/>
                                 <TextBlock Text="{DynamicResource SelenePromptB}" FontSize="12" FontWeight="SemiBold" FontFamily="Segoe UI" Foreground="{DynamicResource SeleneScrimBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,2"/>
                             </Grid>
                             <TextBlock Text="Back" Foreground="{DynamicResource SeleneInk90Brush}" FontSize="21" FontFamily="Segoe UI" VerticalAlignment="Center" Margin="10,0,0,2"/>
                             <!-- the right stick scrolls the description from anywhere on the page -->
-                            <Grid MinWidth="48" Height="32" Margin="40,0,0,0">
+                            <Grid MinWidth="{DynamicResource SeleneScrollBadgeWidth}" Height="32" Margin="40,0,0,0">
                                 <Ellipse Fill="{DynamicResource SeleneInkBrush}"/>
                                 <TextBlock Text="{DynamicResource SeleneScrollPrompt}" FontSize="12" FontWeight="SemiBold" FontFamily="Segoe UI" Foreground="{DynamicResource SeleneScrimBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,1"/>
                             </Grid>
@@ -432,13 +432,13 @@
                                         </Style.Triggers>
                                     </Style>
                                 </StackPanel.Style>
-                                <Grid MinWidth="48" Height="32">
+                                <Grid MinWidth="{DynamicResource SeleneDetailsBadgeWidth}" Height="32">
                                     <Ellipse Fill="{DynamicResource SeleneInkBrush}"/>
                                     <TextBlock Text="{DynamicResource SelenePromptY}" FontSize="16" FontWeight="SemiBold" FontFamily="Segoe UI" Foreground="{DynamicResource SeleneScrimBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,2"/>
                                 </Grid>
                                 <TextBlock Text="Achievements" Foreground="{DynamicResource SeleneInk90Brush}" FontSize="21" FontFamily="Segoe UI" VerticalAlignment="Center" Margin="10,0,0,2"/>
                             </StackPanel>
-                            <Grid MinWidth="48" Height="32">
+                            <Grid MinWidth="{DynamicResource SeleneDetailsBadgeWidth}" Height="32">
                                 <Ellipse Fill="{DynamicResource SeleneInkBrush}"/>
                                 <TextBlock Text="{DynamicResource SelenePromptA}" FontSize="12" FontWeight="SemiBold" FontFamily="Segoe UI" Foreground="{DynamicResource SeleneScrimBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,2"/>
                             </Grid>

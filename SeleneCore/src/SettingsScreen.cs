@@ -44,7 +44,12 @@ namespace Selene
             { "Spotlight", new[] {
                 new[] { "Row", "steadyhold", "pickscroll", "rowedges", "filtertabs", "visibletabs", "fullscreenpresets", "consistentfavorites", "shade", "idle" },
                 new[] { "Cards", "cardactivity", "actualplatform", "activitysessions", "cardcaptures", "capturesfolders", "cardachievements", "cardsurprise", "cardnews", "newsfeeds", "cardstore", "cardpictures" },
-                new[] { "Trailers and downloads", "trailerdelay", "trailersound", "trailerdownload", "artdownload", "screenshotsdownload" } } },
+                new[] { "Trailers and downloads", "trailerdelay", "trailerdownload", "artdownload", "screenshotsdownload" } } },
+            { "Sound & music", new[] {
+                new[] { "Music", "musicvolume", "musicmuted", "upsgame", "independentmusic", "upsdefault", "selenemusic", "upsspotify", "upsnight", "nowplaying", "musiccard" },
+                new[] { "Sounds", "sounds", "soundvolume", "startsound", "notifysound", "quietdetails", "soundmenu", "livevolume" },
+                new[] { "While you play", "trailersound", "launchquiet" },
+                new[] { "Music setup", "music", "songsetup", "songsettle" } } },
             { "Games", new[] {
                 new[] { "Your library", "gamesget", "gamesask" },
                 new[] { "Launching", "launchstyle", "launchmotion", "launchshade", "loadingscreen", "launchchoice", "aftergame", "guidefocus" },
@@ -83,7 +88,7 @@ namespace Selene
         // changed from how Selene ships (another add-on's own setting and the rows that do something don't count)
         private static bool IsChanged(Features.Option o)
         {
-            if (o.Action != null || o.Get != null) return false;
+            if (o.Action != null || o.Get != null || o.GetValue != null) return false;
             return o.IsChoice ? Features.Value(o.Key) != o.Default : Features.On(o.Key) != o.DefaultOn;
         }
 
@@ -504,6 +509,8 @@ namespace Selene
                 if (key == "brand") Brand.Apply();
                 if (key == "downloadprogress") { ShowGroup(false); ShowFocus(); }
                 if (key == "topprofile") TopProfile.Refresh();
+                if (key == "nowplaying") NowPlayingBar.Refresh();
+                if (key == "sounds" || key == "soundvolume") HomeNav.SyncMoveSound();
                 if (key == "hltb" || key == "achievements" || key == "rowedges" || key == "collectioninfo" || key == "collectionhints") SeleneShell.ApplyNowPlaying();
                 if (key == "translatecollect") { Lang.Collect(Features.On(key)); if (Features.On(key)) Ui.Notice("Phrases are saved to \"Selene phrases.txt\" on your Desktop."); }
                 Ui.Key();

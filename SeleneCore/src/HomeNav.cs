@@ -80,6 +80,7 @@ namespace Selene
             // Playnite re-filters the whole library when the preset changes (over a second on a big one): done once after
             // start-up, not on the first press of View
             StartupWork.AfterHome("collection filter", ApplyCollectionFilter);
+            MusicLevel.Start();   // Music volume and Mute music reach UniPlaySong too; Playnite's move sound follows Selene's sound settings
             IdleScreen.Install();  // the idle screen's clock
             Ui.DevFrameLog();   // %TEMP%\selene-dev-frames: frames per second in the log
             Ui.StartupFrameLog();   // the first seconds: long frames in the log (the intro must not stutter)
@@ -132,6 +133,8 @@ namespace Selene
                 // the login layer (menu, profiles...) is up: its keys are its own (this class handler runs before the
                 // layer's, and moved the home row behind the menu)
                 if (LoginScene.IsActive) return;
+                // a window over Playnite (an add-on's dialog) is active: its keys are its own, nothing on the home or the page moves
+                if (DialogUp()) return;
                 // the keyboard copy of a pad press Selene already handled (it moved things a second time)
                 if (Ui.KeyIsPadCopy(e.Key == Key.Left ? "DPadLeft" : e.Key == Key.Right ? "DPadRight" : e.Key == Key.Up ? "DPadUp" : e.Key == Key.Down ? "DPadDown" : null) && (e.Key == Key.Left || e.Key == Key.Right || e.Key == Key.Up || e.Key == Key.Down || e.Key == Key.Enter || e.Key == Key.Escape)) { e.Handled = true; return; }
                 // the cards are still flying in: nothing moves yet
@@ -1091,7 +1094,17 @@ namespace Selene
             try
             {
                 var g = Api.Database.Games.FirstOrDefault(x => x.Name == name);
-                if (what == "add") { if (g == null) Api.Database.Games.Add(new Playnite.SDK.Models.Game(name) { IsInstalled = true, Added = DateTime.Now }); }
+                string exe = null;   // "addgame:<name>|<play file>": a game pointing at a file (Games-folder duplicates)
+                if (what == "add" && name.Contains("|")) { exe = name.Substring(name.IndexOf('|') + 1); name = name.Substring(0, name.IndexOf('|')); g = Api.Database.Games.FirstOrDefault(x => x.Name == name); }
+                if (what == "add")
+                {
+                    if (g == null)
+                    {
+                        var ng = new Playnite.SDK.Models.Game(name) { IsInstalled = true, Added = DateTime.Now };
+                        if (exe != null) ng.GameActions = new System.Collections.ObjectModel.ObservableCollection<Playnite.SDK.Models.GameAction> { new Playnite.SDK.Models.GameAction { Name = "Play", Type = Playnite.SDK.Models.GameActionType.File, Path = exe, IsPlayAction = true } };
+                        Api.Database.Games.Add(ng);
+                    }
+                }
                 else if (g == null) { Log("dev game: no " + name); return; }
                 else if (what == "play") { g.LastActivity = DateTime.Now; g.Playtime += 600; Api.Database.Games.Update(g); }
                 else if (what == "fav") { g.Favorite = !g.Favorite; Api.Database.Games.Update(g); }
@@ -2806,7 +2819,7 @@ namespace Selene
 
         // UniPlaySong's live settings, the object its player reads: found inside the add-on like the legacy theme did
         // (asking Playnite for the add-on's settings can hand back a copy, so changes never reached the player)
-        private static object LiveUps()
+        internal static object LiveUps()
         {
             if (upsSettings != null || Api == null) return upsSettings;
             foreach (var plugin in Api.Addons.Plugins)
@@ -3236,6 +3249,34 @@ namespace Selene
         private static DateTime quietUntil;
         private static System.Windows.Threading.DispatcherTimer quietTimer;
 
+        // Interface sounds off, or Sounds volume at Off: Playnite's move sound is emptied for good, not only for a moment
+        // (from amogh-w's pull request #99)
+        internal static bool MoveSilenced() { return !Features.On("sounds") || Features.Number("soundvolume") <= 0; }
+
+        internal static string MoveSoundState() { try { return navigateSound == null ? "?" : (IntPtr)navigateSound.GetValue(null, null) == IntPtr.Zero ? "silent" : "on"; } catch { return "?"; } }
+
+        public static void SyncMoveSound()
+        {
+            try
+            {
+                if (navigateSound == null)
+                {
+                    foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+                    {
+                        var t = asm.GetType("Playnite.FullscreenApp.FullscreenApplication", false);
+                        if (t == null) continue;
+                        navigateSound = t.GetProperty("NavigateSound", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
+                        break;
+                    }
+                    if (navigateSound == null) return;
+                }
+                var current = (IntPtr)navigateSound.GetValue(null, null);
+                if (MoveSilenced()) { if (current != IntPtr.Zero) { savedNavigateSound = current; navigateSound.SetValue(null, IntPtr.Zero, null); } }
+                else if (current == IntPtr.Zero && savedNavigateSound != IntPtr.Zero && DateTime.Now >= quietUntil) navigateSound.SetValue(null, savedNavigateSound, null);
+            }
+            catch (Exception ex) { Log("move sound: " + ex.Message); }
+        }
+
         public static void QuietFocus(int ms)
         {
             try
@@ -3271,7 +3312,7 @@ namespace Selene
                             return;
                         }
                         quietTimer.Stop();
-                        if (savedNavigateSound != IntPtr.Zero && (IntPtr)navigateSound.GetValue(null, null) == IntPtr.Zero) navigateSound.SetValue(null, savedNavigateSound, null);
+                        if (!MoveSilenced() && savedNavigateSound != IntPtr.Zero && (IntPtr)navigateSound.GetValue(null, null) == IntPtr.Zero) navigateSound.SetValue(null, savedNavigateSound, null);
                     };
                 }
                 quietTimer.Start();
@@ -3303,6 +3344,7 @@ namespace Selene
                     }
                     if (playNavigate == null || playActivate == null) return false;
                 }
+                if (MoveSilenced()) return true;   // Selene's sounds are off: Playnite's stay quiet too
                 if (confirm) { playActivate.Invoke(null, null); return true; }
                 var current = navigateSound != null ? (IntPtr)navigateSound.GetValue(null, null) : IntPtr.Zero;
                 if (current == IntPtr.Zero && savedNavigateSound == IntPtr.Zero) return false;   // Playnite has no tick loaded yet (first setup): Selene's own plays
@@ -3319,7 +3361,7 @@ namespace Selene
         {
             if (quietUntil == DateTime.MinValue) return;
             quietUntil = DateTime.MinValue;
-            try { if (navigateSound != null && savedNavigateSound != IntPtr.Zero && (IntPtr)navigateSound.GetValue(null, null) == IntPtr.Zero) navigateSound.SetValue(null, savedNavigateSound, null); }
+            try { if (!MoveSilenced() && navigateSound != null && savedNavigateSound != IntPtr.Zero && (IntPtr)navigateSound.GetValue(null, null) == IntPtr.Zero) navigateSound.SetValue(null, savedNavigateSound, null); }
             catch (Exception ex) { Log("quiet focus: " + ex.Message); }
         }
 
@@ -3901,6 +3943,9 @@ namespace Selene
                     // B answers it the safe way (No / Cancel); Playnite's own dialogs did nothing on B
                     if (answer == "B" && DialogLook.Back()) e.Cancel();
                     else if (DialogLook.Take(answer)) e.Cancel();   // (a dialog without the focus: the press is still its own)
+                    // an add-on's own window (UniPlaySong's song and download dialogs) without the keyboard focus: the press can't reach
+                    // it through WPF, and left alone it moved Selene's page behind it
+                    else if (!ActiveDialogHasFocus()) e.Cancel();
                     return;
                 }
                 if (LoginScene.HandleButton(pressed)) { e.Cancel(); return; }
@@ -4347,6 +4392,19 @@ namespace Selene
             var mw = Application.Current.MainWindow;
             var list = mw != null ? FindByName(mw, "PART_ListGameItems") as ItemsControl : null;
             return list != null && list.Items.Count == 0;
+        }
+
+        // the active window over Playnite's main one has the keyboard focus inside it (its own presses reach it)
+        private static bool ActiveDialogHasFocus()
+        {
+            try
+            {
+                var main = Application.Current.MainWindow;
+                foreach (Window w in Application.Current.Windows)
+                    if (!ReferenceEquals(w, main) && w.IsVisible && w.IsActive) return w.IsKeyboardFocusWithin;
+            }
+            catch { }
+            return true;
         }
 
         public static bool DialogUp()
@@ -7799,10 +7857,11 @@ namespace Selene
                 var none = Enum.Parse(prop.PropertyType, "None");
                 if (!Equals(prop.GetValue(settings, null), none)) { prop.SetValue(settings, none, null); Log("after-launch: Minimize -> None"); }
                 // Volume: 100% (set here earlier) was much louder than games once the system volume is raised for them.
-                // Bring the old forced 100% down once (music 45%, sounds 50%); any level the user picks afterwards stays.
+                // Bring the old forced 100% down once (sounds 50%); any level the user picks afterwards stays. (Music is no longer
+                // touched here: it is Selene's Music volume now, where 100% is a choice; see MusicLevel.)
                 var fs = settings.GetType().GetProperty("Fullscreen") != null ? settings.GetType().GetProperty("Fullscreen").GetValue(settings, null) : null;
                 if (fs != null)
-                    foreach (var pair in new[] { new KeyValuePair<string, double>("BackgroundVolume", 0.45), new KeyValuePair<string, double>("InterfaceVolume", 0.5) })
+                    foreach (var pair in new[] { new KeyValuePair<string, double>("InterfaceVolume", 0.5) })
                     {
                         var vp = fs.GetType().GetProperty(pair.Key);
                         if (vp == null) continue;

@@ -61,8 +61,7 @@ namespace Selene
 
             var audio = new Section { Name = "Audio", Icon = 0xe050 };
             audio.Rows.Add(Slider("InterfaceVolume", "Interface volume", "Playnite's own interface sounds.", new[] { "0", "0.25", "0.5", "0.75", "1" }, new[] { "Off", "25%", "50%", "75%", "100%" }));
-            audio.Rows.Add(Slider("BackgroundVolume", "Music volume", "Background music.", new[] { "0", "0.25", "0.5", "0.75", "1" }, new[] { "Off", "25%", "50%", "75%", "100%" }));
-            audio.Rows.Add(Switch("IsMusicMuted", "Music muted", "No background music."));
+            // (Music volume and Mute music live in Selene settings > Sound & music, where they reach UniPlaySong too)
             audio.Rows.Add(Switch("MuteInBackground", "Quiet in the background", "Sounds and music stop when Playnite isn't in front."));
             list.Add(audio);
 

@@ -228,6 +228,17 @@ namespace Selene
                 else if (step[1].StartsWith("addgame:") || step[1].StartsWith("playgame:") || step[1].StartsWith("favgame:") || step[1].StartsWith("dropgame:"))
                 { int c = step[1].IndexOf(':'); HomeNav.DevGameChange(step[1].Substring(0, c - 4), step[1].Substring(c + 1).Replace('_', ' ')); }
                 else if (step[1] == "row?") HomeNav.DevRowOrder();
+                else if (step[1] == "localscan") LocalGames.Scan();
+                else if (step[1] == "games?") foreach (var x in HomeNav.Api.Database.Games.Where(x => x.PluginId == Guid.Empty)) HomeNav.Log("dev game: " + x.Name + " hidden=" + x.Hidden + " dir=" + x.InstallDirectory);
+                else if (step[1] == "music?") HomeNav.Log("dev music: " + MusicLevel.Describe());
+                else if (step[1].StartsWith("set:"))
+                {
+                    // a setting changed the way its row would (set:musicvolume=25, set:musicmuted=on)
+                    var kv = step[1].Substring(4).Split(new[] { '=' }, 2);
+                    var o = kv.Length == 2 ? Features.Find(kv[0]) : null;
+                    if (o != null && o.IsChoice) Features.SetValue(kv[0], kv[1]); else if (o != null) Features.Set(kv[0], kv[1] == "on");
+                    HomeNav.Log("dev set: " + step[1].Substring(4) + (o == null ? " (no such setting)" : ""));
+                }
                 else if (step[1].StartsWith("press:")) HomeNav.DevPress(step[1].Substring(6));
                 else if (step[1] == "textinput") Application.Current.Dispatcher.BeginInvoke(new Action(() => { var r = HomeNav.Api.Dialogs.SelectString("Type something", "Selene", "abc"); HomeNav.Log("dev textinput: " + r.Result + " '" + r.SelectedString + "'"); }));
                 else if (step[1].StartsWith("dropdown:")) HomeNav.DevDropDown(step[1].Substring(9));
@@ -240,7 +251,7 @@ namespace Selene
                 else if (step[1] == "screen:currency") OpenWith(() => new StoreCurrencyScreen(false, null));
                 else if (step[1] == "screen:report") OpenWith(() => new ReportScreen(null));
                 else if (step[1] == "screen:games") OpenWith(() => new SettingsScreen(false, "Games", "gamesget"));
-                else if (step[1].StartsWith("screen:settings:")) { var group = step[1].Substring(16); OpenWith(() => new SettingsScreen(false, group, null)); }
+                else if (step[1].StartsWith("screen:settings:")) { var group = step[1].Substring(16).Replace('_', ' '); OpenWith(() => new SettingsScreen(false, group, null)); }
                 else if (step[1] == "minimize" || step[1] == "restore") { var mw = Application.Current.MainWindow; if (mw != null) { mw.WindowState = step[1] == "minimize" ? WindowState.Minimized : WindowState.Normal; HomeNav.Log("dev lifecycle: " + step[1] + " state=" + mw.WindowState); } }   // lifecycle runs (tools/perf-bench.ps1)
                 else if (step[1] == "hidetray") { CloseToTray.HideToTray(); HomeNav.Log("dev lifecycle: hidetray"); }
                 else if (step[1] == "showtray") { CloseToTray.ShowFromTray(); HomeNav.Log("dev lifecycle: showtray"); }

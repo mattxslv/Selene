@@ -55,12 +55,17 @@ namespace Selene
                 var games = db.Games.ToList();
                 var dirs = new HashSet<string>(games.Select(g => Full(g.InstallDirectory)).Where(d => d != null));
                 var names = new HashSet<string>(games.Select(g => Norm(g.Name)));
+                var owned = games.SelectMany(OwnedPaths).ToList();
                 foreach (var root in Roots.Where(Directory.Exists))
                 {
+                    var rootFull = Full(root);
                     foreach (var dir in Directory.GetDirectories(root))
                     {
                         var full = Full(dir);
                         if (full == null || dirs.Contains(full)) continue;
+                        // a game in the library already lives in this folder, a level or more down (its install folder or play
+                        // file), or this folder is inside a game's own: not a new game
+                        if (owned.Any(o => Inside(o, full) || (o != rootFull && Inside(full, o)))) continue;
                         var name = Path.GetFileName(dir);
                         if (names.Contains(Norm(name))) continue;  // a store copy already in the library
                         if (IsXboxAppFolder(dir)) continue;  // the Xbox library lists it already
@@ -85,6 +90,7 @@ namespace Selene
                 }
                 if (Features.On("launchergames")) AddLauncherGames(db, dirs, names);
                 HideXboxDuplicates(db, games);
+                HideWrapperDuplicates(db, db.Games.ToList());
                 MarkGoneFolders(db, games);
                 SyncInstalledState(db, games);
                 UseFolderTracking(db, games);
@@ -486,6 +492,44 @@ namespace Selene
                 g.IsInstalled = false;
                 db.Games.Update(g);
                 HomeNav.Log("game folder gone, marked not installed: " + g.Name + " (" + dir + ")");
+            }
+        }
+
+        // where a game lives: its install folder and its play files (paths still holding Playnite's {InstallDir} left out)
+        private static IEnumerable<string> OwnedPaths(Game g)
+        {
+            var d = Full(g.InstallDirectory);
+            if (d != null) yield return d;
+            if (g.GameActions == null) yield break;
+            foreach (var a in g.GameActions)
+                if (a != null && !string.IsNullOrWhiteSpace(a.Path) && a.Path.IndexOf('{') < 0 && Path.IsPathRooted(a.Path))
+                {
+                    var p = Full(a.Path);
+                    if (p != null) yield return p;
+                }
+        }
+
+        private static bool Inside(string path, string folder)
+        {
+            return path != null && folder != null && path.StartsWith(folder + "\\", StringComparison.Ordinal);
+        }
+
+        // Added by an earlier scan: a Games-folder game for a folder another game in the library already points into (a store
+        // copy, or one added by hand that points a level down). Hidden, not deleted: playtime stays, and it can be shown again.
+        // (Found and first fixed by amogh-w, pull request #99.)
+        private static void HideWrapperDuplicates(Playnite.SDK.IGameDatabaseAPI db, List<Game> games)
+        {
+            var roots = new HashSet<string>(Roots.Select(Full).Where(r => r != null));
+            foreach (var g in games.Where(x => x.PluginId == Guid.Empty && !x.Hidden && !string.IsNullOrWhiteSpace(x.InstallDirectory)))
+            {
+                var dir = Full(g.InstallDirectory);
+                if (dir == null || !roots.Contains(Full(Path.GetDirectoryName(dir)))) continue;   // only folders right in a Games folder
+                if (Norm(g.Name) != Norm(Path.GetFileName(dir))) continue;   // named as Selene names them (by the folder): one renamed by hand stays
+                var other = games.FirstOrDefault(o => o.Id != g.Id && !o.Hidden && OwnedPaths(o).Any(p => Inside(p, dir)));
+                if (other == null) continue;
+                g.Hidden = true;
+                db.Games.Update(g);
+                HomeNav.Log("local game hidden (the library has it as " + other.Name + "): " + g.Name);
             }
         }
 

@@ -1,6 +1,7 @@
 name: Needs info
 # An issue labelled "needs info" with no answer closes after two weeks: a reminder after 7 days without activity, closed
-# 7 days after that. The reporter answering takes the label off (and reopens it if it was closed for this).
+# 7 days after that. Issues waiting on the reporter may also be closed by hand (label kept) to keep the open list to work in
+# progress. The reporter answering takes the label off and reopens it if it was closed while waiting.
 
 on:
   schedule:
@@ -43,13 +44,13 @@ jobs:
       (contains(github.event.issue.labels.*.name, 'needs info') || contains(github.event.issue.labels.*.name, 'no reply'))
     runs-on: ubuntu-latest
     steps:
-      - name: Take the label off, reopen if it closed for no reply
+      - name: Take the label off, reopen if it was closed while waiting
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           NUMBER: ${{ github.event.issue.number }}
           STATE: ${{ github.event.issue.state }}
-          NO_REPLY: ${{ contains(github.event.issue.labels.*.name, 'no reply') }}
+          WAITING: ${{ contains(github.event.issue.labels.*.name, 'no reply') || contains(github.event.issue.labels.*.name, 'needs info') }}
         run: |
           gh issue edit "$NUMBER" -R "$REPO" --remove-label "needs info" --remove-label "no reply" || true
-          if [ "$STATE" = "closed" ] && [ "$NO_REPLY" = "true" ]; then gh issue reopen "$NUMBER" -R "$REPO"; fi
+          if [ "$STATE" = "closed" ] && [ "$WAITING" = "true" ]; then gh issue reopen "$NUMBER" -R "$REPO"; fi

@@ -886,9 +886,37 @@ namespace Selene
             app.Dispatcher.BeginInvoke(new Action(() =>
             {
                 if (launchAttempt != null && launchAttempt.Cancelled && !launchAttempt.Completed) return;
-                if (launching) { AbortLaunchCover(IntPtr.Zero, "the game stopped while loading"); return; }
-                var w = app.MainWindow;
-                if (w != null && w.IsActive) { gameEndedAt = DateTime.MinValue; QueueScreenRefresh("back from a game", 400); }
+                if (launching)
+                {
+                    // what stopped was a launcher or start-up program that handed over to the game and quit: the game's window it
+                    // opened is still up, so that is shown (aborting brought Playnite back over the game, #110 #128)
+                    if (gameWindowSeenAt != DateTime.MinValue && UsableGameWindow(lastGameWindow)) { RevealGame(lastGameWindow, "what Playnite started quit, the game's window is up"); return; }
+                    AbortLaunchCover(IntPtr.Zero, "the game stopped while loading");
+                    return;
+                }
+                // what Playnite tracked quit (a launcher, or a program that started the game) while the game handed the screen
+                // to is still up: Playnite comes back over it on its own, so the game gets the screen back (#110, #128)
+                Action backFromGame = () =>
+                {
+                    var w = app.MainWindow;
+                    if (w != null && w.IsActive) { gameEndedAt = DateTime.MinValue; QueueScreenRefresh("back from a game", 400); }
+                };
+                var still = handoffTarget;
+                if (still != IntPtr.Zero && UsableGameWindow(still) && Features.On("launchhandoff"))
+                {
+                    int guide = guideSeq;
+                    var later = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1500) };
+                    later.Tick += (s, e) =>
+                    {
+                        later.Stop();
+                        if (launching || guideSeq != guide || still != handoffTarget || !UsableGameWindow(still)) { backFromGame(); return; }   // it really ended
+                        Log("launch: Playnite says the game ended but its window is still up (" + WindowInfo(still) + "), back to it");
+                        HandOverToGame(still);
+                    };
+                    later.Start();
+                    return;
+                }
+                backFromGame();
             }));
         }
 
@@ -1223,6 +1251,30 @@ namespace Selene
             Log("dev row: " + (games == null ? "none" : string.Join(" | ", games.Where(x => !(x is string) && !(x is RowPad)).Select(x => Convert.ToString(Prop(x, "Name"))).ToArray()))
                 + " | tab " + RowFilters[RowFilter] + " | selected " + Convert.ToString(LiveRow() != null && LiveRow().SelectedItem != null ? (Prop(LiveRow().SelectedItem, "Name") ?? LiveRow().SelectedItem) : null));
         }
+        // dev key "pos?<name>": where the named element is drawn (render transforms included), every frame for 900 ms: a sideways
+        // shake shows as the left edge going back and forth (#132)
+        public static void DevPos(string name)
+        {
+            var w = Application.Current.MainWindow;
+            var el = w != null ? FindByName(w, name) as UIElement : null;
+            if (el == null) { Log("dev pos: no " + name); return; }
+            var xs = new List<double>();
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            EventHandler tick = null;
+            tick = (s, e) =>
+            {
+                try { xs.Add(el.TransformToAncestor(w).Transform(new Point(0, 0)).X); } catch { }
+                if (sw.ElapsedMilliseconds < 900) return;
+                CompositionTarget.Rendering -= tick;
+                int turns = 0;
+                for (int i = 2; i < xs.Count; i++) if (Math.Sign(xs[i] - xs[i - 1]) * Math.Sign(xs[i - 1] - xs[i - 2]) < 0) turns++;
+                var fe = Keyboard.FocusedElement as FrameworkElement;
+                Log("dev pos " + name + " (focus " + (fe != null ? fe.GetType().Name + " '" + fe.Name + "'" : "none") + "): " + xs.Count + " frames, x " + (xs.Count > 0 ? xs.Min().ToString("0.0") + ".." + xs.Max().ToString("0.0") : "-") + ", direction changes " + turns
+                    + ", x: " + string.Join(" ", xs.Select(v => v.ToString("0.0")).Distinct().Take(30).ToArray()));
+            };
+            CompositionTarget.Rendering += tick;
+        }
+
         public static void DevFront()
         {
             var w = Application.Current.MainWindow;
@@ -4443,7 +4495,7 @@ namespace Selene
             return "?";
         }
 
-        private static bool PlayniteInFront()
+        internal static bool PlayniteInFront()
         {
             // (a hidden test desktop never has Windows' foreground window: there, Playnite's active window counts)
             if (Isolated && GetForegroundWindow() == IntPtr.Zero) { var mw = Application.Current.MainWindow; return mw != null && mw.IsActive; }
@@ -7160,7 +7212,11 @@ namespace Selene
                 // launchers (launcher -> shaders -> game) take longer: keep waiting while the game is alive
                 bool alive = false;
                 try { var lg = Api != null ? Api.Database.Games.Get(launchGameId) : null; alive = lg != null && (lg.IsRunning || LocalGames.ProcessesInGameFolder(lg).Count > 0); } catch { }
-                if (!alive || waited > 120) { RevealGame(IntPtr.Zero, alive ? "timeout, 2 min" : "timeout, nothing running"); return; }
+                // the game's window is up although Playnite doesn't see the game running: a launcher or start-up program that
+                // hands over to another process, or an exe that asks for administrator rights. That window is the game; giving
+                // up on it here handed the screen to Playnite's blacked-out window and the game sat behind it (#110, #128).
+                var known = UsableGameWindow(lastGameWindow) ? lastGameWindow : IntPtr.Zero;
+                if (!alive || waited > 120) { RevealGame(known, alive ? "timeout, 2 min" : known != IntPtr.Zero ? "timeout, the game's window is up but Playnite doesn't see it running" : "timeout, nothing running"); return; }
             }
             var me = new System.Windows.Interop.WindowInteropHelper(w).Handle;
             double elapsed = (DateTime.Now - launchStart).TotalSeconds;
@@ -7314,11 +7370,140 @@ namespace Selene
             w.Topmost = false;
             CloseCoverWindow(true, () =>
             {
-                var target = game != IntPtr.Zero ? game : GetForegroundWindow();
+                var target = game != IntPtr.Zero ? game : UsableGameWindow(lastGameWindow) ? lastGameWindow : GetForegroundWindow();
                 var me = new System.Windows.Interop.WindowInteropHelper(w).Handle;
-                if (target != IntPtr.Zero && target != me) { gameWindow = target; ForceForegroundAsync(target, null); }
+                uint targetPid = 0;
+                if (target != IntPtr.Zero) GetWindowThreadProcessId(target, out targetPid);
+                bool ours = targetPid == OwnPid;   // Playnite's own window (or a leftover of the loading screen) isn't the game
+                if (target != IntPtr.Zero && target != me && !ours)
+                {
+                    gameWindow = target;
+                    if (Features.On("launchhandoff")) HandOverToGame(target);
+                    else ForceForegroundAsync(target, null);
+                }
                 else if (root != null) FadeInRoot(root);  // nothing to show: Playnite back
             });
+        }
+
+        private static uint ownPid;
+        private static uint OwnPid { get { if (ownPid == 0) ownPid = (uint)System.Diagnostics.Process.GetCurrentProcess().Id; return ownPid; } }
+
+        // The loading screen is gone: the game gets the screen, and Selene makes sure it keeps it (idea from Aniki Helper's
+        // launch splash, by Mike Aniki, MIT). Any game kind where this went wrong (launchers, programs that start the real game
+        // as another process, games run as administrator) left Playnite's blacked-out window in front with the game behind it.
+        //   1. hand over, check the game really came in front, try again a few times
+        //   2. for 15 s, a launcher that hands the front back to Playnite is undone (Home / Guide is never fought)
+        //   3. still not in front: Playnite steps aside into the tray, so Windows itself gives the game the screen (allowed
+        //      for any window, administrator ones too); it comes back by itself when the game's window closes
+        //   4. the game's window closing brings Selene back at once (Playnite may not know the game ended)
+        // the game's window closed: Selene back on screen (Playnite may never hear that the game ended: its screen stayed black,
+        // or Windows gave the front to another program). A moment later, unless another full-screen window took over (the
+        // real game after its launcher), Home or a new launch happened, or Selene is already there.
+        private static void BackAfterGame(int guide)
+        {
+            var later = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1200) };
+            later.Tick += (s, e) =>
+            {
+                later.Stop();
+                var w = Application.Current.MainWindow;
+                if (w == null || launching || guideSeq != guide || Quitting) return;
+                var me = new System.Windows.Interop.WindowInteropHelper(w).Handle;
+                var fg = GetForegroundWindow();
+                var root = w.Content as UIElement;
+                bool blank = root != null && root.Opacity < 0.01;
+                if (PlayniteInFront() && w.IsVisible && !IsIconic(me))
+                {
+                    if (blank) { Log("launch: the game's window closed, Selene back"); PlayEnterAnimation(w); }
+                    return;
+                }
+                if (fg != IntPtr.Zero && CoversScreen(fg, me)) { Log("launch: the game's window closed, " + WindowInfo(fg) + " covers the screen now: left in front"); return; }
+                Log("launch: the game's window closed, Selene back (front was " + WindowInfo(fg) + ")");
+                if (CloseToTray.IsHidden) CloseToTray.ShowFromTray();
+                else { if (IsIconic(me)) ShowWindow(me, 9 /* SW_RESTORE */); ForceForeground(me); w.Activate(); }
+                if (blank) PlayEnterAnimation(w);
+            };
+            later.Start();
+        }
+
+        private static int handoffSeq;
+        private static IntPtr handoffTarget;   // the game's window while it is being watched (until it closes, or Home)
+        private static void HandOverToGame(IntPtr target)
+        {
+            int seq = ++handoffSeq, guide = guideSeq;
+            handoffTarget = target;
+            int tries = 0, backs = 0;
+            bool confirmed = false, aside = false;
+            DateTime confirmedAt = DateTime.MinValue;
+            ForceForegroundAsync(target, null);
+            var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
+            timer.Tick += (s, e) =>
+            {
+                if (seq != handoffSeq || launching) { timer.Stop(); return; }   // another launch took over
+                var w = Application.Current.MainWindow;
+                if (aside)
+                {
+                    // Playnite in the tray: back once the game's window is gone (Playnite may not know the game ended)
+                    if (w == null || !CloseToTray.IsHidden) { timer.Stop(); return; }   // brought back (Home, Playnite's own game end)
+                    if (IsWindow(target) || BestGameWindow() != IntPtr.Zero) return;
+                    timer.Stop();
+                    handoffTarget = IntPtr.Zero;
+                    BackAfterGame(guide);
+                    return;
+                }
+                if (guideSeq != guide || guideAtHome) { timer.Stop(); handoffTarget = IntPtr.Zero; return; }   // the player went Home on purpose
+                if (!IsWindow(target))
+                {
+                    var other = BestGameWindow();
+                    if (other == IntPtr.Zero)
+                    {
+                        timer.Stop();
+                        handoffTarget = IntPtr.Zero;
+                        if (!confirmed) { Log("launch: the game's window closed while handing over"); return; }
+                        BackAfterGame(guide);
+                        return;
+                    }
+                    Log("launch: game window " + WindowInfo(target) + " closed, now " + WindowInfo(other));
+                    target = other; gameWindow = other; handoffTarget = other;
+                }
+                // any of Playnite's windows holding the front counts, a minimized one too (it kept the focus at -32000,-32000
+                // with nothing on screen while the game sat behind)
+                bool playnite = PlayniteInFront();
+                if (!confirmed)
+                {
+                    // the desktop in front isn't the game either (the loading screen closed and nothing took its place)
+                    var fg = GetForegroundWindow();
+                    var fgName = fg == IntPtr.Zero ? "" : ProcessNameOf(fg);
+                    bool desktop = fg == IntPtr.Zero || fgName == "explorer";
+                    if (!playnite && !desktop)
+                    {
+                        confirmed = true; confirmedAt = DateTime.Now;
+                        Log("launch: game in front (" + WindowInfo(GetForegroundWindow()) + ")" + (tries > 0 ? " after " + (tries + 1) + " tries" : ""));
+                        timer.Interval = TimeSpan.FromMilliseconds(250);
+                        return;
+                    }
+                    if (++tries <= 3) { ForceForegroundAsync(target, null); return; }
+                    if (!playnite) { timer.Stop(); Log("launch: " + WindowInfo(target) + " didn't come to the front (the desktop is)"); return; }   // stepping aside can't help there
+                }
+                else
+                {
+                    if ((DateTime.Now - confirmedAt).TotalSeconds > 15) { timer.Interval = TimeSpan.FromSeconds(1); return; }   // now only waiting for the game's window to close
+                    if (!playnite) return;
+                    if (++backs <= 3)
+                    {
+                        Log("launch: Playnite took the front back from the game, handing it back (" + backs + ")");
+                        confirmed = false; tries = 0;
+                        timer.Interval = TimeSpan.FromMilliseconds(200);
+                        ForceForegroundAsync(target, null);
+                        return;
+                    }
+                }
+                // Windows keeps refusing: step aside
+                Log("launch: " + WindowInfo(target) + " wouldn't come to the front, Playnite steps aside to the tray");
+                aside = true;
+                timer.Interval = TimeSpan.FromSeconds(2);
+                CloseToTray.HideToTray();
+            };
+            timer.Start();
         }
 
         // the theme's audio\Events\GameStarting.wav, moved to the media folder: played on the Play press

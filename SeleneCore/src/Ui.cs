@@ -898,10 +898,20 @@ namespace Selene
             System.Windows.Media.CompositionTarget.Rendering += tick;
         }
 
-        public static void Tick() { if (Features.On("sounds") && !HomeNav.PlayPlayniteSound(false)) Play("navigation.wav", 0.7); }
-        public static void Key() { Play("Key.wav", 0.8); }              // typing, erasing, flipping a switch
-        public static void Confirm() { if (Features.On("sounds") && !HomeNav.PlayPlayniteSound(true)) Play("activation.wav", 0.85); }
-        public static void Back() { Play("CloseAdditionalView.wav", 0.8); }
+        // The sounds of a press (move, confirm, back, typing) only while Selene is the program in front. A controller still
+        // reaches Playnite while a game is in front (Xbox's full screen experience, Windows' own game mode), and every press in
+        // the game clicked in Selene behind it (#111).
+        private static DateTime behindLogged = DateTime.MinValue;
+        private static bool Behind()
+        {
+            if (HomeNav.PlayniteInFront() && (ScreenPresence.InView || !HomeNav.GameRunning())) return false;   // (in front but covered by a game: quiet too)
+            if ((DateTime.Now - behindLogged).TotalSeconds > 30) { behindLogged = DateTime.Now; HomeNav.Log("sounds: a press while Selene isn't in front, kept quiet"); }
+            return true;
+        }
+        public static void Tick() { if (Features.On("sounds") && !Behind() && !HomeNav.PlayPlayniteSound(false)) Play("navigation.wav", 0.7); }
+        public static void Key() { if (!Behind()) Play("Key.wav", 0.8); }              // typing, erasing, flipping a switch
+        public static void Confirm() { if (Features.On("sounds") && !Behind() && !HomeNav.PlayPlayniteSound(true)) Play("activation.wav", 0.85); }
+        public static void Back() { if (!Behind()) Play("CloseAdditionalView.wav", 0.8); }
         public static void Chime() { Play("Success.wav", 0.85); }   // something finished: a profile made, a setup step done
         public static void Boot() { if (Features.On("startsound")) Play("Boot.wav", 0.9); }
         public static void Alert() { Play("Alert.wav", 0.85); }

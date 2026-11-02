@@ -96,6 +96,8 @@ namespace Selene
             var l = new Level { Title = "Game options" };
             if (game.IsInstalled) l.Entries.Add(new Entry { Label = "Play", Icon = 0xe037, Run = () => { var id = game.Id; LoginScene.FinishThen(() => HomeNav.StartGameNow(id)); } });
             else l.Entries.Add(new Entry { Label = "Install", Icon = 0xe2c4, Run = () => { var id = game.Id; LoginScene.FinishThen(() => api.InstallGame(id)); } });
+            if (Features.On("achievements") && AchievementsData.Available())
+                l.Entries.Add(new Entry { Label = "Achievements", Sub = "What you've unlocked in this game.", Icon = 0xea65, Opens = true, Run = OpenAchievements });
             if (move != null) { var m = move; l.Entries.Add(new Entry { Label = "Move", Sub = "Change its place on Spotlight.", Icon = 0xe8d4, Run = () => LoginScene.FinishThen(m) }); }
             l.Entries.Add(new Entry { Label = "Favorite", Sub = "On your Favorites tab.", Icon = 0xe838,
                 Toggle = () => FavoriteChoice.Read(game, Profiles.Active), Run = ToggleFavoriteOption });
@@ -212,7 +214,16 @@ namespace Selene
         }
 
         // ---- the add-ons' and scripts' game menus, in their sections ----
-        private class Item { public string Description; public string[] Path; public Action Run; }
+        private class Item { public string Description; public string[] Path; public Action Run; public bool Ours; }   // Ours: opens a screen of Selene's
+
+        // this game's achievements in Selene's own screen (the controller works there; Playnite Achievements' window can't be
+        // used with one, #133)
+        private void OpenAchievements()
+        {
+            var g = game; var mv = move;
+            Ui.Confirm(); HomeNav.Log("game options: achievements of " + g.Name + " in Selene's screen");
+            LoginScene.Show(new AchievementsScreen(g.Id, () => new GameOptionsScreen(g, mv)), 1);
+        }
 
         private Level ExtensionsLevel()
         {
@@ -234,6 +245,7 @@ namespace Selene
             foreach (var it in items.Where(i => i.Path.Length == depth))
             {
                 var run = it.Run;
+                if (it.Ours) { l.Entries.Add(new Entry { Label = it.Description, Icon = 0xe5c8, Opens = true, Run = run }); continue; }
                 l.Entries.Add(new Entry { Label = it.Description, Icon = 0xe5c8, Run = () => LoginScene.FinishThen(() => { try { run(); } catch (Exception ex) { HomeNav.Log("game options: extension failed: " + (ex.InnerException ?? ex).Message); } }) });
             }
             if (l.Entries.Count == 0) l.Entries.Add(new Entry { Label = game != null ? "Nothing from your add-ons for this game" : "Nothing from your add-ons here", Run = () => { } });
@@ -245,16 +257,22 @@ namespace Selene
             var result = new List<Item>();
             var games = new List<Game> { game };
             var args = new GetGameMenuItemsArgs { Games = games };
+            // Playnite Achievements' "View Achievements" / "Open Game in Overview" (in the language Playnite is set to)
+            var viewAch = new[] { "LOCPlayAch_Menu_ViewAchievements", "LOCPlayAch_Menu_OpenGameInOverview" }
+                .Select(k => Application.Current.TryFindResource(k) as string).Where(s => !string.IsNullOrEmpty(s)).ToList();
             foreach (var plugin in HomeNav.Api.Addons.Plugins)
             {
                 try
                 {
                     var items = plugin.GetGameMenuItems(args);
                     if (items == null) continue;
+                    bool achievements = plugin.GetType().FullName == "PlayniteAchievements.PlayniteAchievementsPlugin" && Features.On("achievements");
                     foreach (var mi in items)
                     {
                         if (mi == null || mi.Description == "-" || mi.Action == null) continue;
                         var m = mi;
+                        if (achievements && viewAch.Contains(m.Description))
+                        { result.Add(new Item { Description = Clean(m.Description), Path = Sections(m.MenuSection), Run = OpenAchievements, Ours = true }); continue; }
                         result.Add(new Item { Description = Clean(m.Description), Path = Sections(m.MenuSection), Run = () => m.Action(new GameMenuItemActionArgs { Games = games, SourceItem = m }) });
                     }
                 }

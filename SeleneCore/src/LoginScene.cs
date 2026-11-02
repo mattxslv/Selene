@@ -221,6 +221,7 @@ namespace Selene
                 else if (step[1] == "blank") HomeNav.DevBlank();
                 else if (step[1] == "fakequit") HomeNav.BeginQuit();
                 else if (step[1] == "front?") HomeNav.DevFront();
+                else if (step[1].StartsWith("pos?")) HomeNav.DevPos(step[1].Substring(4));
                 else if (step[1] == "guide") HomeNav.DevGuide();
                 else if (step[1] == "collection") SeleneShell.ShowLibrary();
                 else if (step[1].StartsWith("testgame:")) HomeNav.DevTestGame(step[1].Substring(9));
@@ -249,6 +250,7 @@ namespace Selene
                 else if (step[1].StartsWith("click:")) HomeNav.DevClick(step[1].Substring(6));
                 else if (step[1].StartsWith("rclick:")) HomeNav.DevRealClick(step[1].Substring(7));
                 else if (step[1] == "screen:extensions") OpenWith(() => GameOptionsScreen.Extensions());
+                else if (step[1] == "screen:gameoptions") { var tg = HomeNav.Api.Database.Games.FirstOrDefault(x => x.Name == "Selene test game"); if (tg != null) OpenWith(() => new GameOptionsScreen(tg)); else HomeNav.Log("dev: no Selene test game (testgame: makes it)"); }
                 else if (step[1] == "screen:currency") OpenWith(() => new StoreCurrencyScreen(false, null));
                 else if (step[1] == "screen:report") OpenWith(() => new ReportScreen(null));
                 else if (step[1] == "screen:games") OpenWith(() => new SettingsScreen(false, "Games", "gamesget"));

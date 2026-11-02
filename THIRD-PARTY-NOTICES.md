@@ -31,6 +31,11 @@ The color themes in `theme/Palettes` are generated from the palettes of [Omarchy
 themes (MIT License, Copyright (c) David Heinemeier Hansson), copied into `tools/palettes`. Many are based on open
 color schemes by their own authors: Catppuccin, Everforest, Flexoki, Gruvbox, Kanagawa, Nord, Rose Pine and Tokyo Night.
 
+## Ideas from other add-ons
+Handing the screen to a game after the loading screen (check it is really in front, retry, and a short watch for launchers that
+pull Playnite forward again) follows the approach of Aniki Helper's game launch splash by Mike Aniki
+(https://github.com/Mike-Aniki/AnikiHelper, MIT License). The code is Selene's own.
+
 ## Add-ons installed by the setup
 Selene's first-launch setup installs these Playnite add-ons through Playnite's own installer; they are not bundled and
 keep their own licenses: Extra Metadata Loader (darklinkpower), Ludusavi (mtkennerly), HowLongToBeat and GameActivity

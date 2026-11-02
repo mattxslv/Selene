@@ -4,6 +4,12 @@ Selene (theme) and Selene Core (add-on) share one version number and are release
 
 ## Unreleased
 
+## 1.5.5 - 2026-11-02
+
+- Fixed: games that start through a launcher, start the real game as another program, or ask for administrator rights could end on a black screen after the loading screen, with the game behind Playnite until you clicked it in the taskbar (#110, #128). Selene now shows the game even when its launcher closes or Playnite loses track of it, checks the game really came to the front and tries again, hands it back if a launcher pulls Playnite forward (or Playnite comes back thinking the game ended), and as a last resort steps Playnite aside into the tray so Windows shows the game. When the game closes, Selene comes back on its own. Switch: Games > Make sure the game comes to the front.
+- Fixed: Selene's move and confirm clicks could be heard while playing a game, as the controller still reached Playnite behind it (#111). Those sounds now only play while Selene is on screen.
+- A game's achievements are easier to reach: Game options has an Achievements row, and Playnite Achievements' "View Achievements" under Extensions now opens Selene's achievements screen, which works with a controller (its own window didn't) (#133).
+
 ## 1.5.4 - 2026-11-02
 
 - The song in the top bar and the Music card in the menu now show only while a song really plays: not for the default (background) music, and not while a trailer's sound, a loading screen or a capture has paused the music. A Music card you paused from stays, to play it again.

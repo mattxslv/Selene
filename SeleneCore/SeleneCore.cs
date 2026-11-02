@@ -416,6 +416,7 @@ namespace Selene
             new Option { Group = "Sound & music", Key = "music", Label = "Let Selene run the music", About = "Selene sets UniPlaySong's level and pauses and resumes it as you browse, launch games and watch trailers. Off leaves it alone.", Available = () => HasAddon("UniPlaySong") },
             new Option { Group = "Sound & music", Key = "independentmusic", Label = "Game music without trailers", About = "Play game songs without waiting for a trailer. Requires UniPlaySong.", DefaultOn = false },
             new Option { Group = "Sound & music", Key = "launchquiet", Label = "Quiet loading screen", About = "Keep the loading screen silent until the game appears." },
+            new Option { Group = "Games", Key = "launchhandoff", Label = "Make sure the game comes to the front", About = "After the loading screen, check the game really is in front and hand it back if a launcher pulls Playnite forward." },
             new Option { Group = "Games", Key = "launchchoice", Label = "Keep launch choices above loading", About = "Show launch choices before the loading screen." },
             // ---- Look ----
             new Option { Group = "Games", Key = "metasource", Label = "Metadata source per game", About = "Choose where a game's screenshots come from, in Game options." },

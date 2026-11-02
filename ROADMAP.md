@@ -30,9 +30,9 @@ When considering a request, I look at:
 3. **Is it worthwhile to build and maintain?** Each feature adds complexity and ongoing maintenance.
 4. **Do I want to work on it?** This is a hobby project, so personal interest and available time matter.
 
-A request might be marked **Planned** (something I've chosen to work on), **Later** (an idea I may revisit), or **Not planned** (not something I intend to add). "Later" is not a promise or a queue, and there's no obligation to choose features from open issues for the next release.
+A request might be marked **Planned** (something I've chosen to work on), **Later** (an idea I may revisit), or **Not planned** (not something I intend to add). "Later" is not a promise or a queue, and there's no obligation to choose features from Ideas for the next release.
 
-Constructive pull requests are welcome, but please open an issue first for significant changes. A proposed implementation isn't a guarantee of acceptance; it still needs to fit Selene and be maintainable.
+Constructive pull requests are welcome, but please start a discussion first for significant changes. A proposed implementation isn't a guarantee of acceptance; it still needs to fit Selene and be maintainable.
 
 ## Current direction
 

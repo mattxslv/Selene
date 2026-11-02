@@ -380,7 +380,11 @@ class BugsCheck
             var quietDetails = typeof(HomeNav).GetMethod("QuietDetailsTransition", BindingFlags.NonPublic | BindingFlags.Static);
             quietDetails.Invoke(null, null);
             Assert(FocusSoundProbe.NavigateSound == IntPtr.Zero, "Details transition suppresses native automatic-focus ticks");
-            HomeNav.EndQuietFocus(); Assert(FocusSoundProbe.NavigateSound == new IntPtr(123), "Real navigation can end the quiet interval immediately");
+            HomeNav.EndQuietFocus(); Assert(FocusSoundProbe.NavigateSound == IntPtr.Zero, "Interface sounds off keeps Playnite's move sound silent after the quiet interval");
+            Features.Set("sounds", true); HomeNav.EndQuietFocus(); HomeNav.SyncMoveSound(); Features.Set("sounds", false);
+            Assert(FocusSoundProbe.NavigateSound == new IntPtr(123), "Real navigation can end the quiet interval immediately");
+            HomeNav.SyncMoveSound(); Assert(FocusSoundProbe.NavigateSound == IntPtr.Zero, "Interface sounds off silences Playnite's move sound");
+            Features.Set("sounds", true); HomeNav.SyncMoveSound(); Features.Set("sounds", false); Assert(FocusSoundProbe.NavigateSound == new IntPtr(123), "Interface sounds on brings Playnite's move sound back");
             Features.Set("quietdetails", false); quietDetails.Invoke(null, null);
             Assert(FocusSoundProbe.NavigateSound == new IntPtr(123), "Off retains native focus sounds");
             var quietTimerField = typeof(HomeNav).GetField("quietTimer", BindingFlags.NonPublic | BindingFlags.Static);

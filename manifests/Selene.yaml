@@ -1,5 +1,26 @@
 AddonId: Selene_a98e0027-fa6a-4f5e-a087-bad8d69f2443
 Packages:
+  - Version: 1.5.3
+    RequiredApiVersion: 2.10.0
+    ReleaseDate: 2026-11-02
+    PackageUrl: https://github.com/mattxslv/Selene/releases/download/v1.5.3/Selene.pthm
+    Changelog:
+      - >-
+        Music volume and Mute music (Selene settings > Sound & music) now control all music, UniPlaySong's included: before, UniPlaySong kept its own volume, so the start-up and home music played on with both at off. UniPlaySong's own saved volume stays as it is. Mute music is also kept between starts now (Playnite forgot it). Thanks to amogh-w for this and the rest of their Sound & music work (#99).
+      - >-
+        Sound & music is in four sections: Music, Sounds, While you play and Music setup. UniPlaySong's Songs for each game, Ambient music and Night music switches are here too, and Start-up sound, Notification sound and Trailer sound moved in from other groups (your choices carry over) (#99).
+      - >-
+        A Music card in the menu (Start) plays, pauses, skips and restarts UniPlaySong's song, and the top bar can show the song playing (Show what is playing). Both can be turned off (#99).
+      - >-
+        Spotify as ambient music (Sound & music > Music): with UniPlaySong, your Spotify plays on the home, in the menu and on games without a song, following Selene's music volume and mute; Spotify's own volume comes back when you turn it off or close Playnite (#99).
+      - >-
+        Sounds volume can be set to Off. With it Off, or Interface sounds off, Playnite's own move sound goes quiet too (#99).
+      - >-
+        Fixed: songs could get stuck on one track, and a game's song often didn't start on its trailer card (#99).
+      - >-
+        Fixed: with an add-on's own window open (UniPlaySong's song download, for example), the controller also moved Selene's page behind it (#99).
+      - >-
+        Fixed: Find games in Games folders added a game the library already had when that game lives a folder further down; those duplicates are now skipped, and ones already added are hidden (not deleted) (#99).
   - Version: 1.5.2
     RequiredApiVersion: 2.10.0
     ReleaseDate: 2026-11-02

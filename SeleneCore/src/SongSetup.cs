@@ -94,6 +94,7 @@ namespace Selene
             var preset = presetProp != null ? presetProp.GetValue(settings, null) as string : null;
             const string StartPreset = "tunetank-dark-ambient-soundscape-music.mp3";
             if (sourceNow == 1) return false;                                                    // a folder of their own
+            if (sourceNow == 9) return false;                                                    // Spotify as the ambient (its own switch)
             if (sourceNow == 2 && !string.IsNullOrEmpty(preset) && !string.Equals(preset, StartPreset, StringComparison.OrdinalIgnoreCase) && !mine) return false;   // a bundled track they picked
             var marker = Features.Remembered("selene-default-music");
             // marker "1": set by an earlier build that did not switch the source ("2": this one); "2" with the source moved off 0 is their choice

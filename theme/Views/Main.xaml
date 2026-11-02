@@ -303,14 +303,14 @@
                                     <Grid>
                                     <!-- left: always there (like the home); right: what the selected game offers -->
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
-                                        <StackPanel Style="{StaticResource HintItem}" Margin="0,0,22,0">
+                                        <StackPanel Style="{StaticResource HintItem}" Tag="View" Background="Transparent" Margin="0,0,22,0">
                                             <Border Style="{StaticResource HintBadge}"><TextBlock Text="&#xE3E0;" FontFamily="{DynamicResource SeleneIconFont}" Style="{StaticResource HintKey}" FontSize="17" FontWeight="Normal" Margin="0"/></Border>
                                             <StackPanel VerticalAlignment="Center">
                                                 <TextBlock Text="Spotlight" Style="{StaticResource HintLabel}"/>
                                                 <TextBlock Text="Hold: Search" Style="{StaticResource HintHold}"/>
                                             </StackPanel>
                                         </StackPanel>
-                                        <StackPanel Style="{StaticResource HintItem}">
+                                        <StackPanel Style="{StaticResource HintItem}" Tag="Menu" Background="Transparent">
                                             <Border Style="{StaticResource HintBadge}"><TextBlock Text="&#xE5D2;" FontFamily="{DynamicResource SeleneIconFont}" Style="{StaticResource HintKey}" FontSize="19" FontWeight="Normal" Margin="0"/></Border>
                                             <StackPanel VerticalAlignment="Center">
                                                 <TextBlock Text="Menu" Style="{StaticResource HintLabel}"/>
@@ -330,7 +330,7 @@
                                                 </Style.Triggers>
                                             </Style>
                                         </StackPanel.Style>
-                                        <StackPanel Style="{StaticResource HintItem}">
+                                        <StackPanel Style="{StaticResource HintItem}" Tag="B" Background="Transparent">
                                             <Border Style="{StaticResource HintBadge}"><TextBlock Text="{DynamicResource SelenePromptB}" Style="{StaticResource HintKey}"/></Border>
                                             <TextBlock Text="Back" Style="{StaticResource HintLabel}" VerticalAlignment="Center"/>
                                         </StackPanel>
@@ -346,19 +346,19 @@
                                                 </Style.Triggers>
                                             </Style>
                                         </StackPanel.Style>
-                                        <StackPanel Style="{StaticResource HintItem}">
+                                        <StackPanel Style="{StaticResource HintItem}" Tag="A" Background="Transparent">
                                             <Border Style="{StaticResource HintBadge}"><TextBlock Text="{DynamicResource SelenePromptA}" Style="{StaticResource HintKey}"/></Border>
                                             <TextBlock Text="Play" Style="{StaticResource HintLabel}" VerticalAlignment="Center"/>
                                         </StackPanel>
-                                        <StackPanel Style="{StaticResource HintItem}">
+                                        <StackPanel Style="{StaticResource HintItem}" Tag="X" Background="Transparent">
                                             <Border Style="{StaticResource HintBadge}"><TextBlock Text="{DynamicResource SelenePromptX}" Style="{StaticResource HintKey}"/></Border>
                                             <TextBlock Text="Details" Style="{StaticResource HintLabel}" VerticalAlignment="Center"/>
                                         </StackPanel>
-                                        <StackPanel Style="{StaticResource HintItem}">
+                                        <StackPanel Style="{StaticResource HintItem}" Tag="Y" Background="Transparent">
                                             <Border Style="{StaticResource HintBadge}"><TextBlock Text="{DynamicResource SelenePromptY}" Style="{StaticResource HintKey}"/></Border>
                                             <TextBlock Text="Game options" Style="{StaticResource HintLabel}" VerticalAlignment="Center"/>
                                         </StackPanel>
-                                        <StackPanel Style="{StaticResource HintItem}">
+                                        <StackPanel Style="{StaticResource HintItem}" Tag="R3" Background="Transparent">
                                             <Border Style="{StaticResource HintBadge}"><TextBlock Text="{DynamicResource SelenePromptRS}" Style="{StaticResource HintKey}" FontSize="11"/></Border>
                                             <!-- Selene Core shows "Trailer sound" here while a trailer plays -->
                                             <TextBlock x:Name="SeleneLibraryRsHint" Text="Filter" Style="{StaticResource HintLabel}" VerticalAlignment="Center"/>
@@ -877,7 +877,7 @@
                                                 </StackPanel>
                                             </StackPanel>
                                             <!-- the activity card selected: a headline, a few numbers, pictures below (Selene Core fills them; Down goes into them) -->
-                                            <StackPanel Margin="0,40,0,0" HorizontalAlignment="Left" Width="1760" Opacity="0">
+                                            <StackPanel Margin="0,40,0,0" HorizontalAlignment="Left" Width="{DynamicResource SeleneCardWidth}" Opacity="0">
                                                 <StackPanel.Style>
                                                     <Style TargetType="StackPanel">
                                                         <Setter Property="Visibility" Value="Collapsed"/>
@@ -921,7 +921,7 @@
                                                 <StackPanel x:Name="SeleneActivityShowcase" Orientation="Horizontal" Margin="10,28,-80,10" HorizontalAlignment="Left"/>
                                             </StackPanel>
                                             <!-- the captures card selected: a headline, a few numbers, pictures below (Selene Core fills them; Down goes into them) -->
-                                            <StackPanel Margin="0,40,0,0" HorizontalAlignment="Left" Width="1760" Opacity="0">
+                                            <StackPanel Margin="0,40,0,0" HorizontalAlignment="Left" Width="{DynamicResource SeleneCardWidth}" Opacity="0">
                                                 <StackPanel.Style>
                                                     <Style TargetType="StackPanel">
                                                         <Setter Property="Visibility" Value="Collapsed"/>
@@ -955,7 +955,7 @@
                                                 <StackPanel x:Name="SeleneCapturesShowcase" Orientation="Horizontal" Margin="10,28,-80,10" HorizontalAlignment="Left"/>
                                             </StackPanel>
                                             <!-- the surprise me card selected: a headline, a few numbers, pictures below (Selene Core fills them; Down goes into them) -->
-                                            <StackPanel Margin="0,40,0,0" HorizontalAlignment="Left" Width="1760" Opacity="0">
+                                            <StackPanel Margin="0,40,0,0" HorizontalAlignment="Left" Width="{DynamicResource SeleneCardWidth}" Opacity="0">
                                                 <StackPanel.Style>
                                                     <Style TargetType="StackPanel">
                                                         <Setter Property="Visibility" Value="Collapsed"/>
@@ -994,7 +994,7 @@
                                                 <StackPanel x:Name="SeleneSurpriseShowcase" Orientation="Horizontal" Margin="10,28,-80,10" HorizontalAlignment="Left"/>
                                             </StackPanel>
                                             <!-- the news card selected: a headline, a line, headlines below (Selene Core fills them; Down goes into them) -->
-                                            <StackPanel Margin="0,40,0,0" HorizontalAlignment="Left" Width="1760" Opacity="0">
+                                            <StackPanel Margin="0,40,0,0" HorizontalAlignment="Left" Width="{DynamicResource SeleneCardWidth}" Opacity="0">
                                                 <StackPanel.Style>
                                                     <Style TargetType="StackPanel">
                                                         <Setter Property="Visibility" Value="Collapsed"/>
@@ -1043,7 +1043,7 @@
                                                 <StackPanel x:Name="SeleneNewsShowcase" Orientation="Horizontal" Margin="10,54,-80,10" HorizontalAlignment="Left"/>
                                             </StackPanel>
                                             <!-- the achievements card selected: a headline, a few numbers, pictures below (Selene Core fills them; Down goes into them) -->
-                                            <StackPanel Margin="0,40,0,0" HorizontalAlignment="Left" Width="1760" Opacity="0">
+                                            <StackPanel Margin="0,40,0,0" HorizontalAlignment="Left" Width="{DynamicResource SeleneCardWidth}" Opacity="0">
                                                 <StackPanel.Style>
                                                     <Style TargetType="StackPanel">
                                                         <Setter Property="Visibility" Value="Collapsed"/>
@@ -1143,7 +1143,7 @@
                                             </StackPanel>
                                             <!-- the store card selected: what it is, a few numbers, what A does -->
                                             <!-- (wide: the showcase's big pictures go right across; the text keeps its own width) -->
-                                            <StackPanel Margin="0,40,0,0" HorizontalAlignment="Left" Width="1760" Opacity="0">
+                                            <StackPanel Margin="0,40,0,0" HorizontalAlignment="Left" Width="{DynamicResource SeleneCardWidth}" Opacity="0">
                                                 <StackPanel.Style>
                                                     <Style TargetType="StackPanel">
                                                         <Setter Property="Visibility" Value="Collapsed"/>
@@ -1433,7 +1433,7 @@
                                             <TextBlock Text="No screenshots for this game" FontSize="18" FontFamily="Segoe UI" Foreground="{DynamicResource SeleneInk60Brush}" Visibility="{DynamicResource SeleneShotsNone}"/>
                                             <!-- (the room for the focused tile's ring and growth is inside the strip's content: a padding on the scroller
                                                  sat outside its clip, so the first tile's ring was cut) -->
-                                            <ScrollViewer x:Name="SeleneShotStrip" Width="1788" Margin="-14,-14,0,0" Padding="0" Focusable="False" CanContentScroll="False"
+                                            <ScrollViewer x:Name="SeleneShotStrip" Width="{DynamicResource SeleneShotStripWidth}" Margin="-14,-14,0,0" Padding="0" Focusable="False" CanContentScroll="False"
                                                           HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled">
                                                 <StackPanel x:Name="SeleneShotTiles" Orientation="Horizontal" Margin="14">
                                                     <ButtonEx x:Name="SeleneShotTile0" Tag="0" Style="{StaticResource SeleneShotTileStyle}" Visibility="{DynamicResource SeleneShot0Vis}">

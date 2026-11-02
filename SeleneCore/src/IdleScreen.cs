@@ -96,7 +96,7 @@ namespace Selene
                 string shotLogo = null;
                 var game = api != null ? api.Database.Games.FirstOrDefault(g => string.Equals(g.Name, shots[i].Game, StringComparison.OrdinalIgnoreCase)) : null;
                 if (game != null) { var lp = Path.Combine(api.Paths.ConfigurationPath, "ExtraMetadata", "games", game.Id.ToString(), "logo.png"); if (File.Exists(lp)) shotLogo = lp; }
-                list.Insert(k, new Slide { Picture = shots[i].Path, Logo = shotLogo, Title = shots[i].Game, Status = "Your screenshot", Figures = { new[] { "TAKEN", shots[i].When.ToString("MMMM d, yyyy") } } });
+                list.Insert(k, new Slide { Picture = shots[i].Path, Logo = shotLogo, Title = shots[i].Game, Status = "Your screenshot", Figures = { new[] { "TAKEN", GameFacts.Date(shots[i].When, "MMMM d, yyyy") } } });
             }
             // (the developer switch: a screenshot first, to see its words without waiting for the fourth turn)
             if (devPretend) { int first = list.FindIndex(x => x.Status == "Your screenshot"); if (first > 0) { var sh = list[first]; list.RemoveAt(first); list.Insert(0, sh); } }
@@ -155,7 +155,7 @@ namespace Selene
         {
             if (clock == null) return;
             clock.Text = DateTime.Now.ToString("h:mm tt");
-            date.Text = DateTime.Now.ToString("dddd, MMMM d");
+            date.Text = GameFacts.Date(DateTime.Now, "dddd, MMMM d");
         }
 
         // the next picture fades in over the last, drifting a little larger as it shows; its words come with it

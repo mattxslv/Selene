@@ -85,6 +85,10 @@ namespace Selene
             Ui.StartupFrameLog();   // the first seconds: long frames in the log (the intro must not stutter)
             EventManager.RegisterClassHandler(typeof(ListBox), FrameworkElement.LoadedEvent, new RoutedEventHandler(OnListLoaded));
             EventManager.RegisterClassHandler(typeof(TextBlock), FrameworkElement.LoadedEvent, new RoutedEventHandler(OnTextLoaded));
+            // WPF only says "loaded" to texts with a Loaded/Unloaded handler of their own (or in a subtree with one), so texts built
+            // in code (the power menu, settings rows) often never heard it and stayed English (#104). Every text is laid out,
+            // though: its first size is the other way in. (Translating there re-measures it before anything is drawn.)
+            EventManager.RegisterClassHandler(typeof(TextBlock), FrameworkElement.SizeChangedEvent, new SizeChangedEventHandler((s, e) => Lang.Track(s as TextBlock)));
             CoverCrop.Install();   // the home tiles' covers cropped where the detail is
             TileCovers.Install();   // Spotlight's and Collection's covers decoded off the UI thread
             var tvBackup = System.IO.Path.Combine(SelenePaths.PlayniteConfig, "fullscreenConfig.tv.json");
@@ -769,6 +773,9 @@ namespace Selene
             foreach (var w in libraryFades) { var cf = w.Target as SeleneCrossfade; if (cf != null) cf.Refresh(); }
         }
 
+        // the elements under root that name something in their Tag (the theme's hints name their button)
+        public static List<FrameworkElement> FindTagged(DependencyObject root) { return FindAll(root, d => d is FrameworkElement && ((FrameworkElement)d).Tag is string && !(((FrameworkElement)d).Tag as string).Contains("\\")); }
+
         private static List<FrameworkElement> FindAll(DependencyObject root, Func<DependencyObject, bool> match)
         {
             // visual AND logical children: some theme parts (e.g. a FadeImage in a button that is not templated yet) are
@@ -794,39 +801,31 @@ namespace Selene
         {
             try
             {
-                Type appType = null;
-                foreach (var a in AppDomain.CurrentDomain.GetAssemblies())
-                    if (a.GetName().Name == "Playnite") { appType = a.GetType("Playnite.PlayniteApplication"); break; }
-                var app = appType.GetProperty("Current", BindingFlags.Public | BindingFlags.Static).GetValue(null, null);
-                var settings = app.GetType().GetProperty("AppSettings").GetValue(app, null);
+                // (each change goes through PlayniteLook: the user's own value is kept and comes back in Desktop mode and other
+                // themes, as these settings are shared with them, #105)
+                var settings = PlayniteLook.AppSettings();
                 var fs = settings.GetType().GetProperty("Fullscreen").GetValue(settings, null);
-                var hl = fs.GetType().GetProperty("HorizontalLayout");
-                if (hl != null && !Equals(hl.GetValue(fs, null), true)) { hl.SetValue(fs, true, null); Log("library layout -> horizontal"); }
+                PlayniteLook.Set(fs, "Fullscreen", "HorizontalLayout", true);
                 // covers only, no names under them (Selene's library shows the selected game's logo instead)
-                var titles = fs.GetType().GetProperty("ShowGameTitles");
-                if (titles != null && Equals(titles.GetValue(fs, null), true)) { titles.SetValue(fs, false, null); Log("library titles -> off"); }
+                PlayniteLook.Set(fs, "Fullscreen", "ShowGameTitles", false);
                 // Selene's library is one row under the trailer stage
-                var rows = fs.GetType().GetProperty("Rows");
-                if (rows != null && rows.PropertyType == typeof(int) && !Equals(rows.GetValue(fs, null), 1)) { rows.SetValue(fs, 1, null); Log("library rows -> 1"); }
+                PlayniteLook.Set(fs, "Fullscreen", "Rows", 1);
                 // Columns: Playnite gives each cover the row's width / Columns and draws only Columns + 1 of them. Selene's one row
                 // of big covers wants as many as fit at its height (about 300 px each on a 1920 px row): fewer (the default 4)
                 // drew five covers and left the rest of the row empty, more (16) made them small, in two rows
                 // covers are 2:3 (Steam's, SteamGridDB's): Playnite's tile ratio (3:4 by default, shared with Desktop's grid)
-                // set to that, so no cover loses its top and bottom (Collection > 2:3 covers)
+                // set to that, so no cover loses its top and bottom (Collection > 2:3 covers); off = the user's own shape again
                 bool tall = Features.On("collection23");
-                var ratioW = settings.GetType().GetProperty("GridItemWidthRatio"); var ratioH = settings.GetType().GetProperty("GridItemHeightRatio");
-                if (tall && ratioW != null && ratioH != null && ratioW.PropertyType == typeof(int) && ((int)ratioW.GetValue(settings, null) != 2 || (int)ratioH.GetValue(settings, null) != 3))
-                {
-                    ratioW.SetValue(settings, 2, null); ratioH.SetValue(settings, 3, null);
-                    Log("library tiles -> 2:3");
-                }
-                var cols = fs.GetType().GetProperty("Columns");
+                if (tall) { PlayniteLook.Set(settings, "AppSettings", "GridItemWidthRatio", 2); PlayniteLook.Set(settings, "AppSettings", "GridItemHeightRatio", 3); }
+                else { PlayniteLook.Restore(settings, "AppSettings", "GridItemWidthRatio"); PlayniteLook.Restore(settings, "AppSettings", "GridItemHeightRatio"); }
                 var main = Application.Current.MainWindow;
                 var list = main != null ? FindByName(main, "PART_ListGameItems") as FrameworkElement : null;
                 double width = list != null && list.ActualWidth > 100 ? list.ActualWidth : (main != null && main.ActualWidth > 100 ? main.ActualWidth : 1920);
-                // as many as fit: a cover may be as tall as the row (398 px), so at 2:3 at most 265 px wide
-                int want = Math.Max(4, (int)Math.Ceiling(width / (tall ? 266.0 : 298.0)));
-                if (cols != null && cols.PropertyType == typeof(int) && (int)cols.GetValue(fs, null) != want) { cols.SetValue(fs, want, null); Log("library columns -> " + want + " (row " + (int)width + " px)"); }
+                // as many as fit: a cover may be as tall as the row (398 px), so at 2:3 at most 265 px wide. Collection > Cover size
+                // makes them smaller (more across); Playnite's own Columns would be overwritten here on every visit (#65)
+                double size = Features.Value("collectionsize") == "small" ? 0.72 : Features.Value("collectionsize") == "medium" ? 0.86 : 1.0;
+                int want = Math.Max(4, (int)Math.Ceiling(width / ((tall ? 266.0 : 298.0) * size)));
+                PlayniteLook.Set(fs, "Fullscreen", "Columns", want);
             }
             catch (Exception ex) { Log("horizontal: " + ex.Message); }
         }
@@ -986,7 +985,19 @@ namespace Selene
                 int pw = (int)Math.Max(1, root.ActualWidth), ph = (int)Math.Max(1, root.ActualHeight);
                 var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(pw, ph, 96, 96, PixelFormats.Pbgra32);
                 var dv = new DrawingVisual();
-                using (var dc = dv.RenderOpen()) { dc.DrawRectangle(Brushes.Black, null, new Rect(0, 0, pw, ph)); dc.DrawRectangle(new VisualBrush(root), null, new Rect(0, 0, pw, ph)); }
+                using (var dc = dv.RenderOpen())
+                {
+                    dc.DrawRectangle(Brushes.Black, null, new Rect(0, 0, pw, ph));
+                    dc.DrawRectangle(new VisualBrush(root) { ViewboxUnits = BrushMappingMode.Absolute, Viewbox = new Rect(0, 0, pw, ph) }, null, new Rect(0, 0, pw, ph));   // (exactly the window: something slid past an edge squeezed the whole picture)
+                    // Playnite's own screens over it (settings, on-screen keyboard, menus) are windows of their own: drawn on top,
+                    // in the order they were opened (a hidden desktop has no compositor to capture them)
+                    foreach (Window other in Application.Current.Windows)
+                    {
+                        var oc = other.Content as FrameworkElement;
+                        if (ReferenceEquals(other, w) || oc == null || !other.IsVisible || oc.ActualWidth < 200 || other.Title == "SeleneLaunchCover") continue;
+                        dc.DrawRectangle(new VisualBrush(oc) { ViewboxUnits = BrushMappingMode.Absolute, Viewbox = new Rect(0, 0, oc.ActualWidth, oc.ActualHeight) }, null, new Rect(0, 0, pw, ph));   // (full-screen windows, as the main one)
+                    }
+                }
                 rtb.Render(dv);
                 var enc = new System.Windows.Media.Imaging.PngBitmapEncoder();
                 enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(rtb));
@@ -995,6 +1006,48 @@ namespace Selene
                 Log("dev shot: " + file + " (root opacity " + root.Opacity.ToString("0.00") + ")");
             }
             catch (Exception ex) { Log("dev shot failed: " + ex.Message); }
+        }
+        // dev key "click:<x>,<y>": a left click at that point of the window (as dev shots show it): down and up go through WPF's
+        // own mouse events, so whatever a real click would reach gets it (mouse coverage, #40)
+        public static void DevClick(string at)
+        {
+            try
+            {
+                var xy = at.Split(',');
+                var w = Application.Current.MainWindow;
+                var root = w != null ? w.Content as UIElement : null;
+                if (root == null || xy.Length != 2) return;
+                var hit = root.InputHitTest(new Point(double.Parse(xy[0], System.Globalization.CultureInfo.InvariantCulture), double.Parse(xy[1], System.Globalization.CultureInfo.InvariantCulture))) as UIElement;
+                var chain = new List<string>();
+                for (DependencyObject d = hit; d != null && chain.Count < 6; d = GetParent(d)) { var fe = d as FrameworkElement; chain.Add(d.GetType().Name + (fe != null && fe.Name != "" ? "'" + fe.Name + "'" : "") + (fe != null && fe.Tag is string ? "[" + fe.Tag + "]" : "")); }
+                Log("dev click " + at + ": " + (hit == null ? "nothing" : (hit is TextBlock ? "'" + ((TextBlock)hit).Text + "' " : "") + string.Join(" < ", chain.ToArray())));
+                if (hit == null) return;
+                foreach (var ev in new[] { Mouse.MouseDownEvent, Mouse.MouseUpEvent })
+                    hit.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left) { RoutedEvent = ev });
+            }
+            catch (Exception ex) { Log("dev click: " + ex.Message); }
+        }
+        [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool SetCursorPos(int x, int y);
+        [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern void mouse_event(uint flags, int dx, int dy, uint data, UIntPtr extra);
+        // dev key "rclick:<x>,<y>": a real Windows click at that point of the window (the cursor moves there): Windows' own input,
+        // as a person's mouse or finger (a visible run only: a hidden desktop has no pointer)
+        public static void DevRealClick(string at)
+        {
+            try
+            {
+                bool right = at.StartsWith("right:");
+                if (right) at = at.Substring(6);
+                var xy = at.Split(',');
+                var w = Application.Current.MainWindow;
+                var root = w != null ? w.Content as UIElement : null;
+                if (root == null || xy.Length != 2) return;
+                var p = root.PointToScreen(new Point(double.Parse(xy[0], System.Globalization.CultureInfo.InvariantCulture), double.Parse(xy[1], System.Globalization.CultureInfo.InvariantCulture)));
+                SetCursorPos((int)p.X, (int)p.Y);
+                mouse_event(right ? 0x0008u /* RIGHTDOWN */ : 0x0002u /* LEFTDOWN */, 0, 0, 0, UIntPtr.Zero);
+                mouse_event(right ? 0x0010u /* RIGHTUP */ : 0x0004u /* LEFTUP */, 0, 0, 0, UIntPtr.Zero);
+                Log("dev real click " + at + " at screen " + (int)p.X + "," + (int)p.Y);
+            }
+            catch (Exception ex) { Log("dev real click: " + ex.Message); }
         }
         public static void DevBlank()
         {
@@ -1030,6 +1083,132 @@ namespace Selene
                 Api.StartGame(g.Id);
             }
             catch (Exception ex) { Log("dev test game: " + ex.Message); }
+        }
+        // dev keys "addgame:<name>" (a visible installed game added), "playgame:<name>" (last played now), "favgame:<name>"
+        // (favorite flipped), "dropgame:<name>" (removed): Playnite's database changing under a running Selene (row sync, #101)
+        public static void DevGameChange(string what, string name)
+        {
+            try
+            {
+                var g = Api.Database.Games.FirstOrDefault(x => x.Name == name);
+                if (what == "add") { if (g == null) Api.Database.Games.Add(new Playnite.SDK.Models.Game(name) { IsInstalled = true, Added = DateTime.Now }); }
+                else if (g == null) { Log("dev game: no " + name); return; }
+                else if (what == "play") { g.LastActivity = DateTime.Now; g.Playtime += 600; Api.Database.Games.Update(g); }
+                else if (what == "fav") { g.Favorite = !g.Favorite; Api.Database.Games.Update(g); }
+                else if (what == "drop") Api.Database.Games.Remove(g.Id);
+                Log("dev game: " + what + " " + name);
+            }
+            catch (Exception ex) { Log("dev game: " + ex.Message); }
+        }
+        // dev key "details:<n>": the n-th game of Spotlight's row selected and its page opened, as the Details button does
+        public static void DevDetails(string n)
+        {
+            var row = LiveRow();
+            int k; int.TryParse(n, out k);
+            int idx = row != null ? FirstGameIndex(row) : -1;
+            if (idx < 0) { Log("dev details: no game"); return; }
+            idx = Math.Min(row.Items.Count - 1, idx + Math.Max(0, k));
+            while (idx > 0 && row.Items[idx] is RowPad) idx--;
+            row.SelectedIndex = idx;
+            OpenDetailsFromHome(row, row.SelectedItem, Window.GetWindow(row));
+        }
+        // dev key "fx?<name>": from the named element (or the focused one) up to the window, every effect, mask, cache, transform
+        // and layout rounding on the way: what draws a part of the screen through an extra surface (#107)
+        public static void DevEffects(string name)
+        {
+            var w = Application.Current.MainWindow;
+            DependencyObject d = string.IsNullOrEmpty(name) ? Keyboard.FocusedElement as DependencyObject : (w != null ? FindByName(w, name) : null);
+            if (d == null) { foreach (Window x in Application.Current.Windows) { d = FindByName(x, name); if (d != null) break; } }
+            if (d == null) { Log("dev fx: no " + name); return; }
+            for (int depth = 0; d != null && depth < 80; depth++, d = GetParent(d))
+            {
+                var u = d as UIElement; var fe = d as FrameworkElement;
+                if (u == null) continue;
+                var bits = new List<string>();
+                if (u.Effect != null) bits.Add("Effect=" + u.Effect.GetType().Name);
+                if (u.OpacityMask != null) bits.Add("Mask=" + u.OpacityMask.GetType().Name);
+                if (u.CacheMode != null) bits.Add("Cache");
+                if (u.Clip != null) bits.Add("Clip");
+                if (u.Opacity < 1) bits.Add("Opacity=" + u.Opacity.ToString("0.00"));
+                if (u.RenderTransform != null && !u.RenderTransform.Value.IsIdentity) bits.Add("RT=" + u.RenderTransform.Value.ToString());
+                if (fe != null && fe.LayoutTransform != null && !fe.LayoutTransform.Value.IsIdentity) bits.Add("LT=" + fe.LayoutTransform.Value);
+                if (fe != null && fe.UseLayoutRounding) bits.Add("Rounding");
+                if (u.SnapsToDevicePixels) bits.Add("Snaps");
+                if (fe != null && fe.ClipToBounds) bits.Add("ClipToBounds");
+                if (fe != null) bits.Add(string.Format("{0:0}x{1:0}", fe.ActualWidth, fe.ActualHeight) + (fe.Margin != default(Thickness) ? " m=" + fe.Margin : "") + (double.IsNaN(fe.Width) ? "" : " w=" + fe.Width) + (fe.MaxWidth < double.PositiveInfinity ? " maxw=" + fe.MaxWidth : ""));
+                var grid = d as Grid;
+                if (grid != null && grid.ColumnDefinitions.Count > 0) bits.Add("cols=" + string.Join("|", grid.ColumnDefinitions.Select(c => c.Width + "(" + c.ActualWidth.ToString("0") + ")").ToArray()));
+                var sv = d as ScrollViewer;
+                if (sv != null) bits.Add("hscroll=" + sv.HorizontalScrollBarVisibility);
+                var bg = d is Border ? ((Border)d).Background : d is Panel ? ((Panel)d).Background : d is Control ? ((Control)d).Background : null;
+                if (bg != null) bits.Add("bg=" + bg);
+                if (!u.IsVisible) bits.Add("HIDDEN");
+                try { if (PresentationSource.FromVisual(u) != null && depth == 0) bits.Add("screen=" + u.PointToScreen(new Point(0, 0))); } catch { }
+                var pop = d as System.Windows.Controls.Primitives.Popup;
+                if (pop != null) bits.Add("popup open=" + pop.IsOpen);
+                Log("dev fx " + depth + ": " + d.GetType().Name + (fe != null && fe.Name != "" ? " '" + fe.Name + "'" : "") + (bits.Count > 0 ? " " + string.Join(" ", bits.ToArray()) : ""));
+            }
+        }
+        // dev key "dropdown:<name>": that combo box (in any window) focused and opened, to look at its list
+        public static void DevDropDown(string name)
+        {
+            foreach (Window x in Application.Current.Windows)
+            {
+                var c = FindByName(x, name) as ComboBox;
+                if (c == null) continue;
+                c.Focus(); c.IsDropDownOpen = true;
+                Log("dev dropdown: " + name + " open=" + c.IsDropDownOpen + " items=" + c.Items.Count);
+                // the list as WPF draws it (screen captures miss popup windows), over a checkerboard so see-through shows
+                var combo = c;
+                c.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        var pop = combo.Template.FindName("Popup", combo) as System.Windows.Controls.Primitives.Popup;
+                        var child = pop != null ? pop.Child as FrameworkElement : null;
+                        if (child == null) { Log("dev dropdown: no popup child"); return; }
+                        int pw = (int)Math.Ceiling(child.ActualWidth) + 40, ph = (int)Math.Ceiling(child.ActualHeight) + 40;
+                        var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(pw, ph, 96, 96, PixelFormats.Pbgra32);
+                        var dv = new DrawingVisual();
+                        using (var dc = dv.RenderOpen())
+                        {
+                            for (int py = 0; py < ph; py += 10) for (int px = 0; px < pw; px += 10) dc.DrawRectangle(((px + py) / 10) % 2 == 0 ? Brushes.White : Brushes.Magenta, null, new Rect(px, py, 10, 10));
+                            dc.DrawRectangle(new VisualBrush(child), null, new Rect(20, 20, child.ActualWidth, child.ActualHeight));
+                        }
+                        rtb.Render(dv);
+                        var enc = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                        enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(rtb));
+                        var file = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "selene-shot-dropdown.png");
+                        using (var fs = System.IO.File.Create(file)) enc.Save(fs);
+                        Log("dev dropdown: drawn to " + file);
+                    }
+                    catch (Exception ex) { Log("dev dropdown: " + ex.Message); }
+                }), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                return;
+            }
+            Log("dev dropdown: no " + name);
+        }
+        // dev key "press:<n>": the n-th button (0-based, in tree order) of Playnite's top window over the main one, pressed as a
+        // click would (settings sections, dialog buttons): the pad path into those windows was unreliable in tests
+        public static void DevPress(string n)
+        {
+            int k; int.TryParse(n, out k);
+            Window top = null;
+            foreach (Window x in Application.Current.Windows) if (!ReferenceEquals(x, Application.Current.MainWindow) && x.IsVisible && x.ActualWidth > 200) top = x;
+            if (top == null) { Log("dev press: no window"); return; }
+            var found = FindAll(top, d => d is System.Windows.Controls.Primitives.ButtonBase && ((UIElement)d).IsVisible);
+            if (k < 0 || k >= found.Count) { Log("dev press: " + found.Count + " buttons"); return; }
+            var b = (System.Windows.Controls.Primitives.ButtonBase)found[k];
+            b.Focus();
+            // as a click: Click raised, then its command (OnClick does both; it's protected, so through reflection)
+            var click = typeof(System.Windows.Controls.Primitives.ButtonBase).GetMethod("OnClick", BindingFlags.NonPublic | BindingFlags.Instance);
+            if (click != null) click.Invoke(b, null); else if (b.Command != null && b.Command.CanExecute(b.CommandParameter)) b.Command.Execute(b.CommandParameter);
+            Log("dev press " + k + ": " + b.GetType().Name + " '" + b.Name + "' of " + found.Count);
+        }
+        public static void DevRowOrder()
+        {
+            Log("dev row: " + (games == null ? "none" : string.Join(" | ", games.Where(x => !(x is string) && !(x is RowPad)).Select(x => Convert.ToString(Prop(x, "Name"))).ToArray()))
+                + " | tab " + RowFilters[RowFilter] + " | selected " + Convert.ToString(LiveRow() != null && LiveRow().SelectedItem != null ? (Prop(LiveRow().SelectedItem, "Name") ?? LiveRow().SelectedItem) : null));
         }
         public static void DevFront()
         {
@@ -1377,6 +1556,10 @@ namespace Selene
             // LB/RB rebuilt the page: its new backgrounds / cards need the same treatment as the first load
             var rw = Window.GetWindow(row);
             if (rw != null) { ReplaceFadeImages(rw); CacheNewsCards(rw); RenderFilterTabs(rw); }
+            // the pictures under the row fade out above the button hints (until Down slides them up). Set here too: with the intro
+            // and Who's playing? both off the sign-in layer never closes, so the hook on its closing never ran and the screenshot
+            // strip sat hard under the hints. (Once per strip: a second call does nothing.)
+            if (row.IsLoaded) HookNewsSlide(row); else row.Loaded += (s, a) => HookNewsSlide(row);
             // (no row.IsVisibleChanged hook: LB/RB page switches hide/show the row and must not replay anything)
             // the old theme opens the hub at startup behind the login screen ("AcceuilSettings"), so the row is already
             // visible when the user presses A: replay the intro when the login screen goes away.
@@ -4726,8 +4909,122 @@ namespace Selene
                 gameContainer = cc;
                 RebuildGames(row);
                 Log("own game list: " + games.Count + " games");
+                HookRowSync(gameSource);
                 return;
             }
+        }
+
+        // ---- the row follows the library: games added or removed (a library update), played, favorited, installed or hidden
+        // show up without a filter switch or a restart (#101, #39). The row was only built at start, at sign-in and on a filter
+        // switch. A burst of changes (a library update, a media download touching every game) becomes one rebuild once it's
+        // over, and only while the home is in view and nothing is being moved; the selected tile stays selected.
+        private static System.Windows.Threading.DispatcherTimer rowSyncTimer;
+        private static string rowSyncWhy;
+        private static bool rowSyncHooked;
+        private static System.Collections.Specialized.INotifyCollectionChanged rowSyncSource;
+
+        private static void HookRowSync(IEnumerable source)
+        {
+            try
+            {
+                var observable = source as System.Collections.Specialized.INotifyCollectionChanged;
+                if (observable != null && !ReferenceEquals(rowSyncSource, observable))
+                {
+                    if (rowSyncSource != null) rowSyncSource.CollectionChanged -= OnRowSourceChanged;
+                    observable.CollectionChanged += OnRowSourceChanged;
+                    rowSyncSource = observable;
+                }
+                if (rowSyncHooked || Api == null) return;
+                rowSyncHooked = true;
+                Api.Database.Games.ItemCollectionChanged += (s, e) =>
+                {
+                    int added = e.AddedItems != null ? e.AddedItems.Count : 0, removed = e.RemovedItems != null ? e.RemovedItems.Count : 0;
+                    if (added + removed > 0) QueueRowSync(added + " added, " + removed + " removed");
+                };
+                Api.Database.Games.ItemUpdated += (s, e) =>
+                {
+                    if (e.UpdatedItems == null) return;
+                    foreach (var u in e.UpdatedItems)
+                        if (RowRelevantChange(u.OldData, u.NewData)) { QueueRowSync("game changed: " + (u.NewData != null ? u.NewData.Name : "?")); return; }
+                };
+            }
+            catch (Exception ex) { Log("row sync: " + ex.Message); }
+        }
+
+        private static void OnRowSourceChanged(object sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+        {
+            if (e.Action != System.Collections.Specialized.NotifyCollectionChangedAction.Move) QueueRowSync("library list " + e.Action.ToString().ToLowerInvariant());
+        }
+
+        // what decides whether a game is in a tab and where: art and descriptions changing (downloads) don't rebuild the row
+        private static bool RowRelevantChange(Playnite.SDK.Models.Game a, Playnite.SDK.Models.Game b)
+        {
+            if (a == null || b == null) return a != b;
+            if (a.LastActivity != b.LastActivity || a.Favorite != b.Favorite || a.IsInstalled != b.IsInstalled || a.Hidden != b.Hidden
+                || a.Playtime != b.Playtime || a.Name != b.Name || a.SortingName != b.SortingName) return true;
+            if (!SameIds(a.CategoryIds, b.CategoryIds)) return true;
+            // one of Playnite's presets as the tab: it can filter on anything (tags, sources, completion...)
+            return IsPresetTab(RowFilters[RowFilter]) && (!SameIds(a.TagIds, b.TagIds) || !SameIds(a.PlatformIds, b.PlatformIds)
+                || a.SourceId != b.SourceId || a.CompletionStatusId != b.CompletionStatusId);
+        }
+
+        private static bool SameIds(List<Guid> a, List<Guid> b)
+        {
+            if (a == null || a.Count == 0) return b == null || b.Count == 0;
+            return b != null && a.SequenceEqual(b);
+        }
+
+        public static void QueueRowSync(string why)
+        {
+            var app = Application.Current;
+            if (app == null) return;
+            app.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                rowSyncWhy = why;
+                if (rowSyncTimer == null)
+                {
+                    rowSyncTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1200) };
+                    rowSyncTimer.Tick += (s, e) => SyncRow();
+                }
+                rowSyncTimer.Stop();   // (restarted: a burst ends 1.2 s after its last change)
+                rowSyncTimer.Start();
+            }));
+        }
+
+        private static void SyncRow()
+        {
+            var row = LiveRow();
+            if (row == null || games == null || gameSource == null) { rowSyncTimer.Stop(); return; }
+            var w = Window.GetWindow(row);
+            // not now (keeps waiting): a game running or starting, Playnite hidden, the row off screen, a tile being moved,
+            // the 16:9 card open, a key held
+            if (launching || Quitting || w == null || !w.IsVisible || !row.IsVisible || movingGame != null || movingCard != null || previewShowing
+                || Keyboard.IsKeyDown(Key.Left) || Keyboard.IsKeyDown(Key.Right)) return;
+            rowSyncTimer.Stop();
+            try
+            {
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                var selected = row.SelectedItem;
+                bool hadFocus = row.IsKeyboardFocusWithin;
+                if (IsPresetTab(RowFilters[RowFilter])) { presetGamesFor = Guid.Empty; PreparePresetFilter(); }
+                var before = games;
+                RebuildGames(row);
+                if (ReferenceEquals(before, games)) return;   // the same games in the same order: nothing to do (RebuildGames swaps the list otherwise)
+                row.UpdateLayout();
+                int idx = selected != null && !(selected is RowPad) ? row.Items.IndexOf(selected) : -1;
+                if (idx < 0) idx = FirstGameIndex(row);
+                if (idx < 0) { Log("row sync (" + rowSyncWhy + "): row empty"); return; }
+                row.SelectedIndex = idx;
+                var sv = FindChild<ScrollViewer>(row);
+                if (sv != null) sv.ScrollToHorizontalOffset(Math.Max(0, idx - AnchorSlot));
+                row.UpdateLayout();
+                var c = row.ItemContainerGenerator.ContainerFromIndex(idx) as UIElement;
+                if (c != null && hadFocus) c.Focus();
+                EnsureTileCaches(row);
+                ScheduleTitle(row, 200);
+                Log("row sync (" + rowSyncWhy + "): " + games.Count(g => !(g is string) && !(g is RowPad)) + " games, " + sw.ElapsedMilliseconds + " ms");
+            }
+            catch (Exception ex) { Log("row sync: " + ex.Message); }
         }
 
         private static object Prop(object o, string name)
@@ -4854,6 +5151,19 @@ namespace Selene
         // LT/RT: the row is rebuilt on every press (~10-40 ms now that tiles are light). Grouping quick presses made the
         // filter look selected twice when the delayed rebuild landed after the burst.
         private static int filterDir;
+
+        // a filter tab clicked: straight to it, sliding in from its side
+        private static void PickRowFilter(int i)
+        {
+            var row = LiveRow();
+            if (row == null || i == RowFilter || i < 0 || i >= RowFilters.Length || movingCard != null || movingGame != null) return;
+            Ui.Tick();
+            int dir = Math.Sign(i - RowFilter);
+            rowFilter = i;
+            try { System.IO.File.WriteAllText(RowFilterFile, RowFilters[rowFilter]); } catch { }
+            filterDir = dir;
+            ApplyRowFilter(row);
+        }
 
         private static void CycleRowFilter(int dir)
         {
@@ -4987,10 +5297,14 @@ namespace Selene
         }
 
         private static void RenderFilterTabs(Window w) { RenderFilterTabs(w, 0); }
+        public static void RedrawFilterTabs() { var w = Application.Current.MainWindow; if (w != null) RenderFilterTabs(w, 0); }
 
         // at most this many tabs show; more (a long list of Playnite presets) slide past in a strip that fades out at the edge
-        // that has more, so the bar never fills the whole top of the screen (#71)
-        private const int VisibleTabs = 5;
+        // that has more, so the bar never fills the whole top of the screen (#71). Spotlight > Visible filter tabs sets how many (#103).
+        private static int VisibleTabs
+        {
+            get { int n; var v = Features.Value("visibletabs"); return v == "all" ? int.MaxValue : int.TryParse(v, out n) && n >= 3 ? n : 5; }
+        }
         private static double tabStripAt;
         private static string tabStripSet;
         private static bool tabFadeLeft, tabFadeRight;
@@ -5018,6 +5332,10 @@ namespace Selene
                     VerticalAlignment = VerticalAlignment.Center, RenderTransformOrigin = new Point(0.5, 0.5)
                 };
                 strip.Children.Add(tab);
+                // a click picks the tab (mouse and touch, #40)
+                int pick = i;
+                tab.Cursor = Cursors.Hand;
+                tab.MouseLeftButtonUp += (s, e) => { e.Handled = true; PickRowFilter(pick); };
                 if (on && dir != 0)
                 {
                     var pop = new ScaleTransform(0.86, 0.86);
@@ -5040,7 +5358,8 @@ namespace Selene
             strip.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
             var widths = strip.Children.Cast<UIElement>().Select(c => c.DesiredSize.Width).ToArray();
             double view = 0, total = widths.Sum();
-            for (int i = 0; i + VisibleTabs <= widths.Length; i++) view = Math.Max(view, widths.Skip(i).Take(VisibleTabs).Sum());
+            int visible = VisibleTabs;
+            for (int i = 0; i + visible <= widths.Length; i++) view = Math.Max(view, widths.Skip(i).Take(visible).Sum());
             int sel = Math.Max(0, Math.Min(widths.Length - 1, RowFilter));
             double center = widths.Take(sel).Sum() + widths[sel] / 2;
             double at = Math.Max(0, Math.Min(total - view, center - view / 2));
@@ -7151,9 +7470,59 @@ namespace Selene
             return result;
         }
 
+        // A window the game can really be shown in: still there, visible (or minimised by Selene), not cloaked, and big. The
+        // window seen during the launch was often a splash or launcher window that hid itself once the real one opened
+        // (Unreal games, Stray): bringing that one forward failed and Selene came straight back (#66).
+        private static bool UsableGameWindow(IntPtr h)
+        {
+            if (h == IntPtr.Zero || !IsWindow(h)) return false;
+            if (!IsWindowVisible(h) && !IsIconic(h)) return false;
+            int cloaked;
+            if (DwmGetWindowAttribute(h, 14 /* DWMWA_CLOAKED */, out cloaked, 4) == 0 && cloaked != 0) return false;
+            RECT r;
+            if (IsIconic(h)) return true;   // (a frozen, minimised game: its size isn't known until restored)
+            return GetWindowRect(h, out r) && r.Right - r.Left >= 640 && r.Bottom - r.Top >= 360;
+        }
+
+        // the running game's biggest usable window, over all its processes (the game folder's and the one Playnite tracks)
+        private static IntPtr BestGameWindow()
+        {
+            try
+            {
+                var g = RunningGame();
+                if (g == null) return IntPtr.Zero;
+                var pids = new HashSet<uint>();
+                foreach (var pid in LocalGames.ProcessesInGameFolder(g)) pids.Add((uint)pid);
+                if (gameWindow != IntPtr.Zero && IsWindow(gameWindow)) { uint gp; GetWindowThreadProcessId(gameWindow, out gp); if (gp != 0) pids.Add(gp); }
+                if (pids.Count == 0) return IntPtr.Zero;
+                IntPtr best = IntPtr.Zero; long bestArea = 0;
+                EnumWindows((h, l) =>
+                {
+                    uint wp;
+                    GetWindowThreadProcessId(h, out wp);
+                    if (!pids.Contains(wp) || !UsableGameWindow(h)) return true;
+                    if ((GetWindowLong(h, -20) & 0x80) != 0) return true;   // WS_EX_TOOLWINDOW
+                    RECT r; long area = GetWindowRect(h, out r) ? (long)(r.Right - r.Left) * (r.Bottom - r.Top) : 0;
+                    if (IsIconic(h)) area = 1;   // known to be the game's, size unknown: kept as a last choice
+                    if (area > bestArea) { bestArea = area; best = h; }
+                    return true;
+                }, IntPtr.Zero);
+                return best;
+            }
+            catch { return IntPtr.Zero; }
+        }
+
         private static bool CanReturnToGame()
         {
             if (!AnyGameRunning()) return false;
+            if (UsableGameWindow(gameWindow)) return true;
+            var better = BestGameWindow();
+            if (better != IntPtr.Zero)
+            {
+                Log("game window: " + WindowInfo(gameWindow) + " isn't the game's screen any more -> " + WindowInfo(better));
+                gameWindow = better;
+                return true;
+            }
             if (gameWindow != IntPtr.Zero && IsWindow(gameWindow)) return true;
             // the game's window was lost track of (B pressed while it loaded: the loading screen went, the game went on starting)
             // while the game runs: found again from its processes, so Resume and Home can still go back to it
@@ -7353,6 +7722,7 @@ namespace Selene
                     attempt++;
                     bool ok = GetForegroundWindow() == target;
                     if (!ok && attempt == 1) { ForceForeground(target); return; }
+                    if (!ok && attempt == 2) { var other = BestGameWindow(); if (other != IntPtr.Zero && other != target) { Log("guide: game window " + WindowInfo(target) + " didn't come forward, trying " + WindowInfo(other)); target = other; gameWindow = other; ForceForeground(other); return; } }   // (#66)
                     if (!ok && attempt < 4) return;
                     verify.Stop();
                     if (snapAdorner == ad) RemoveSnapAdorner();
@@ -7392,6 +7762,7 @@ namespace Selene
                     attempt++;
                     bool ok = GetForegroundWindow() == target;
                     if (!ok && attempt == 1) { ForceForeground(target); return; }
+                    if (!ok && attempt == 2) { var other = BestGameWindow(); if (other != IntPtr.Zero && other != target) { Log("guide: game window " + WindowInfo(target) + " didn't come forward, trying " + WindowInfo(other)); target = other; gameWindow = other; ForceForeground(other); return; } }   // (#66)
                     verify.Stop();
                     Log("guide -> back to game (foreground=" + ok + ", attempts=" + attempt + ", in front: " + WindowInfo(GetForegroundWindow()) + ")");
                     if (!ok && w.IsActive) PlayEnterAnimation(w);

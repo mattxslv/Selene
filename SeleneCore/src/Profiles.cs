@@ -241,6 +241,7 @@ namespace Selene
             bool now = !p.Favorites.Remove(gameId);
             if (now) p.Favorites.Add(gameId);
             Save();
+            HomeNav.QueueRowSync("favorite changed");   // the Favorites tab shows it without a filter switch (#39)
             return now;
         }
 

@@ -17,7 +17,9 @@ namespace Selene
     public class ActivityScreen : Screen
     {
         private const double Side = 96, TileW = 150, TileH = 200, Pitch = TileW + 22, RowTop = 330, RowPitch = 318;
-        private const int PerRow = 20, Visible = 2, Across = 10;   // games a row holds; rows and covers on screen at once
+        private const int PerRow = 20, Visible = 2;   // games a row holds; rows on screen at once
+        // covers on screen at once across a row: 10 at 16:9, 9 on a handheld, more on an ultrawide (Ui.ViewWidth)
+        private static int Across { get { return Math.Max(4, Math.Min(PerRow, (int)((Ui.ViewWidth - Side - 40) / Pitch))); } }
         private readonly List<List<Game>> rows = new List<List<Game>>();
         private readonly List<List<Tile>> tiles = new List<List<Tile>>();
         private readonly List<string> rowNames = new List<string>();
@@ -132,11 +134,11 @@ namespace Selene
                 if (beforeSecs > 0)
                 {
                     int diff = (int)Math.Round(100.0 * ((double)monthSecs - beforeSecs) / beforeSecs);
-                    string before = DateTime.Today.AddMonths(-1).ToString("MMMM");
+                    string before = GameFacts.Date(DateTime.Today.AddMonths(-1), "MMMM");
                     about += "  \u00B7  " + (diff == 0 ? "as much as " + before : Math.Abs(diff) + "% " + (diff > 0 ? "more" : "less") + " than " + before);
                 }
                 if (monthGames.Count > 0) about += "  \u00B7  most in " + monthGames[0].Name;
-                AddRow(DateTime.Today.ToString("MMMM") + " so far", monthGames, g => GameFacts.Hours(monthNow[g.Id]), null, about);
+                AddRow(GameFacts.Date(DateTime.Today, "MMMM") + " so far", monthGames, g => GameFacts.Hours(monthNow[g.Id]), null, about);
             }
                         AddRow("Most played", most, g => GameFacts.Hours(GameFacts.Seconds(g)), null);
             AddRow("Played last", recent, g => GameFacts.Ago(GameFacts.LastPlayed(g)), null);
@@ -273,6 +275,8 @@ namespace Selene
             {
                 var g = games[i];
                 var t = GameFacts.CoverTile(g, TileW, TileH);
+                int clickedCol = i;
+                t.Click = () => { if (zone == r && col == clickedCol) { Handle("A"); return; } zone = r; col = clickedCol; Ui.Tick(); ShowFocus(true); };   // first click focuses, second opens (#40)
                 var item = new StackPanel { Width = TileW, Margin = new Thickness(0, 0, Pitch - TileW, 0) };
                 item.Children.Add(t.Root);
                 // under it: just the line (the cover shows the name), low enough that the focus ring stays clear; the bar under that
@@ -291,7 +295,7 @@ namespace Selene
             // the lane the row slides in: cut off just left of the margin with a soft edge (the covers slid past hung over the
             // screen's edge), room around for the focus ring
             const double Room = 26;
-            var lane = new Grid { ClipToBounds = true, Width = 1920 - Side + Room, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(-Room, -Room, 0, -Room) };
+            var lane = new Grid { ClipToBounds = true, Width = Ui.ViewWidth - Side + Room, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(-Room, -Room, 0, -Room) };
             var edge = new LinearGradientBrush { MappingMode = BrushMappingMode.Absolute, StartPoint = new Point(0, 0), EndPoint = new Point(8, 0) };
             edge.GradientStops.Add(new GradientStop(Color.FromArgb(0, 0, 0, 0), 0));
             edge.GradientStops.Add(new GradientStop(Colors.Black, 1));
@@ -432,7 +436,7 @@ namespace Selene
         // the Activity card on Spotlight: how the week went, and the games played last as pictures (Down goes into them)
         public static void FillCard(List<Game> games, int week, ulong total)
         {
-            var recent = games.Where(g => GameFacts.LastPlayed(g).HasValue).OrderByDescending(g => GameFacts.LastPlayed(g).Value).Take(4).ToList();
+            var recent = games.Where(g => GameFacts.LastPlayed(g).HasValue).OrderByDescending(g => GameFacts.LastPlayed(g).Value).Take(Ui.CardTiles).ToList();
             var most = games.Where(g => GameFacts.Seconds(g) > 0).OrderByDescending(GameFacts.Seconds).FirstOrDefault();
             string headline = week == 0 ? "Nothing played this week" : week == 1 ? "1 game this week" : week + " games this week";
             string about = total < 3600 ? "Your play time, most played and last played games show here." : (int)TimeSpan.FromSeconds(total).TotalHours + " hours in all";

@@ -23,8 +23,12 @@ namespace Selene
         private const string Service = "https://selene-report.mattxslv.workers.dev";
         private const string Form = "https://github.com/mattxslv/Selene/issues/new?template=bug_report.yml";
 
-        private static readonly string[] Kinds = { "Something doesn't work", "Something looks wrong", "Selene froze or closed", "Controller or navigation", "Sound or music", "Other" };
-        private static readonly int[] KindIcons = { 0xe868 /* bug */, 0xe3ad /* broken image */, 0xeb3b /* frozen */, 0xea28 /* controller */, 0xe050 /* sound */, 0xe5d3 /* more */ };
+        // the last one isn't a problem: an idea goes to GitHub Discussions (Ideas), where others can vote for it, with no logs
+        private const string IdeaKind = "I have an idea";
+        private const string IdeaForm = "https://github.com/mattxslv/Selene/discussions/new?category=ideas";
+        private static readonly string[] Kinds = { "Something doesn't work", "Something looks wrong", "Selene froze or closed", "Controller or navigation", "Sound or music", "Other", IdeaKind };
+        private static readonly int[] KindIcons = { 0xe868 /* bug */, 0xe3ad /* broken image */, 0xeb3b /* frozen */, 0xea28 /* controller */, 0xe050 /* sound */, 0xe5d3 /* more */, 0xe90f /* lightbulb */ };
+        private bool Idea { get { return Kinds[kind] == IdeaKind; } }
         private static readonly string[] Places = { "Starting Playnite", "Spotlight", "Collection", "A game's page", "Store", "Captures", "Settings or menu", "Starting or playing a game", "Quitting", "Somewhere else" };
         private static readonly int[] PlaceIcons = { 0xeb9b, 0xe88a, 0xe8f1, 0xe88e, 0xea12, 0xe412, 0xe8b8, 0xe037, 0xe879, 0xe5d3 };
 
@@ -119,11 +123,11 @@ namespace Selene
         {
             step = to;
             var old = stepRoot;
-            stepRoot = to == 0 ? Choices(Kinds, KindIcons, 3, 300, 150, kind)
+            stepRoot = to == 0 ? Choices(Kinds, KindIcons, 4, 270, 150, kind)
                      : to == 1 ? Choices(Places, PlaceIcons, 5, 236, 132, place)
                      : to == 2 ? NotePage()
                      : stepRoot;
-            stepLine.Text = to == 0 ? "Step 1 of 3  \u00B7  What went wrong?" : to == 1 ? "Step 2 of 3  \u00B7  Where were you?" : to == 2 ? "Step 3 of 3  \u00B7  Anything to add?" : "";
+            stepLine.Text = to == 0 ? "Step 1 of 3  \u00B7  What is it about?" : to == 1 ? (Idea ? "Step 2 of 3  \u00B7  Where would it go?" : "Step 2 of 3  \u00B7  Where were you?") : to == 2 ? (Idea ? "Step 3 of 3  \u00B7  Your idea" : "Step 3 of 3  \u00B7  Anything to add?") : "";
             if (ReferenceEquals(old, stepRoot)) return;
             stage.Children.Add(stepRoot);
             if (old != null) { var leaving = old; Ui.Slide(leaving, 0, -dir * 90, 1, 0, 220, () => stage.Children.Remove(leaving)); }
@@ -169,10 +173,10 @@ namespace Selene
             noteText = new TextBlock { FontSize = 21, FontFamily = Ui.Body, TextWrapping = TextWrapping.Wrap };
             noteBox = new Border { Child = noteText, MinHeight = 96, CornerRadius = new CornerRadius(18), Padding = new Thickness(24, 18, 24, 18), Background = Ink.Brush("SeleneInkColor", 0.08), BorderBrush = Ink.Brush("SeleneFocusColor", 0.7), BorderThickness = new Thickness(2) };
             col.Children.Add(noteBox);
-            noteHint = new TextBlock { Text = "Nothing to add? Press Send as it is, with A on it or the Start button.", FontSize = 16, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.6), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 12, 0, 0) };
+            noteHint = new TextBlock { Text = Idea ? "Say what you'd like and when you'd use it, then press Send (the Start button)." : "Nothing to add? Press Send as it is, with A on it or the Start button.", FontSize = 16, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.6), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 12, 0, 0) };
             col.Children.Add(noteHint);
-            // what goes with it: the full logs are public on GitHub with the issue
-            col.Children.Add(new TextBlock { Text = "Sent with it, public on GitHub: Selene's and Playnite's logs, your add-ons, settings and displays (your user name removed).", FontSize = 14, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.45), HorizontalAlignment = noteHint.HorizontalAlignment, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) });
+            // what goes with it: the full logs are public on GitHub with the issue (an idea goes without them)
+            col.Children.Add(new TextBlock { Text = Idea ? "Shared in Selene's Ideas on GitHub, where others can vote for it. Only your Selene and Playnite versions go with it." : "Sent with it, public on GitHub: Selene's and Playnite's logs, your add-ons, settings and displays (your user name removed).", FontSize = 14, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.45), HorizontalAlignment = noteHint.HorizontalAlignment, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) });
             pad = new KeyPad("Send");
             pad.Root.Margin = new Thickness(0, 20, 0, 0);
             pad.Typed = Type;
@@ -238,7 +242,7 @@ namespace Selene
         private void ShowNote()
         {
             bool empty = note.Length == 0;
-            noteText.Text = empty ? "What happened? A few words help a lot (optional)." : note + "\u258F";
+            noteText.Text = empty ? (Idea ? "What would you like Selene to do?" : "What happened? A few words help a lot (optional).") : note + "\u258F";
             noteText.Foreground = Ink.Brush("SeleneInkColor", empty ? 0.45 : 0.95);
             if (noteHint != null) noteHint.Visibility = empty ? Visibility.Visible : Visibility.Hidden;
             if (pad != null) pad.After(note);
@@ -350,6 +354,16 @@ namespace Selene
                 string error = null;
                 try
                 {
+                    if (report["category"] as string == IdeaKind)
+                    {
+                        // an idea: no logs (they'd be public for nothing), straight to the service
+                        var sent = Call(path, report);
+                        object okIdea, errIdea;
+                        if (sent.TryGetValue("ok", out okIdea) && okIdea is bool && (bool)okIdea) answer = sent;
+                        else error = sent.TryGetValue("error", out errIdea) ? errIdea as string : "unknown";
+                        dispatcher.BeginInvoke(new Action(() => done(answer, error)));
+                        return;
+                    }
                     var seleneLog = ReadLines(Path.Combine(Path.GetTempPath(), "selene.log"));
                     var playniteLog = ReadLines(HomeNav.Api != null ? Path.Combine(HomeNav.Api.Paths.ConfigurationPath, "playnite.log") : "");
                     // this session only (from Selene's start), the problems once each with how often
@@ -496,17 +510,18 @@ namespace Selene
             var badge = new Border { Width = 96, Height = 96, CornerRadius = new CornerRadius(48), HorizontalAlignment = HorizontalAlignment.Center, Background = ok ? Ink.Brush("SeleneFocusColor") : Ink.Brush("SeleneInkColor", 0.14) };
             badge.Child = Ui.Glyph(Ui.Icon(ok ? 0xe876 : 0xe000), Ui.Icons, 52, ok ? Ink.Brush("SeleneOnFocusColor") : Ink.Brush("SeleneInkColor"));
             card.Children.Add(badge);
-            card.Children.Add(new TextBlock { Text = ok ? "Thanks, report #" + number + " is sent" : "Couldn't send it", FontSize = 38, FontFamily = Ui.Display, Foreground = Ink.Brush("SeleneInkColor"), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 26, 0, 0) });
+            card.Children.Add(new TextBlock { Text = ok ? (Idea ? "Thanks, your idea is shared" : "Thanks, report #" + number + " is sent") : "Couldn't send it", FontSize = 38, FontFamily = Ui.Display, Foreground = Ink.Brush("SeleneInkColor"), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 26, 0, 0) });
             card.Children.Add(new TextBlock
             {
-                Text = ok ? "Scan the code to see it on GitHub. Adding screenshots or comments there needs a free GitHub account."
+                Text = ok && Idea ? "Scan the code to see it on GitHub, where others can vote for it. Commenting there needs a free GitHub account."
+                     : ok ? "Scan the code to see it on GitHub. Adding screenshots or comments there needs a free GitHub account."
                      : error == "slow down" ? "That's a few reports in a row. Try again in an hour, or scan the code to report on GitHub."
                      : "No internet, maybe. Scan the code to report on GitHub instead.",
                 FontSize = 20, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.65), HorizontalAlignment = HorizontalAlignment.Center, TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap, MaxWidth = 700, Margin = new Thickness(0, 10, 0, 0)
             });
             try
             {
-                var link = ok ? url : Form + "&selene=" + Uri.EscapeDataString(Brand.Version) + "&playnite=" + Uri.EscapeDataString(PlayniteVersion());
+                var link = ok ? url : Idea ? IdeaForm : Form + "&selene=" + Uri.EscapeDataString(Brand.Version) + "&playnite=" + Uri.EscapeDataString(PlayniteVersion());
                 var code = new Image { Source = new QrCode(link).Picture(), Width = 230, Height = 230 };
                 RenderOptions.SetEdgeMode(code, EdgeMode.Aliased);
                 card.Children.Add(new Border { Child = code, Background = Brushes.White, CornerRadius = new CornerRadius(18), Padding = new Thickness(8), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 30, 0, 0) });

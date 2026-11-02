@@ -225,8 +225,20 @@ namespace Selene
                 else if (step[1] == "collection") SeleneShell.ShowLibrary();
                 else if (step[1].StartsWith("testgame:")) HomeNav.DevTestGame(step[1].Substring(9));
                 else if (step[1] == "refresh") HomeNav.ScreenRefresh("dev key");
+                else if (step[1].StartsWith("addgame:") || step[1].StartsWith("playgame:") || step[1].StartsWith("favgame:") || step[1].StartsWith("dropgame:"))
+                { int c = step[1].IndexOf(':'); HomeNav.DevGameChange(step[1].Substring(0, c - 4), step[1].Substring(c + 1).Replace('_', ' ')); }
+                else if (step[1] == "row?") HomeNav.DevRowOrder();
+                else if (step[1].StartsWith("press:")) HomeNav.DevPress(step[1].Substring(6));
+                else if (step[1] == "textinput") Application.Current.Dispatcher.BeginInvoke(new Action(() => { var r = HomeNav.Api.Dialogs.SelectString("Type something", "Selene", "abc"); HomeNav.Log("dev textinput: " + r.Result + " '" + r.SelectedString + "'"); }));
+                else if (step[1].StartsWith("dropdown:")) HomeNav.DevDropDown(step[1].Substring(9));
+                else if (step[1] == "playnitesettings") Application.Current.Dispatcher.BeginInvoke(new Action(PlayniteMenu.OpenSettings));   // (it waits until closed: the next keys run meanwhile)
+                else if (step[1].StartsWith("fx?")) HomeNav.DevEffects(step[1].Substring(3));
+                else if (step[1].StartsWith("details:")) HomeNav.DevDetails(step[1].Substring(8));
+                else if (step[1].StartsWith("click:")) HomeNav.DevClick(step[1].Substring(6));
+                else if (step[1].StartsWith("rclick:")) HomeNav.DevRealClick(step[1].Substring(7));
                 else if (step[1] == "screen:extensions") OpenWith(() => GameOptionsScreen.Extensions());
                 else if (step[1] == "screen:currency") OpenWith(() => new StoreCurrencyScreen(false, null));
+                else if (step[1] == "screen:report") OpenWith(() => new ReportScreen(null));
                 else if (step[1] == "screen:games") OpenWith(() => new SettingsScreen(false, "Games", "gamesget"));
                 else if (step[1].StartsWith("screen:settings:")) { var group = step[1].Substring(16); OpenWith(() => new SettingsScreen(false, group, null)); }
                 else if (step[1] == "minimize" || step[1] == "restore") { var mw = Application.Current.MainWindow; if (mw != null) { mw.WindowState = step[1] == "minimize" ? WindowState.Minimized : WindowState.Normal; HomeNav.Log("dev lifecycle: " + step[1] + " state=" + mw.WindowState); } }   // lifecycle runs (tools/perf-bench.ps1)

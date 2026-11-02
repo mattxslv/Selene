@@ -137,4 +137,7 @@
     </LinearGradientBrush>
     
     <SolidColorBrush x:Key="WarningBrush" Color="#ff6b6b" />
+    <!-- widths that follow the screen's shape (Selene Core sets them from Playnite's layout width; these are 16:9's) -->
+    <sys:Double x:Key="SeleneCardWidth">1760</sys:Double>
+    <sys:Double x:Key="SeleneShotStripWidth">1788</sys:Double>
 </ResourceDictionary>

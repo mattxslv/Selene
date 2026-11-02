@@ -436,6 +436,9 @@ namespace Selene
             for (int i = 0; i < l.Entries.Count; i++)
             {
                 var row = Build(l.Entries[i]);
+                int at = i;
+                // a click is the row: focused and chosen, as A (#40)
+                row.MouseLeftButtonUp += (sender, args) => { args.Handled = true; if (ask != null || levels.Peek() != l) return; l.Index = at; ShowFocus(); Handle("A"); };
                 list.Children.Add(row);
                 rows.Add(row);
                 if (animate && i < 10) Ui.Rise(row, 30 + i * 35, 12, 260);

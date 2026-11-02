@@ -1,6 +1,9 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
+    <!-- A number along a line, as Selene settings draws its sliders: a thin rounded track, filled up to a round knob. Focused,
+         the knob takes the focus color and grows a little; no box around it (the stock square outline was cut off at the
+         edge of Playnite's settings and read as generic, #44). -->
     <Style x:Key="SliderTrackButton" TargetType="{x:Type RepeatButton}">
         <Setter Property="SnapsToDevicePixels" Value="True" />
         <Setter Property="OverridesDefaultStyle" Value="true" />
@@ -19,9 +22,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Thumb">
-                    <Rectangle  Width="{TemplateBinding Width}" Height="Auto"
-                                Fill="{TemplateBinding Foreground}" />
-          
+                    <Ellipse Width="22" Height="22" Fill="{TemplateBinding Foreground}" />
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
@@ -31,46 +32,54 @@
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="FocusVisualStyle" Value="{x:Null}" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
-        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource SeleneInkBrush}" />
         <Setter Property="HorizontalAlignment" Value="Stretch" />
         <Setter Property="Height" Value="38" />
         <Setter Property="Padding" Value="0" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Slider">
-                    <Grid Background="{TemplateBinding Background}">
-                        <Border Height="6" Background="{DynamicResource ControlBackgroundBrush}" />
-                        <Border Height="6" VerticalAlignment="Center" HorizontalAlignment="Left"
-                                Background="{DynamicResource GlyphBrush}" 
+                    <Grid Background="{TemplateBinding Background}" Margin="11,0,11,0">
+                        <Border Height="6" CornerRadius="3" Background="{DynamicResource SeleneInk25Brush}" />
+                        <Border Height="6" CornerRadius="3" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                Background="{DynamicResource GlyphBrush}"
                                 Width="{Binding ActualWidth, ElementName=ButtonDecrease}" />
-                        <Track Grid.Row="1" x:Name="PART_Track" Margin="0,3,0,3" >
+                        <Track x:Name="PART_Track" Margin="-11,0,-11,0">
                             <Track.Thumb>
-                                <Thumb Width="8" Foreground="{TemplateBinding Foreground}"
-                                       Style="{DynamicResource SliderThumb}"/>
+                                <Thumb x:Name="Knob" Width="22" Height="22" Foreground="{TemplateBinding Foreground}" Style="{DynamicResource SliderThumb}" RenderTransformOrigin="0.5,0.5">
+                                    <Thumb.RenderTransform><ScaleTransform x:Name="KnobGrow" ScaleX="1" ScaleY="1" /></Thumb.RenderTransform>
+                                </Thumb>
                             </Track.Thumb>
                             <Track.DecreaseRepeatButton>
-                                <RepeatButton x:Name="ButtonDecrease"
-                                              Style="{StaticResource SliderTrackButton}"
-                                              Command="Slider.DecreaseLarge" />
+                                <RepeatButton x:Name="ButtonDecrease" Style="{StaticResource SliderTrackButton}" Command="Slider.DecreaseLarge" />
                             </Track.DecreaseRepeatButton>
                             <Track.IncreaseRepeatButton>
-                                <RepeatButton x:Name="ButtonIncrease"
-                                              Style="{StaticResource SliderTrackButton}"
-                                              Command="Slider.IncreaseLarge" />
+                                <RepeatButton x:Name="ButtonIncrease" Style="{StaticResource SliderTrackButton}" Command="Slider.IncreaseLarge" />
                             </Track.IncreaseRepeatButton>
                         </Track>
-                        <Border x:Name="BorderFocus" Margin="-3" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"
-                                BorderBrush="{DynamicResource SelectionBrush}"
-                                BorderThickness="3" Visibility="Hidden" />
                     </Grid>
                     <ControlTemplate.Triggers>
-                        <Trigger Property="IsFocused" Value="True">
-                            <Setter Property="Foreground" Value="{DynamicResource GlyphBrush}" />
-                            <Setter Property="Visibility" Value="Visible" TargetName="BorderFocus" />
-                        </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter Property="Foreground" Value="{DynamicResource GlyphBrush}" />
-                            <Setter Property="Visibility" Value="Visible" TargetName="BorderFocus" />
+                            <Setter Property="Foreground" Value="{DynamicResource SeleneFocusBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsFocused" Value="True">
+                            <Setter Property="Foreground" Value="{DynamicResource SeleneFocusBrush}" />
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="KnobGrow" Storyboard.TargetProperty="ScaleX" To="1.3" Duration="0:0:0.18"><DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction></DoubleAnimation>
+                                        <DoubleAnimation Storyboard.TargetName="KnobGrow" Storyboard.TargetProperty="ScaleY" To="1.3" Duration="0:0:0.18"><DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction></DoubleAnimation>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="KnobGrow" Storyboard.TargetProperty="ScaleX" To="1" Duration="0:0:0.15"><DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction></DoubleAnimation>
+                                        <DoubleAnimation Storyboard.TargetName="KnobGrow" Storyboard.TargetProperty="ScaleY" To="1" Duration="0:0:0.15"><DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction></DoubleAnimation>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.5" />

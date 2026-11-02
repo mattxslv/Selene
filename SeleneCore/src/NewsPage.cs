@@ -260,7 +260,7 @@ namespace Selene
             if (age.TotalHours < 1) return "just now";
             if (age.TotalDays < 1) return (int)age.TotalHours + " h ago";
             if (age.TotalDays < 7) return (int)age.TotalDays + (age.TotalDays < 2 ? " day ago" : " days ago");
-            return utc.ToLocalTime().ToString("MMM d");
+            return GameFacts.Date(utc.ToLocalTime(), "MMM d");
         }
 
         private void Open()

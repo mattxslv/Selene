@@ -132,6 +132,7 @@ namespace Selene
             ScreenPresence.Changed += HomeNav.PresenceChanged;
 
             ScreenPresence.Watch(main);
+            Ui.ApplyViewWidth(main);          // the screen's shape: ultrawide, 16:9 or a 16:10 handheld
             DetailsStage.Attach(main);         // the details page's lower half
             ApplyNowPlaying();
             ProgressToast.WatchLibraryStatus(main);   // the library update's words as a notification card

@@ -1,11 +1,17 @@
-﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
+    <!-- Playnite's on-screen keyboard, in Selene's look: the keys are soft glass tiles with no outline (the focused one fills
+         with the focus color, as every Selene button does), the keys and the options each sit on one rounded glass panel,
+         and the text above is a rounded field. The stock keys each had a hairline box around them (#44). -->
     <Style x:Key="TextInputButton" BasedOn="{StaticResource {x:Type ButtonEx}}" TargetType="ButtonEx">
-        <Setter Property="Padding" Value="25,15,25,15" />
-        <Setter Property="Margin" Value="2" />
-        <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="BorderBrush" Value="{DynamicResource SelectionLightBrush}" />
+        <Setter Property="Padding" Value="22,14,22,14" />
+        <Setter Property="Margin" Value="4" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Background" Value="{DynamicResource SeleneInk15Brush}" />
+        <Setter Property="Foreground" Value="{DynamicResource SeleneInkBrush}" />
+        <Setter Property="FontSize" Value="22" />
+        <Setter Property="FontFamily" Value="{DynamicResource FontMain}" />
         <Setter Property="HorizontalContentAlignment" Value="Center" />
         <Setter Property="MinWidth" Value="70" />
         <Setter Property="MinHeight" Value="70" />
@@ -16,18 +22,22 @@
     </Style>
 
     <Style x:Key="TextInputTextbox" BasedOn="{StaticResource {x:Type TextBox}}" TargetType="TextBox">
-        <Setter Property="Margin" Value="0,0,0,50" />
+        <Setter Property="Margin" Value="0,0,0,24" />
         <Setter Property="FontSize" Value="26" />
+        <Setter Property="Padding" Value="20,12,20,12" />
+        <Setter Property="Background" Value="{DynamicResource OverlayMenuBackgroundBrush}" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
 
+    <!-- (no padding: with no options it is empty, and padded it showed as a dark strip) -->
     <Style x:Key="TextInputOptionsBorder" TargetType="Border">
-        <Setter Property="Background" Value="{DynamicResource ControlBackgroundDarkBrush}" />
-        <Setter Property="CornerRadius" Value="3" />
+        <Setter Property="Background" Value="{DynamicResource OverlayMenuBackgroundBrush}" />
+        <Setter Property="CornerRadius" Value="24" />
     </Style>
 
     <Style x:Key="TextInputKeysBorder" TargetType="Border">
-        <Setter Property="Background" Value="{DynamicResource ControlBackgroundDarkBrush}" />
-        <Setter Property="CornerRadius" Value="3" />
+        <Setter Property="Background" Value="{DynamicResource OverlayMenuBackgroundBrush}" />
+        <Setter Property="CornerRadius" Value="24" />
+        <Setter Property="Padding" Value="12" />
     </Style>
 </ResourceDictionary>

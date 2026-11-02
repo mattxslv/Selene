@@ -5,6 +5,10 @@
 // PEM), or else GITHUB_TOKEN (fine-grained, Issues read/write; issues then carry that token owner's name), REPO
 // ("owner/name"), LIMITS (KV, rate limits and the app's cached token), STORE (KV, pictures and drafts).
 
+// an idea isn't a bug: it becomes a discussion in the repository's Ideas category (issues are for bugs), without the logs
+const IDEA = "I have an idea";
+const IDEAS_CATEGORY = "Ideas";
+
 const CATEGORIES = [
   "Something doesn't work",
   "Something looks wrong",
@@ -12,6 +16,7 @@ const CATEGORIES = [
   "Controller or navigation",
   "Sound or music",
   "Other",
+  IDEA,
 ];
 const PLACES = [
   "Starting Playnite", "Spotlight", "Collection", "A game's page", "Store", "Captures", "Settings or menu",
@@ -107,7 +112,17 @@ async function send(r, request, env, origin) {
     logsUrl = `${origin}/logs/${id}`;
   }
 
+  if (r.category === IDEA) {
+    const idea = await openIdea(r, shotUrl, env);
+    if (idea.ok) {
+      await countSent(env, ipCountKey, ipCount, dayKey, dayCount);
+      return json(idea, 200);
+    }
+    // no discussion (Discussions off, or the app not allowed to write them): an issue labelled idea, so nothing is lost
+  }
+
   const issue = build(r, shotUrl, logsUrl);
+  if (r.category === IDEA) issue.labels = ["idea"];
   const response = await fetch(`https://api.github.com/repos/${env.REPO}/issues`, {
     method: "POST",
     headers: {
@@ -124,11 +139,66 @@ async function send(r, request, env, origin) {
     return json({ ok: false, error: "github" }, 502);
   }
   const created = await response.json();
+  await countSent(env, ipCountKey, ipCount, dayKey, dayCount);
+  return json({ ok: true, number: created.number, url: created.html_url }, 200);
+}
+
+async function countSent(env, ipCountKey, ipCount, dayKey, dayCount) {
   await Promise.all([
     env.LIMITS.put(ipCountKey, String(Number(ipCount || 0) + 1), { expirationTtl: 3600 }),
     env.LIMITS.put(dayKey, String(Number(dayCount || 0) + 1), { expirationTtl: 172800 }),
   ]);
-  return json({ ok: true, number: created.number, url: created.html_url }, 200);
+}
+
+// ---- an idea: a discussion in Ideas (GraphQL; the GitHub App needs Discussions read/write) ----
+async function openIdea(r, shotUrl, env) {
+  try {
+    const token = await githubToken(env);
+    const gql = async (query, variables) => {
+      const res = await fetch("https://api.github.com/graphql", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "User-Agent": "selene-report-worker", "Content-Type": "application/json" },
+        body: JSON.stringify({ query, variables }),
+      });
+      const out = await res.json();
+      if (!res.ok || out.errors) throw new Error(JSON.stringify(out.errors || res.status));
+      return out.data;
+    };
+    // the repository's id and its Ideas category, looked up once a day
+    let ids = await env.LIMITS.get("ideas-ids", "json");
+    if (!ids) {
+      const [owner, name] = env.REPO.split("/");
+      const d = await gql("query($o:String!,$n:String!){repository(owner:$o,name:$n){id discussionCategories(first:25){nodes{id name}}}}", { o: owner, n: name });
+      const cat = d.repository.discussionCategories.nodes.find((c) => c.name === IDEAS_CATEGORY);
+      if (!cat) throw new Error("no Ideas category");
+      ids = { repo: d.repository.id, category: cat.id };
+      await env.LIMITS.put("ideas-ids", JSON.stringify(ids), { expirationTtl: 86400 });
+    }
+    const { title, body } = buildIdea(r, shotUrl);
+    const d = await gql("mutation($r:ID!,$c:ID!,$t:String!,$b:String!){createDiscussion(input:{repositoryId:$r,categoryId:$c,title:$t,body:$b}){discussion{number url}}}",
+      { r: ids.repo, c: ids.category, t: title, b: body });
+    const made = d.createDiscussion.discussion;
+    return { ok: true, number: made.number, url: made.url, discussion: true };
+  } catch (e) {
+    console.log("idea as discussion failed", String(e));
+    return { ok: false };
+  }
+}
+
+function buildIdea(r, shotUrl) {
+  const field = (v, max) => scrub(String(v ?? "").slice(0, max)).trim();
+  const note = field(r.note, 2000);
+  const where = field(r.place, 60);
+  const lines = [note ? note.split(/\r?\n/).map((l) => "> " + l).join("\n") : "> _No description given._", ""];
+  if (where) lines.push(`Where in Selene: **${where}**`, "");
+  if (shotUrl) lines.push(`<img src="${shotUrl}" alt="The screen when this was sent" width="720">`, "");
+  const selene = field(r.selene, 40), playnite = field(r.playnite, 40);
+  const versions = [selene && "Selene " + selene, playnite && "Playnite " + playnite].filter(Boolean).map((v) => "`" + v.replace(/`/g, "'") + "`").join(" · ");
+  if (versions) lines.push(versions, "");
+  lines.push("<sub>Sent from Selene's Report a problem screen. Vote for this idea with a 👍 if you want it too.</sub>");
+  const short = note.replace(/\s+/g, " ").trim();
+  const title = short ? (short.length > 80 ? short.slice(0, 77).trimEnd() + "..." : short) : "Idea" + (where ? " · " + where : "");
+  return { title, body: lines.join("\n") };
 }
 
 // The token to open issues with: the GitHub App's installation token (cached for 50 of its 60 minutes) when the app is
@@ -306,7 +376,7 @@ else if (!state.category) {
 } else {
   app.append(brand(), el("h1", null, "Report a problem"), el("p", "sub", "Tell us what happened. Selene sends it with your logs, no account needed."));
   const about = el("p", "about", state.category + (state.place ? "  \u00b7  " + state.place : ""));
-  const box = document.createElement("textarea"); box.placeholder = "What happened? What did you expect instead?"; box.maxLength = 2000;
+  const box = document.createElement("textarea"); box.placeholder = state.category === "I have an idea" ? "What would you like Selene to do, and when would you use it?" : "What happened? What did you expect instead?"; box.maxLength = 2000;
   const send = el("button", null, "Send report");
   send.onclick = async () => {
     send.disabled = true; send.textContent = "Sending...";

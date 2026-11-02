@@ -158,35 +158,49 @@ namespace Selene
             finally { CloseHandle(h); }
         }
 
-        // ---- per-process mute (Core Audio sessions on the default render device) ----
+        // ---- per-process mute (Core Audio sessions on every active output device) ----
+        // Every device, not just the default one: Windows remembers an app's mute per device, so a game muted on the headset by
+        // Guide, then given its sound back after the output was switched to the speakers, stayed muted on the headset for good
+        // (#69: "game sound lost when switching to headphones")
         private static void SetProcessMute(int pid, bool mute)
         {
+            int changed = 0;
             try
             {
                 var enumerator = NewEnumerator();
-                IMMDevice device;
-                if (enumerator.GetDefaultAudioEndpoint(0 /* eRender */, 1 /* eMultimedia */, out device) != 0) return;
-                var iid = typeof(IAudioSessionManager2).GUID;
-                object o;
-                if (device.Activate(ref iid, 1 /* CLSCTX_INPROC_SERVER */, IntPtr.Zero, out o) != 0) return;
-                var manager = (IAudioSessionManager2)o;
-                IAudioSessionEnumerator sessions;
-                if (manager.GetSessionEnumerator(out sessions) != 0) return;
-                int count;
-                sessions.GetCount(out count);
-                for (int i = 0; i < count; i++)
+                IMMDeviceCollection devices;
+                if (enumerator.EnumAudioEndpoints(0 /* eRender */, 1 /* DEVICE_STATE_ACTIVE */, out devices) != 0 || devices == null) return;
+                uint deviceCount;
+                devices.GetCount(out deviceCount);
+                for (uint d = 0; d < deviceCount; d++)
                 {
-                    IAudioSessionControl ctl;
-                    if (sessions.GetSession(i, out ctl) != 0) continue;
-                    var ctl2 = ctl as IAudioSessionControl2;
-                    if (ctl2 == null) continue;
-                    uint spid;
-                    if (ctl2.GetProcessId(out spid) != 0 || spid != (uint)pid) continue;
-                    var vol = ctl as ISimpleAudioVolume;
-                    if (vol != null) { var ctx = Guid.Empty; vol.SetMute(mute, ref ctx); }
+                    IMMDevice device;
+                    if (devices.Item(d, out device) != 0 || device == null) continue;
+                    try
+                    {
+                        var iid = typeof(IAudioSessionManager2).GUID;
+                        object o;
+                        if (device.Activate(ref iid, 1 /* CLSCTX_INPROC_SERVER */, IntPtr.Zero, out o) != 0) continue;
+                        IAudioSessionEnumerator sessions;
+                        if (((IAudioSessionManager2)o).GetSessionEnumerator(out sessions) != 0) continue;
+                        int count;
+                        sessions.GetCount(out count);
+                        for (int i = 0; i < count; i++)
+                        {
+                            IAudioSessionControl ctl;
+                            if (sessions.GetSession(i, out ctl) != 0) continue;
+                            var ctl2 = ctl as IAudioSessionControl2;
+                            uint spid;
+                            if (ctl2 == null || ctl2.GetProcessId(out spid) != 0 || spid != (uint)pid) continue;
+                            var vol = ctl as ISimpleAudioVolume;
+                            if (vol != null) { var ctx = Guid.Empty; vol.SetMute(mute, ref ctx); changed++; }
+                        }
+                    }
+                    catch (Exception ex) { HomeNav.Log("mute: a device failed: " + ex.Message); }
                 }
             }
             catch (Exception ex) { HomeNav.Log("mute failed: " + ex.Message); }
+            HomeNav.Log("audio: pid " + pid + (mute ? " muted" : " unmuted") + " (" + changed + " session(s), all outputs)");
         }
 
         // ---- the launch loading screen keeps the game's own audio down (its intro behind the art) ----
@@ -278,6 +292,9 @@ namespace Selene
                     level = 1f;
                 }
                 var ctx = Guid.Empty;
+                // a mute Windows kept from a game that was closed while Guide had it muted would make every later start silent
+                bool wasMuted;
+                if (vol.GetMute(out wasMuted) == 0 && wasMuted) { vol.SetMute(false, ref ctx); HomeNav.Log("launch: game audio was left muted -> unmuted"); }
                 vol.SetMasterVolume(HushLevel, ref ctx);
                 hushed[id] = new KeyValuePair<object, float>(session, level);
                 HomeNav.Log("launch: game audio turned down (was " + (int)(level * 100) + "%)");
@@ -411,8 +428,15 @@ namespace Selene
         [ComImport, Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
         private interface IMMDeviceEnumerator
         {
-            int EnumAudioEndpoints(int dataFlow, int stateMask, out IntPtr devices);
+            int EnumAudioEndpoints(int dataFlow, int stateMask, out IMMDeviceCollection devices);
             int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice device);
+        }
+
+        [ComImport, Guid("0BD7A1BE-7A1A-44DB-8397-CC5392387B5E"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IMMDeviceCollection
+        {
+            int GetCount(out uint count);
+            int Item(uint index, out IMMDevice device);
         }
 
         [ComImport, Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
@@ -575,6 +599,7 @@ namespace Selene
             frames = 0; sum = 0;
             if (fps >= 45 || !PlayniteOnScreen()) { slowWindows = 0; return; }
             if (++slowWindows > 3) return;  // reported enough for this slow spell
+            if (slowWindows == 3) SuggestPerformanceMode(fps);
             string game = "none";
             var api = HomeNav.Api;
             if (api != null) foreach (var g in api.Database.Games) if (g.IsRunning) { game = g.Name; break; }
@@ -582,6 +607,22 @@ namespace Selene
             try { var me = System.Diagnostics.Process.GetCurrentProcess(); cpu = me.TotalProcessorTime.TotalSeconds; } catch { }
             HomeNav.Log("smooth: SLOW " + fps.ToString("0") + " fps on the " + (HomeNav.FindFocusedName() ?? "?") + " | render tier " + Tier()
                 + " | game running: " + game + " | screen " + System.Windows.SystemParameters.PrimaryScreenWidth + " | playnite cpu " + cpu.ToString("0") + " s");
+        }
+
+        // Slow for about 12 s in a row while someone uses Selene (no game running): a slower PC or handheld. Performance mode is
+        // suggested once, ever (it keeps the art and motion; the moving background and trailer previews go). Not with Calm
+        // background motion on: its 30 FPS background reads as slow here. Switch: Advanced > Suggest Performance mode ("perfhint").
+        private static void SuggestPerformanceMode(double fps)
+        {
+            try
+            {
+                if (!Features.On("perfhint") || HomeNav.Light || Features.On("calmmotion") || GameRunning() || Features.Raw("perfhintshown") == "yes") return;
+                if (LoginScene.InSetup) return;   // (the first-run setup does its own heavy work: not judged by that)
+                Features.SetValue("perfhintshown", "yes");
+                HomeNav.Log("smooth: suggested Performance mode (" + fps.ToString("0") + " fps for ~12 s)");
+                Ui.Notice("Selene is running slowly on this PC. Performance mode (Settings, Look) keeps the art and motion but drops the moving background and trailer previews.", 9000);
+            }
+            catch (Exception ex) { HomeNav.Log("smooth: " + ex.Message); }
         }
 
         private static void CheckSoftware()

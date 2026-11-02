@@ -95,7 +95,7 @@ namespace Selene
             // the add-ons' own menus (Playnite's Extensions menu): audio switchers, metadata tools...
             items.Add(new Item { Icon = Ui.Icon(0xe87b), Picture = Ui.Glyph(Ui.Icon(0xe87b), Ui.Icons, 34, Ink.Brush("SeleneInkColor"), true), Label = "Extensions", Run = () => LoginScene.Show(GameOptionsScreen.Extensions(), 1) });   // (the piece centred by its body, not its knobs)
             items.Add(new Item { Icon = Ui.Icon(0xe8b8), Label = "Playnite settings", Run = () => { if (Features.On("playnitesettings")) LoginScene.Show(new PlayniteSettingsScreen(), 1); else Later(PlayniteMenu.OpenSettings); } });
-            if (!Features.On("startrefresh")) items.Add(new Item { Icon = Ui.Icon(0xe627), Label = "Update library", Run = UpdateLibrary });   // (it updates at every start otherwise)
+            items.Add(new Item { Icon = Ui.Icon(0xe627), Label = "Update library", Run = UpdateLibrary });   // (always: games added while Playnite runs need it too, #101)
             items.Add(new Item { Icon = Ui.Icon(0xe30c), Label = "Desktop mode", Run = () => Later(() => PlayniteMenu.Main("SwitchToDesktopCommand")) });
             // Update, where Setup check was (that one is in Selene settings > Advanced now): a newer Selene found opens it, else it looks
             items.Add(new Item { Icon = Ui.Icon(0xe923), Label = "Update", Sub = UpdateCheck.Available != null ? "Selene " + UpdateCheck.Available : null, Badge = UpdateCheck.Available != null,
@@ -262,6 +262,12 @@ namespace Selene
                 {
                     try
                     {
+                        // Close to tray on: Exit hides Playnite instead of quitting, as the setting says (#48). Alt+F4 still quits.
+                        if (what < 0 && CloseToTray.Installed)
+                        {
+                            Later(() => { HomeNav.Log("menu: exit -> tray"); CloseToTray.HideToTray(); });   // (Later closes the menu first)
+                            return;
+                        }
                         // (not for Sleep: Playnite carries on after it)
                         if (what < 0) HomeNav.BeginQuit(); else if (what > 0) HomeNav.Quitting = true;
                         // the same way out as Alt+F4 (Playnite's Exit command closes its own menu first and hangs on a menu never opened: #27, #26)

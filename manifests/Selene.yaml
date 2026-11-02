@@ -1,5 +1,46 @@
 AddonId: Selene_a98e0027-fa6a-4f5e-a087-bad8d69f2443
 Packages:
+  - Version: 1.5.2
+    RequiredApiVersion: 2.10.0
+    ReleaseDate: 2026-11-02
+    PackageUrl: https://github.com/mattxslv/Selene/releases/download/v1.5.2/Selene.pthm
+    Changelog:
+      - >-
+        Report a problem has an "I have an idea" choice: ideas go to Selene's Ideas on GitHub (Discussions), where others can vote for them, without your logs.
+      - >-
+        Dates follow the language Selene shows and the Gregorian calendar: on a Thai PC, Captures, Activity, Achievements, News and the idle screen showed Thai month names inside English text and years like 2569 (#45).
+      - >-
+        Guide back to a game tries harder: when the game's window from the launch is no longer its real screen (a splash or launcher window), Selene finds the game's window and brings that one forward instead of giving up (#66).
+      - >-
+        A game no longer loses its sound after you switch between speakers and headphones: Guide's mute now covers every output, and a game left muted from an earlier session gets its sound back when it starts (#69).
+      - >-
+        French and Simplified Chinese translations are complete, and every phrase Selene shows is now listed in theme\Localization\phrases.txt, ready to translate into any language without walking every screen first (#106, #61).
+      - >-
+        More of Selene works with a mouse or touch screen: the button hints along the bottom of Spotlight and Collection can be clicked, the Store, a store game's page, Game options, Captures, Activity and Achievements react to clicks (the first click picks, the second opens), and right-click (or the mouse's Back button) goes back (#40).
+      - >-
+        Playnite's own settings in Selene's look: the items sit on one panel wide enough for them (the switches on the right were cut off), dropdowns are rounded pills with a rounded list, sliders a thin line with a round knob, and the on-screen keyboard has soft keys without outlines (#44).
+      - >-
+        A game's page no longer wobbles: its screenshot and More like this rows (and the Store's rows) shifted a pixel on every move (#107).
+      - >-
+        New games, games you just played and new favorites show up in Spotlight's row right away (they waited for a filter switch or a restart) (#101, #39).
+      - >-
+        Menu > Update library is always there (it was hidden while Update library at start-up was on) (#101).
+      - >-
+        Close to tray: Exit Playnite in Selene's power menu hides Playnite to the tray instead of quitting (#48). Alt+F4 still quits.
+      - >-
+        Collection's 2:3 covers no longer change Playnite's grid shape for Desktop mode and other themes: your own shape, rows and columns come back there (#105). If an earlier Selene already changed it, set it once in Playnite and it stays.
+      - >-
+        Collection > Cover size: smaller covers fit more across (Playnite's own column setting was overwritten on every visit) (#65).
+      - >-
+        Spotlight > Visible filter tabs: choose 3 to 8 tabs at once, or all of them (#103). Filter tabs can be clicked with the mouse (#40).
+      - >-
+        Translations reach every text: the power menu and some settings rows stayed English the first time they opened (#104).
+      - >-
+        Spotlight's screenshots fade out above the button hints again with the logo intro and Who's playing? both off (they sat hard under the hints).
+      - >-
+        Selene follows the screen's shape: on ultrawide screens (21:9, 32:9) the pictures under Spotlight's cards, Captures, Activity and the screenshot strip use the extra width, and on 16:10 handhelds (Steam Deck, Legion Go) nothing is cut off at the right edge anymore (fewer pictures across instead). The Store's game page stays centered.
+      - >-
+        Advanced > Suggest Performance mode: if Selene keeps running slowly on a PC, it suggests Performance mode once.
   - Version: 1.5.1
     RequiredApiVersion: 2.10.0
     ReleaseDate: 2026-11-01

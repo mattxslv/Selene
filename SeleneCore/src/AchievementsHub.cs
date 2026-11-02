@@ -503,7 +503,7 @@ namespace Selene
                     res["SeleneStatAchPlatinum"] = done.ToString();
                     foreach (var grade in new[] { "Gold", "Silver", "Bronze" }) res["SeleneStatAch" + grade] = sets.Sum(s => s.Earned(grade)).ToString();
                     var latest = sets.SelectMany(s => s.Items.Where(i => i.Unlocked && i.When.HasValue).Select(i => new { s.GameId, Item = i }))
-                                     .OrderByDescending(x => x.Item.When.Value).Take(4).ToList();
+                                     .OrderByDescending(x => x.Item.When.Value).Take(Ui.CardTiles).ToList();
                     string headline = sets.Count == 0 ? "No achievements yet" : earned == 1 ? "1 trophy earned" : earned + " trophies earned";
                     string about = sets.Count == 0 ? "Your achievements show here as Playnite Achievements fills them in."
                                  : latest.Count > 0 ? "Latest: " + latest[0].Item.Name + LatestGame(latest[0].GameId) + " (" + latest[0].Item.Grade.ToLowerInvariant() + "). Down for your newest unlocks." : "Across " + sets.Count + " games.";

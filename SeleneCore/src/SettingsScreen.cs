@@ -42,7 +42,7 @@ namespace Selene
         private static readonly Dictionary<string, string[][]> Sections = new Dictionary<string, string[][]>
         {
             { "Spotlight", new[] {
-                new[] { "Row", "steadyhold", "pickscroll", "rowedges", "filtertabs", "fullscreenpresets", "consistentfavorites", "shade", "idle" },
+                new[] { "Row", "steadyhold", "pickscroll", "rowedges", "filtertabs", "visibletabs", "fullscreenpresets", "consistentfavorites", "shade", "idle" },
                 new[] { "Cards", "cardactivity", "actualplatform", "activitysessions", "cardcaptures", "capturesfolders", "cardachievements", "cardsurprise", "cardnews", "newsfeeds", "cardstore", "cardpictures" },
                 new[] { "Trailers and downloads", "trailerdelay", "trailersound", "trailerdownload", "artdownload", "screenshotsdownload" } } },
             { "Games", new[] {
@@ -619,6 +619,7 @@ namespace Selene
             if (opt.Key == "idle") IdleScreen.Restart();
             if (opt.Key == "clipvolume") CapturesScreen.ClipVolumeChanged();
             if (opt.Key == "starttab" || opt.Key == "filtertabs") HomeNav.ApplyValueSettings();
+            if (opt.Key == "visibletabs") HomeNav.RedrawFilterTabs();   // the bar behind the settings shows the new count
             HomeNav.Log("settings: " + opt.Key + " = " + Features.Value(opt.Key));
         }
     }

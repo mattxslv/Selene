@@ -97,14 +97,18 @@ namespace Selene
                     sink = new Border { Width = 0, Height = 0, Focusable = true, FocusVisualStyle = null, IsHitTestVisible = false };
                     page.Children.Add(sink);
                 }
-                // what the glide moves is cached in pieces: the top block and each band's pictures are textures, the bands' blur
-                // and fade animate over them (one cache for the whole page went soft and had to be redrawn for every step)
+                // what the glide moves is cached in pieces: the top block is a texture, and each tile of the bands is one already (Tile);
+                // the bands' blur and fade animate over them (one cache for the whole page went soft and had to be redrawn for every
+                // step). The bands themselves are not cached: the focused tile growing changed a band's cached size, the texture
+                // re-snapped to the pixel grid and the whole row moved a pixel on every move (#107)
                 page.CacheMode = null;
-                foreach (var name in new[] { "SeleneDetailsTop", "SeleneDetailsShots", "SeleneDetailsCaptures", "SeleneDetailsMore" })
+                foreach (var name in new[] { "SeleneDetailsShots", "SeleneDetailsCaptures", "SeleneDetailsMore" })
                 {
-                    var el = Part<FrameworkElement>(name);
-                    if (el != null && el.CacheMode == null) el.CacheMode = new System.Windows.Media.BitmapCache { RenderAtScale = 1, SnapsToDevicePixels = true };
+                    var band = Part<FrameworkElement>(name);
+                    if (band != null) band.CacheMode = null;
                 }
+                var top = Part<FrameworkElement>("SeleneDetailsTop");
+                if (top != null && top.CacheMode == null) top.CacheMode = new System.Windows.Media.BitmapCache { RenderAtScale = 1, SnapsToDevicePixels = true };
                 var activity = Part<Border>("SeleneDetailsBand2b");
                 if (activity != null && activity.Child != null && activity.Child.CacheMode == null) activity.Child.CacheMode = new System.Windows.Media.BitmapCache { RenderAtScale = 1, SnapsToDevicePixels = true };
                 if (shownId != g.Id || zone == 0) { zone = 0; if (shift != null) { shift.BeginAnimation(TranslateTransform.YProperty, null); shift.Y = 0; } }
@@ -440,9 +444,7 @@ namespace Selene
                 if (band == null) continue;
                 int z = name.EndsWith("b") ? 2 : name[name.Length - 1] - 48;
                 bool below = z > shown;
-                var blur = band.Effect as System.Windows.Media.Effects.BlurEffect;
-                if (blur == null) { blur = new System.Windows.Media.Effects.BlurEffect { Radius = 0, RenderingBias = System.Windows.Media.Effects.RenderingBias.Performance }; band.Effect = blur; }
-                blur.BeginAnimation(System.Windows.Media.Effects.BlurEffect.RadiusProperty, new DoubleAnimation(below && !noBlur ? 5 : 0, ms));
+                Ui.BlurTo(band, below && !noBlur ? 5 : 0, (int)ms.TotalMilliseconds);   // (the band in view has no effect at all: #107)
                 Fade(band, below, ms);
             }
         }

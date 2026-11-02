@@ -24,7 +24,10 @@ namespace Selene
         }
 
         private const double Side = 96, TileW = 330, TileH = 186, PitchX = TileW + 22, PitchY = TileH + 64, Top = 190;
-        private const int Columns = 5, Visible = 3, MaxItems = 150;
+        private const int Visible = 3, MaxItems = 150;
+        // pictures across: as many as fit between the 96 px left edge and a 60 px right edge (5 at 16:9, 4 on a 16:10 handheld,
+        // 6 on a 21:9 ultrawide); read once per screen, so the grid and the moves agree
+        private readonly int Columns = Math.Max(3, Math.Min(10, (int)((Ui.ViewWidth - Side - 60 + 22) / PitchX)));
         private static readonly string[] ImageExt = { ".jpg", ".jpeg", ".png", ".bmp" };
         private static readonly string[] VideoExt = { ".mp4", ".mov", ".mkv", ".avi", ".wmv" };
         // the date and what follows it: "2026-10-23 15-39-06", "2026.10.23 - 15.39.06.47", and Game Bar's short date "10_25_2026 9_45_56 PM"
@@ -141,7 +144,7 @@ namespace Selene
             words.Children.Add(viewerDate);
             controls.Children.Add(words);
             // the bar: where the clip is, with the time at its right end
-            progressTrack = new Border { Height = 6, CornerRadius = new CornerRadius(3), Background = new SolidColorBrush(Color.FromArgb(0x59, 0xFF, 0xFF, 0xFF)), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(Side, 0, 0, BarBottom), Width = 1920 - 2 * Side - 150 };
+            progressTrack = new Border { Height = 6, CornerRadius = new CornerRadius(3), Background = new SolidColorBrush(Color.FromArgb(0x59, 0xFF, 0xFF, 0xFF)), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(Side, 0, 0, BarBottom), Width = Ui.ViewWidth - 2 * Side - 150 };
             progress.Background = Ink.Brush("SeleneFocusColor");
             progressTrack.Child = progress;
             BindPlayerTrack(progressTrack, viewer);
@@ -219,7 +222,7 @@ namespace Selene
         private static void BindPlayerTrack(Border track, Grid player)
         {
             Action resize = () => track.Width = Features.On("captureplayerfit")
-                ? Math.Max(0, player.ActualWidth - 2 * Side - 150) : 1920 - 2 * Side - 150;
+                ? Math.Max(0, player.ActualWidth - 2 * Side - 150) : Ui.ViewWidth - 2 * Side - 150;
             player.SizeChanged += (s, e) => resize();
             resize();
         }
@@ -589,6 +592,8 @@ namespace Selene
             {
                 var c = items[i];
                 var t = new Tile(TileW, TileH, 12, 5) { FocusScale = 1.05 };
+                int clicked = i;
+                t.Click = () => { if (viewing) return; if (index == clicked) { Handle("A"); return; } index = clicked; Ui.Tick(); ShowFocus(true); };   // first click focuses, second opens (#40)
                 var item = new StackPanel { Width = TileW, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness((i % Columns) * PitchX, (i / Columns) * PitchY, 0, 0) };
                 item.Children.Add(t.Root);
                 var line = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(2, 10, 0, 0) };
@@ -686,7 +691,7 @@ namespace Selene
             StopVideo();
             picture.Source = null;
             viewerName.Text = c.Game;
-            viewerDate.Text = c.When.ToString("MMMM d, yyyy  ·  HH:mm");
+            viewerDate.Text = GameFacts.Date(c.When, "MMMM d, yyyy  ·  HH:mm");
             paused = false;
             PausedLook(false);
             clipAt = 0; clipLength = 0;
@@ -980,11 +985,12 @@ namespace Selene
             return d;
         }
 
-        // the Captures card: the numbers ("128 screenshots · 12 clips"), what's newest, and the latest four as pictures
+        // the Captures card: the numbers ("128 screenshots · 12 clips"), what's newest, and the latest as pictures (as many as fit)
         // (Down goes into them, A opens one); found off the UI thread
         public static void CountInBackground()
         {
             var dispatcher = Application.Current.Dispatcher;
+            int tiles = Ui.CardTiles;   // (read here, on the UI thread)
             System.Threading.Tasks.Task.Factory.StartNew(() =>
             {
                 string text, headline, about;
@@ -995,7 +1001,7 @@ namespace Selene
                     Known = all;
                     int clips = all.Count(c => c.IsVideo), shots = all.Count - clips;
                     text = all.Count == 0 ? "None found yet" : Count(shots, "screenshot") + (clips > 0 ? " · " + Count(clips, "clip") : "");
-                    latest = all.Take(4).ToList();
+                    latest = all.Take(tiles).ToList();
                     foreach (var c in latest) if (c.IsVideo) Thumbnails.Get(c.Path, 12000);   // stills for the card's clips (made here, off the UI thread)
                     if (all.Count == 0)
                     {

@@ -144,6 +144,8 @@ namespace Selene
             for (int i = 0; i < recent.Count; i++)
             {
                 var t = new Tile(TileW, TileW, 14) { FocusScale = 1.06 };
+                int clickedRecent = i;
+                t.Click = () => { if (detail != null) return; inRecent = true; recentIndex = clickedRecent; ShowFocus(); ShowRecentFocus(); Handle("A"); };   // (#40)
                 t.Root.Margin = new Thickness(0, 0, Pitch - TileW, 0);
                 t.Face.Child = AchievementsData.TrophyIcon(recent[i].Grade, 34);
                 ((TextBlock)t.Face.Child).HorizontalAlignment = HorizontalAlignment.Center;
@@ -385,6 +387,8 @@ namespace Selene
                 line.Children.Add(side);
                 line.Children.Add(words);
                 var row = new Border { Child = line, CornerRadius = new CornerRadius(16), Padding = new Thickness(16, 12, 24, 12), Margin = new Thickness(0, 0, 0, 8), BorderThickness = new Thickness(2), BorderBrush = Brushes.Transparent, Background = Ink.Brush("SeleneGlassColor", 0.72), Tag = it };
+                int clicked = rows.Count;
+                row.MouseLeftButtonUp += (sender, args) => { args.Handled = true; if (detail != null) return; inRecent = false; index = clicked; ShowRecentFocus(); ShowFocus(); Handle("A"); };   // a click opens it, as A (#40)
                 list.Children.Add(row);
                 rows.Add(row);
                 if (i < 8) Ui.Rise(row, 60 + i * 40, 12, 280);
@@ -410,7 +414,7 @@ namespace Selene
 
         private static string Status(AchievementsData.Item it)
         {
-            if (it.Unlocked) return it.When.HasValue ? "Unlocked " + it.When.Value.ToString("MMM d, yyyy") : "Unlocked";
+            if (it.Unlocked) return it.When.HasValue ? "Unlocked " + GameFacts.Date(it.When.Value, "MMM d, yyyy") : "Unlocked";
             if (it.ProgressNum.HasValue && it.ProgressDenom.HasValue && it.ProgressDenom.Value > 0) return it.ProgressNum.Value + " / " + it.ProgressDenom.Value;
             return "Locked";
         }
@@ -514,7 +518,7 @@ namespace Selene
             gradeLine.HorizontalAlignment = HorizontalAlignment.Center;
             gradeLine.Margin = new Thickness(0, 18, 0, 0);
             card.Children.Add(gradeLine);
-            facts.Add(it.Unlocked ? (it.When.HasValue ? "Unlocked " + it.When.Value.ToString("MMMM d, yyyy  ·  HH:mm") : "Unlocked") : Status(it));
+            facts.Add(it.Unlocked ? (it.When.HasValue ? "Unlocked " + GameFacts.Date(it.When.Value, "MMMM d, yyyy  ·  HH:mm") : "Unlocked") : Status(it));
             if (it.Rarity.HasValue) facts.Add((it.Rarity.Value < 1 ? it.Rarity.Value.ToString("0.0") : Math.Round(it.Rarity.Value).ToString("0")) + "% of players have it");
             foreach (var f in facts) card.Children.Add(new TextBlock { Text = f, FontSize = 17, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.55), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 14, 0, 0) });
             detail.Children.Add(card);

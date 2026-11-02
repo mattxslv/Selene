@@ -14,6 +14,55 @@ namespace Selene
     // focus look, motion and sounds, so every screen moves and sounds the same (see docs/guide/building.md).
     public static class Ui
     {
+        // ---- the screen's shape ----
+        // Playnite lays fullscreen out 1080 tall and as wide as the screen's shape (its ViewportWidth): 1920 at 16:9, 2520-2580 on
+        // a 21:9 ultrawide, 3840 at 32:9, 1728 on a 16:10 handheld (Steam Deck, Legion Go), 1440 at 4:3. What was fixed to 1920
+        // was cut off on a handheld and stopped short on an ultrawide. The theme reads SeleneCardWidth / SeleneShotStripWidth
+        // (Constants.xaml has the 16:9 values); code-built screens read ViewWidth.
+        public const double DesignWidth = 1920;
+        private static double viewWidth;
+        public static double ViewWidth
+        {
+            get
+            {
+                if (viewWidth > 0) return viewWidth;
+                if (Application.Current == null || !Application.Current.Dispatcher.CheckAccess()) return DesignWidth;   // (a worker: the window is the UI thread's)
+                double w = 0;
+                try
+                {
+                    var main = Application.Current != null ? Application.Current.MainWindow : null;
+                    var vm = main != null ? main.DataContext : null;
+                    var pi = vm != null ? vm.GetType().GetProperty("ViewportWidth") : null;
+                    if (pi != null) w = Convert.ToDouble(pi.GetValue(vm, null));
+                }
+                catch { }
+                if (w < 800 || w > 8000) return DesignWidth;   // (not known yet: the 16:9 layout)
+                viewWidth = w;
+                return w;
+            }
+        }
+
+        // how many of the cards' 420 px pictures (22 apart) fit between the 80 px left edge and a 60 px right edge:
+        // 3 on a handheld, 4 at 16:9, 5 on an ultrawide, up to 8
+        public static int CardTiles { get { return Math.Max(2, Math.Min(8, (int)((ViewWidth - 140 + 22) / 442))); } }
+
+        private static bool viewWatched;
+        private static double appliedWidth;
+        public static void ApplyViewWidth(Window main)
+        {
+            if (!viewWatched && main != null) { viewWatched = true; main.SizeChanged += (s, e) => ApplyViewWidth(main); }   // another screen (the TV) can have another shape
+            double before = viewWidth;
+            viewWidth = 0;
+            double w = ViewWidth;
+            if (viewWidth <= 0) viewWidth = before;
+            if (Math.Abs(w - appliedWidth) < 1) return;
+            appliedWidth = w;
+            var res = Application.Current.Resources;
+            res["SeleneCardWidth"] = w - 160;
+            res["SeleneShotStripWidth"] = w - 132;
+            HomeNav.Log("screen shape: layout " + w.ToString("0") + " x 1080" + (Math.Abs(w - DesignWidth) > 1 ? (w > DesignWidth ? " (wider than 16:9)" : " (narrower than 16:9)") : "") + ", " + CardTiles + " pictures under cards");
+        }
+
         public static Button MouseButton(string label, Action action)
         {
             var border = new FrameworkElementFactory(typeof(Border));
@@ -230,7 +279,7 @@ namespace Selene
             sp.Children.Add(dot);
             sp.Children.Add(new TextBlock { Text = Lang.T(label), FontSize = 21, FontFamily = Body, Foreground = Ink.Brush("SeleneInkColor", 0.9), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0) });
             sp.Background = Brushes.Transparent;
-            sp.MouseLeftButtonUp += (s, e) => { if (LoginScene.IsActive) { LoginScene.MousePress(button); e.Handled = true; } };
+            sp.MouseLeftButtonUp += (s, e) => { if (LoginScene.IsActive) LoginScene.MousePress(button); else PressHint(button); e.Handled = true; };
             return sp;
         }
 
@@ -329,6 +378,24 @@ namespace Selene
         }
 
         // appears: rises a few pixels while fading in
+        // A soft blur that eases in or out; at 0 the effect is taken off entirely. An effect, even at radius 0, draws the element
+        // into a surface as big as its content: a focused tile growing inside it resized that surface, which re-snapped to the
+        // pixel grid and moved the whole row a pixel on every move (#107, "wobbling").
+        public static void BlurTo(UIElement el, double radius, int ms)
+        {
+            if (el == null) return;
+            var blur = el.Effect as System.Windows.Media.Effects.BlurEffect;
+            if (blur == null && radius <= 0) return;
+            if (blur == null) { blur = new System.Windows.Media.Effects.BlurEffect { Radius = 0, RenderingBias = System.Windows.Media.Effects.RenderingBias.Performance }; el.Effect = blur; }
+            var a = new DoubleAnimation(radius, TimeSpan.FromMilliseconds(Math.Max(0, ms)));
+            if (radius <= 0)
+            {
+                var b = blur;
+                a.Completed += (s, e) => { if (ReferenceEquals(el.Effect, b) && b.Radius < 0.01) { b.BeginAnimation(System.Windows.Media.Effects.BlurEffect.RadiusProperty, null); el.Effect = null; } };
+            }
+            blur.BeginAnimation(System.Windows.Media.Effects.BlurEffect.RadiusProperty, a);
+        }
+
         public static void Rise(UIElement el, int delay = 0, double from = 18, int ms = 320)
         {
             el.Opacity = 0;
@@ -604,6 +671,19 @@ namespace Selene
                 if (t > 9000) System.Windows.Media.CompositionTarget.Rendering -= tick;
             };
             System.Windows.Media.CompositionTarget.Rendering += tick;
+        }
+
+        // A hint clicked outside Selene's own screens (the home's bar along the bottom): that button pressed and let go, as a
+        // controller would, so a mouse or touch reaches what the hint names (#40). The hints' names to Playnite's button names.
+        public static void PressHint(string button)
+        {
+            var pad = button == "View" ? "Back" : button == "Menu" ? "Start" : button == "R3" ? "RightStick" : button == "L3" ? "LeftStick"
+                    : button == "LB" ? "LeftShoulder" : button == "RB" ? "RightShoulder" : button;
+            HomeNav.Log("hint clicked: " + button);
+            if (!SendPad(pad, true)) return;
+            var up = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(60) };
+            up.Tick += (s, e) => { up.Stop(); SendPad(pad, false); };
+            up.Start();
         }
 
         // a controller press (or release) exactly as Playnite's controller manager sends it: a GameControllerInputEventArgs through the
@@ -1219,6 +1299,8 @@ namespace Selene
         private readonly Border ring;
         public double FocusScale = 1.07;
         public bool Focused { get; private set; }
+        // what a click (mouse, touch) on the tile does: screens point it at "focus this one, or open it if it already is" (#40)
+        public Action Click;
 
         public Tile(double width, double height, double radius, double gap = 6)
         {
@@ -1239,6 +1321,7 @@ namespace Selene
             glow = Ink.Track(new DropShadowEffect { ShadowDepth = 0, BlurRadius = 22, Opacity = 0.55 }, DropShadowEffect.ColorProperty, "SeleneFocusColor");
             Root.Children.Add(Face);
             Root.Children.Add(ring);
+            Root.MouseLeftButtonUp += (s, e) => { if (Click != null) { Click(); e.Handled = true; } };
             // drawn once into a texture: moving it, scaling it or repainting what's under it costs a blit, not a redraw
             Root.CacheMode = new System.Windows.Media.BitmapCache { RenderAtScale = 1.12, SnapsToDevicePixels = true };   // a little larger than shown: grown (focused) it stays crisp
         }

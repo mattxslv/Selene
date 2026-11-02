@@ -1,85 +1,83 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
+    <!-- A choice, in Selene's own shape (as Selene settings shows its choices): a rounded glass pill with the value and a chevron,
+         filled with the focus color when focused; its list opens as a rounded glass panel whose rows fill the same way. No
+         outlines: the stock look (square boxes, 2-3 px strokes) read as generic (#44). -->
     <Style TargetType="ComboBox">
         <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
-        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource SeleneInkBrush}" />
+        <Setter Property="Background" Value="{DynamicResource SeleneInk15Brush}" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
-        <Setter Property="Padding" Value="12,5,12,5" />
+        <Setter Property="Padding" Value="20,9,16,10" />
         <Setter Property="HorizontalContentAlignment" Value="Left" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ComboBox">
-                    <Grid Background="{TemplateBinding Background}">
+                    <Grid>
+                        <Border x:Name="Pill" CornerRadius="20" Background="{TemplateBinding Background}" />
                         <ToggleButton x:Name="ToggleButton" Focusable="False" ClickMode="Press"
-                                      VerticalAlignment="Center" Margin="0,0,12,0"
                                       IsChecked="{Binding Path=IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
                             <ToggleButton.Template>
                                 <ControlTemplate TargetType="{x:Type ToggleButton}">
-                                    <DockPanel LastChildFill="False" Background="Transparent">
-                                        <Viewbox DockPanel.Dock="Right" Height="20">
-                                            <TextBlock Text="&#xeab2;" FontFamily="{StaticResource FontIcoFont}"
-                                                       Foreground="{DynamicResource TextBrush}"
-                                                       FontSize="{DynamicResource FontSize}"
-                                                       VerticalAlignment="Center"/>
-                                        </Viewbox>
-                                    </DockPanel>
+                                    <Border Background="Transparent" />
                                 </ControlTemplate>
                             </ToggleButton.Template>
                         </ToggleButton>
+                        <DockPanel IsHitTestVisible="False" Margin="{TemplateBinding Padding}">
+                            <TextBlock x:Name="Chevron" DockPanel.Dock="Right" Text="&#xe5cf;" FontFamily="{DynamicResource FontMaterialIcons}" FontSize="22"
+                                       Foreground="{TemplateBinding Foreground}" VerticalAlignment="Center" Margin="14,0,0,0" RenderTransformOrigin="0.5,0.5">
+                                <TextBlock.RenderTransform><RotateTransform x:Name="ChevronTurn" Angle="0" /></TextBlock.RenderTransform>
+                            </TextBlock>
+                            <TextBlock x:Name="TextContent" FontSize="19" FontFamily="{DynamicResource FontMain}" Foreground="{TemplateBinding Foreground}"
+                                       TextTrimming="CharacterEllipsis"
+                                       HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                       VerticalAlignment="{TemplateBinding VerticalContentAlignment}">
+                                <ContentPresenter Content="{TemplateBinding SelectionBoxItem}"
+                                                  ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                                  ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"/>
+                            </TextBlock>
+                        </DockPanel>
 
-                        <TextBlock Style="{DynamicResource TextBlockBaseStyle}"
-                                   IsHitTestVisible="False"
-                                   HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                   VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
-                                   x:Name="TextContent" Margin="{TemplateBinding Padding}">
-                            <ContentPresenter IsHitTestVisible="False"
-                                              Content="{TemplateBinding SelectionBoxItem}"
-                                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
-                                              ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"/>
-                        </TextBlock>
-         
-                        <Popup x:Name="Popup" IsOpen="{TemplateBinding IsDropDownOpen}"
-                               Placement="Bottom" Focusable="False" AllowsTransparency="True">
-                            <Grid MaxHeight="{TemplateBinding MaxDropDownHeight}"
-                                  MinWidth="{TemplateBinding ActualWidth}"
-                                  SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}">
-                                <Border BorderBrush="{DynamicResource SelectionLightBrush}"                                        
-                                        Background="{DynamicResource ControlBackgroundDarkBrush}"
-                                        BorderThickness="2">
-                                    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
-                                                  VerticalScrollBarVisibility="Auto">
-                                        <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained"/>
-                                    </ScrollViewer>
-                                </Border>
-                            </Grid>
+                        <Popup x:Name="Popup" IsOpen="{TemplateBinding IsDropDownOpen}" PopupAnimation="Fade"
+                               Placement="Bottom" VerticalOffset="8" Focusable="False" AllowsTransparency="True">
+                            <Border MaxHeight="{TemplateBinding MaxDropDownHeight}"
+                                    MinWidth="{TemplateBinding ActualWidth}"
+                                    CornerRadius="18" Padding="6" Background="{DynamicResource OverlayMenuBackgroundBrush}"
+                                    SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}">
+                                <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                                    <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained"/>
+                                </ScrollViewer>
+                            </Border>
                         </Popup>
-
-                        <Border x:Name="BorderStandard"
-                                BorderBrush="{DynamicResource SelectionLightBrush}"
-                                BorderThickness="2" Margin="-2" />
-
-                        <Border x:Name="BorderFocus" Margin="-3" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"
-                                BorderBrush="{DynamicResource SelectionBrush}"
-                                BorderThickness="3" Visibility="Hidden" />
                     </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.5" />
                         </Trigger>
-                        <Trigger Property="IsFocused" Value="True">
-                            <Setter Property="Background" Value="{DynamicResource ControlBackgroundDarkBrush}" />
-                            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
-                            <Setter Property="Visibility" Value="Visible" TargetName="BorderFocus" />
-                            <Setter Property="Visibility" Value="Hidden" TargetName="BorderStandard" />
-                        </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter Property="Background" Value="{DynamicResource ControlBackgroundDarkBrush}" />
-                            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
-                            <Setter Property="Visibility" Value="Visible" TargetName="BorderFocus" />
-                            <Setter Property="Visibility" Value="Hidden" TargetName="BorderStandard" />
+                            <Setter Property="Background" Value="{DynamicResource SeleneInk25Brush}" />
+                        </Trigger>
+                        <Trigger Property="IsFocused" Value="True">
+                            <Setter Property="Background" Value="{DynamicResource SeleneFocusBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource SeleneOnFocusBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsDropDownOpen" Value="True">
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="ChevronTurn" Storyboard.TargetProperty="Angle" To="180" Duration="0:0:0.2"><DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction></DoubleAnimation>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="ChevronTurn" Storyboard.TargetProperty="Angle" To="0" Duration="0:0:0.2"><DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction></DoubleAnimation>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -89,38 +87,34 @@
 
     <Style TargetType="{x:Type ComboBoxItem}">
         <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource SeleneInkBrush}" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
-        <Setter Property="Padding" Value="12,5,12,5" />
+        <Setter Property="Padding" Value="16,9,16,10" />
+        <Setter Property="Margin" Value="0,1,0,1" />
         <Setter Property="HorizontalContentAlignment" Value="Left" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type ComboBoxItem}">
-                    <Grid Background="{TemplateBinding Background}" >
-                        <TextBlock Style="{DynamicResource TextBlockBaseStyle}"                                   
+                    <Border x:Name="Row" CornerRadius="12" Background="{TemplateBinding Background}">
+                        <TextBlock x:Name="TextContent" FontSize="19" FontFamily="{DynamicResource FontMain}" Foreground="{TemplateBinding Foreground}"
                                    HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                                    VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
-                                   x:Name="TextContent" Margin="{TemplateBinding Padding}">
+                                   Margin="{TemplateBinding Padding}">
                             <ContentPresenter />
                         </TextBlock>
-
-                        <Border x:Name="BorderFocus"
-                                SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"
-                                BorderBrush="{DynamicResource SelectionBrush}"
-                                BorderThickness="3" Visibility="Hidden" />
-                    </Grid>
+                    </Border>
                     <ControlTemplate.Triggers>
-                        <Trigger Property="IsFocused" Value="True">
-                            <Setter Property="Background" Value="{DynamicResource ControlBackgroundBrush}" />
-                            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
-                            <Setter Property="Visibility" Value="Visible" TargetName="BorderFocus" />
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter Property="FontWeight" Value="SemiBold" TargetName="TextContent" />
                         </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter Property="Background" Value="{DynamicResource ControlBackgroundBrush}" />
-                            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
-                            <Setter Property="Visibility" Value="Visible" TargetName="BorderFocus" />
+                            <Setter Property="Background" Value="{DynamicResource SeleneInk15Brush}" />
+                        </Trigger>
+                        <Trigger Property="IsFocused" Value="True">
+                            <Setter Property="Background" Value="{DynamicResource SeleneFocusBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource SeleneOnFocusBrush}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>

@@ -11,8 +11,10 @@
 #   -Visible on the real desktop instead (it takes the screen!); -Shots are then pictures of the whole main screen
 #   -Login  keep the sign-in (and a new copy's first-run setup) instead of skipping it
 #   -Wait   seconds to let it run; still running then = closed by PID (the result says so)
+#   -Size   "3440x1440": the screen size Playnite lays out for (its --fullscreenwidth/height), to check other shapes: ultrawide
+#           21:9 / 32:9, or a 16:10 handheld (1280x800). Playnite keeps the layout 1080 tall; the width follows the shape.
 param([string]$Keys = "", [string]$Values = "", [string]$Theme = 'Selene_a98e0027-fa6a-4f5e-a087-bad8d69f2443', [switch]$Visible, [int]$Relaunch = 0, [int]$Wait = 40, [string]$Shots = "", [string]$Root = "$env:USERPROFILE\selene-fresh", [scriptblock]$Prep = $null,
-      [switch]$Login,
+      [switch]$Login, [string]$Size = "",
       [string[]]$Disable = @('PlayniteAudioSwitcher_708b6ec4-bf96-4c0d-bd9d-fe0aa04d6bf1', 'UniPlaySong.a1b2c3d4-e5f6-7890-abcd-ef1234567890'))
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
@@ -76,11 +78,13 @@ try {
     $shotDir = Join-Path $Root 'shots'
     New-Item -ItemType Directory -Force $shotDir | Out-Null
 
+    $sizeArgs = ''
+    if ($Size -match '^(\d+)x(\d+)$') { $sizeArgs = " --fullscreenwidth $($Matches[1]) --fullscreenheight $($Matches[2])" }
     # ---- run it on the hidden desktop ----
     $env:TEMP = $temp; $env:TMP = $temp   # inherited: the test copy's own selene.log and dev switches
     if ($Visible) {
         $name = 'Default'
-        $procId = [HiddenDesk]::Start("WinSta0\Default", $exe, "`"$exe`" --masterinstance --nolibupdate", $pn, $false)
+        $procId = [HiddenDesk]::Start("WinSta0\Default", $exe, "`"$exe`" --masterinstance --nolibupdate$sizeArgs", $pn, $false)
         Add-Type -AssemblyName System.Windows.Forms, System.Drawing
         Add-Type -Namespace Dpi -Name U -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetProcessDPIAware();'
         [Dpi.U]::SetProcessDPIAware() | Out-Null
@@ -89,7 +93,7 @@ try {
         $name = 'SeleneTest' + (Get-Random -Maximum 100000)
         $desk = [HiddenDesk]::CreateDesktop($name, [IntPtr]::Zero, [IntPtr]::Zero, 0, 0x10000000 <# GENERIC_ALL #>, [IntPtr]::Zero)
         if ($desk -eq [IntPtr]::Zero) { throw "CreateDesktop failed" }
-        $procId = [HiddenDesk]::Start("WinSta0\$name", $exe, "`"$exe`" --masterinstance --nolibupdate", $pn, $false)
+        $procId = [HiddenDesk]::Start("WinSta0\$name", $exe, "`"$exe`" --masterinstance --nolibupdate$sizeArgs", $pn, $false)
         "started $procId on hidden desktop $name"
     }
     $t0 = Get-Date
@@ -125,9 +129,14 @@ try {
     }
     if ($exitedAt -ne $null) { "test Playnite exited by itself after {0:N1} s" -f $exitedAt }
     else {
-        "test Playnite still running after $Wait s -> closed by PID"
-        Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 2
+        # asked to close first (Playnite saves its settings on the way out), by PID only if it doesn't
+        $p = Get-Process -Id $procId -ErrorAction SilentlyContinue
+        if ($p -and $p.CloseMainWindow() -and $p.WaitForExit(15000)) { "test Playnite still running after $Wait s -> closed (asked)" }
+        else {
+            "test Playnite still running after $Wait s -> closed by PID"
+            Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 2
+        }
     }
     if ($procId2 -ne 0) {
         Start-Sleep -Seconds 12
@@ -139,6 +148,9 @@ finally {
     # anything of the test copy left (Chromium helpers...) goes, then its settings come back
     Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$pn\*" } | Stop-Process -Force -ErrorAction SilentlyContinue
     Start-Sleep -Milliseconds 800
+    # Playnite's settings as the run left them (before they are put back), to check what a run saved
+    if (Test-Path $files[0]) { Copy-Item $files[0] (Join-Path $Root 'shots\config-after.json') -Force -ErrorAction SilentlyContinue }
+    if (Test-Path $files[1]) { Copy-Item $files[1] (Join-Path $Root 'shots\fullscreenConfig-after.json') -Force -ErrorAction SilentlyContinue }
     foreach ($f in $files) { if (Test-Path "$f.bak-hidden") { Move-Item "$f.bak-hidden" $f -Force } elseif ($f -like '*selene-row-filter.txt') { Remove-Item $f -ErrorAction SilentlyContinue } }
     Remove-Item (Join-Path $pn 'safestart.flag') -ErrorAction SilentlyContinue
     foreach ($flag in 'selene-dev-isolated', 'selene-skip-login', 'selene-dev-keys') { Remove-Item (Join-Path $Root "temp\$flag") -ErrorAction SilentlyContinue }

@@ -44,8 +44,10 @@ namespace Selene
         private bool front, closed;
         private const double MoreW = 380, MoreH = 214, MorePitch = MoreW + 24;
         private const double MoreLift = 300;   // how far the page glides up for the "More from" row: just enough to show it above the hints
-        // the left edge of the words and the screenshots: six 272 px screenshots, 20 apart, centered on the 1920 screen
-        private const double Side = (1920 - (6 * 272 + 5 * 20)) / 2.0;
+        // the left edge of the words and the screenshots: six screenshots, 20 apart, centered on the screen. 272 px each at
+        // 16:9 and wider; a narrower screen (a 16:10 handheld) gets slightly smaller ones so all six fit
+        private static double ShotW { get { return Math.Min(272, Math.Floor((Ui.ViewWidth - 80 - 5 * 20) / 6)); } }
+        private static double Side { get { return Math.Max(40, (Ui.ViewWidth - (6 * ShotW + 5 * 20)) / 2.0); } }
         private StackPanel moreSection;
 
         // the "More from" row as a peek (blurred, fading out) or whole; it melts between the two along with the page's
@@ -55,16 +57,20 @@ namespace Selene
             MappingMode = BrushMappingMode.Absolute, StartPoint = new Point(0, 0), EndPoint = new Point(0, 220),
             GradientStops = { new GradientStop(Colors.Black, 0), new GradientStop(Colors.Black, 0.4), new GradientStop(Color.FromArgb(0x60, 0, 0, 0), 0.55), new GradientStop(Color.FromArgb(0, 0, 0, 0), 0.72) }
         };
-        private readonly System.Windows.Media.Effects.BlurEffect peekBlur = new System.Windows.Media.Effects.BlurEffect { Radius = 0, RenderingBias = System.Windows.Media.Effects.RenderingBias.Performance };
+        private bool peeking;
 
         private void Peek(bool on, bool animate)
         {
             if (moreSection == null) return;
-            if (moreSection.OpacityMask == null) { moreSection.OpacityMask = peekFade; moreRow.Effect = peekBlur; }
+            if (on && moreSection.OpacityMask == null) moreSection.OpacityMask = peekFade;
             var ms = TimeSpan.FromMilliseconds(animate ? 320 : 0);
-            // whole: the fade's end is pushed far below the row (all of it opaque) instead of taking the mask off
-            peekFade.BeginAnimation(LinearGradientBrush.EndPointProperty, new PointAnimation(new Point(0, on ? 220 : 1400), ms) { EasingFunction = Ui.Out() });
-            peekBlur.BeginAnimation(System.Windows.Media.Effects.BlurEffect.RadiusProperty, new DoubleAnimation(on ? 5 : 0, ms));
+            // whole: the fade's end is pushed far below the row (all of it opaque), then the mask and the blur come off entirely:
+            // left on, the row was drawn through them and moved a pixel each time a tile grew (#107)
+            var fade = new PointAnimation(new Point(0, on ? 220 : 1400), ms) { EasingFunction = Ui.Out() };
+            if (!on) fade.Completed += (s, e) => { if (!peeking && ReferenceEquals(moreSection.OpacityMask, peekFade)) moreSection.OpacityMask = null; };
+            peeking = on;
+            peekFade.BeginAnimation(LinearGradientBrush.EndPointProperty, fade);
+            Ui.BlurTo(moreRow, on ? 5 : 0, (int)ms.TotalMilliseconds);
         }
 
         private readonly Func<Screen> back;   // where B goes: the Store (also from a game opened in another's "More from" row)
@@ -159,6 +165,8 @@ namespace Selene
                     var fill = new Border { CornerRadius = new CornerRadius(14), Opacity = 0 };
                     t.Face.Child = fill;
                     StorePage.LoadFill(fill, StoreData.Sharp(m), 760);
+                    int at = moreTiles.Count;
+                    t.Click = () => PointMore(at);
                     moreRow.Children.Add(t.Root);
                     moreTiles.Add(t);
                 }
@@ -267,11 +275,13 @@ namespace Selene
             shotTiles.Clear();
             for (int i = 0; i < list.Count; i++)
             {
-                var t = new Tile(272, 153, 13, 5) { FocusScale = 1.06 };   // big enough to see what each one shows
+                var t = new Tile(ShotW, Math.Round(ShotW * 153 / 272), 13, 5) { FocusScale = 1.06 };   // big enough to see what each one shows
                 t.Root.Margin = new Thickness(0, 0, 20, 0);
                 var fill = new Border { CornerRadius = new CornerRadius(12), Opacity = 0 };
                 t.Face.Child = fill;
                 StorePage.LoadFill(fill, list[i], 560);
+                int at = i;
+                t.Click = () => PointShot(at);
                 shotStrip.Children.Add(t.Root);
                 shotTiles.Add(t);
             }
@@ -308,6 +318,9 @@ namespace Selene
             var p = Ui.ActionPill(button, label, false);
             p.RenderTransformOrigin = new Point(0.5, 0.5);
             into.Children.Add(p);
+            int at = pills.Count;
+            p.Cursor = System.Windows.Input.Cursors.Hand;
+            p.MouseLeftButtonUp += (s, e) => { e.Handled = true; if (viewing) return; onActions = true; pill = at; ShowFocus(); Handle("A"); };   // a click is the button (#40)
             pills.Add(p);
             pillActions.Add(run);
         }
@@ -390,6 +403,27 @@ namespace Selene
             Ui.Confirm();
             Open(item.WebLink);
             LoginScene.Finish();
+        }
+
+        // clicks (#40): a screenshot or a game from the store is focused by the first click and opened by the second
+        private void PointShot(int i)
+        {
+            if (viewing || i < 0 || i >= shotTiles.Count) return;
+            if (!onActions && zone == 0 && shot == i) { Handle("A"); return; }
+            onActions = false;
+            if (zone != 0) SetZone(0);
+            Ui.Tick();
+            if (trailer != null) { shot = i; ShowFocus(); } else ShowShot(i, true);
+        }
+
+        private void PointMore(int i)
+        {
+            if (viewing || i < 0 || i >= moreTiles.Count) return;
+            if (!onActions && zone == 1 && moreIndex == i) { Handle("A"); return; }
+            onActions = false;
+            moreIndex = i;
+            moreShift.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(-Math.Max(0, i - 1) * MorePitch, TimeSpan.FromMilliseconds(220)) { EasingFunction = Ui.Out() });
+            if (zone != 1) SetZone(1); else { Ui.Tick(); ShowFocus(); }
         }
 
         private void SetZone(int z)

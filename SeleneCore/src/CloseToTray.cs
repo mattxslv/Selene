@@ -29,10 +29,14 @@ namespace Selene
             DwmSetWindowAttribute(h, 3 /* DWMWA_TRANSITIONS_FORCEDISABLED */, ref on, sizeof(int));
         }
 
+        // Close to tray is on (installed at start): the menu's Exit Playnite hides Playnite instead of quitting it (#48)
+        public static bool Installed { get; private set; }
+
         public static void Install()
         {
             var w = Application.Current.MainWindow;
             if (w == null) return;
+            Installed = true;
             NoTransitions(w);
             w.SourceInitialized += (s, e) => NoTransitions(w);
             // Alt+F4 / title-bar X / taskbar Close arrive as SC_CLOSE; Playnite's own Closing handler starts its shutdown

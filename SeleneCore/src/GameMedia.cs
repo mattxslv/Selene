@@ -266,10 +266,11 @@ namespace Selene
             {
                 HideLoading(false);
                 shine.Clear();
-                skeleton = new Grid { Width = 1788, Height = 252, HorizontalAlignment = HorizontalAlignment.Left,
+                skeleton = new Grid { Width = Ui.ViewWidth - 132, Height = 252, HorizontalAlignment = HorizontalAlignment.Left,
                     VerticalAlignment = VerticalAlignment.Top, ClipToBounds = true, IsHitTestVisible = false };
                 var row = new StackPanel { Orientation = Orientation.Horizontal };
-                for (int i = 0; i < 4; i++)
+                int cards = (int)Math.Ceiling((Ui.ViewWidth - 132) / 470);   // as many as the strip shows (4 at 16:9)
+                for (int i = 0; i < cards; i++)
                 {
                     var card = new Grid { Width = 448, Height = 252, ClipToBounds = true, Margin = new Thickness(0, 0, 22, 0) };
                     var background = new Border { CornerRadius = new CornerRadius(14), Opacity = 0.65 };

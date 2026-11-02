@@ -4,43 +4,33 @@
     <Style TargetType="TextBox">
         <Setter Property="KeyboardNavigation.TabNavigation" Value="None" />
         <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
-        <Setter Property="Background" Value="{DynamicResource ControlBackgroundBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource SeleneInkBrush}" />
+        <Setter Property="Background" Value="{DynamicResource SeleneInk15Brush}" />
+        <Setter Property="CaretBrush" Value="{DynamicResource SeleneInkBrush}" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
         <Setter Property="Padding" Value="12,5,12,5" />
         <Setter Property="HorizontalContentAlignment" Value="Left" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="FontSize" Value="{DynamicResource FontSize}" />
-        <Setter Property="FontFamily" Value="{DynamicResource FontTitilliumWeb}" />
+        <Setter Property="FontFamily" Value="{DynamicResource FontMain}" />
         <Setter Property="Template">
             <Setter.Value>
-                <ControlTemplate TargetType="TextBox">                    
-                    <Grid Background="{TemplateBinding Background}">  
-                        <ScrollViewer x:Name="PART_ContentHost"
+                <ControlTemplate TargetType="TextBox">
+                    <!-- Selene: a rounded field with no outline at rest; focused, a ring in the focus color (as Selene's rows) (#44) -->
+                    <Border x:Name="Field" CornerRadius="14" Background="{TemplateBinding Background}" BorderThickness="2" BorderBrush="Transparent">
+                        <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"
                                       VerticalScrollBarVisibility="{TemplateBinding VerticalScrollBarVisibility}"
                                       HorizontalScrollBarVisibility="{TemplateBinding HorizontalScrollBarVisibility}"/>
-
-                        <Border x:Name="BorderStandard"
-                                BorderBrush="{DynamicResource SelectionLightBrush}"
-                                BorderThickness="2" Margin="-2" />
-
-                        <Border x:Name="BorderFocus" Margin="-3" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"
-                                BorderBrush="{DynamicResource SelectionBrush}"
-                                BorderThickness="3" Visibility="Hidden" />
-                    </Grid>
+                    </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.5" />
                         </Trigger>
-                        <Trigger Property="IsFocused" Value="True">
-                            <Setter Property="Background" Value="{DynamicResource ControlBackgroundDarkBrush}" />                            
-                            <Setter Property="Visibility" Value="Visible" TargetName="BorderFocus" />
-                            <Setter Property="Visibility" Value="Hidden" TargetName="BorderStandard" />
-                        </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter Property="Background" Value="{DynamicResource ControlBackgroundDarkBrush}" />
-                            <Setter Property="Visibility" Value="Visible" TargetName="BorderFocus" />
-                            <Setter Property="Visibility" Value="Hidden" TargetName="BorderStandard" />
+                            <Setter Property="Background" Value="{DynamicResource SeleneInk25Brush}" />
+                        </Trigger>
+                        <Trigger Property="IsFocused" Value="True">
+                            <Setter TargetName="Field" Property="BorderBrush" Value="{DynamicResource SeleneFocusBrush}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>

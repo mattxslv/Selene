@@ -49,6 +49,7 @@ namespace Selene
             {
                 logger.Info("Selene Core: the Selene theme isn't in use (fullscreen theme: " + SelenePaths.ActiveThemeId + "), staying off");
                 HomeNav.CleanMusicLeftovers(PlayniteApi);   // what Selene left in the music add-on's saved settings must not silence another theme
+                PlayniteLook.RestoreAll(PlayniteLook.AppSettings());   // the grid shape, rows and columns Selene used go back to the user's (#105)
                 return;
             }
             HomeNav.HushAtStart(PlayniteApi);
@@ -133,6 +134,7 @@ namespace Selene
             if (!Active || args.Game == null) return;
             HomeNav.GameEnded();   // the next time Selene is in front, its screen is renewed (#24)
             Profiles.RecordSession(args.Game.Id, args.ElapsedSeconds);
+            HomeNav.QueueRowSync("game stopped");   // Recently played (and its order) follows without a filter switch (#101)
             // back from a game: a card says how long it was played (once Selene is in front again) (any session over 10 s: a short one showed nothing)
             if (Features.On("sessioncard") && args.ElapsedSeconds >= 10)
             {
@@ -366,6 +368,7 @@ namespace Selene
             new Option { Group = "Spotlight", Key = "screenshotsdownload", Label = "Download screenshots", About = "Download screenshots for games you select. Existing pictures work while downloads are off.", DefaultOn = false },
             new Option { Group = "Spotlight", Key = "trailersound", Label = "Trailer sound", About = "Play trailers with sound. Press R3 to turn the sound on or off.", DefaultOn = false },
             new Option { Group = "Spotlight", Key = "filtertabs", Label = "Filter tabs", About = "Choose Selene's tabs or Playnite presets.", Choices = new[] { "selene", "playnite" }, Names = new[] { "Selene's", "Playnite's presets" }, Default = "selene" },
+            new Option { Group = "Spotlight", Key = "visibletabs", Slider = true, Label = "Visible filter tabs", About = "Set how many filter tabs show at once. More slide in as you switch.", Choices = new[] { "3", "4", "5", "6", "7", "8", "all" }, Names = new[] { "3", "4", "5", "6", "7", "8", "All" }, Default = "5" },
             new Option { Group = "Spotlight", Key = "shade", Slider = true, Label = "Background shade", About = "Set how much the artwork darkens behind text.", Choices = new[] { "0", "0.25", "0.5", "0.75", "1" }, Names = new[] { "Off", "25%", "50%", "75%", "100%" }, Default = "1" },
             new Option { Group = "Spotlight", Key = "idle", Label = "Idle screen", About = "Show game artwork after a period of inactivity.", Choices = new[] { "0", "5", "10", "20" }, Names = new[] { "Never", "5 minutes", "10 minutes", "20 minutes" }, Default = "10" },
             // ---- Collection ----
@@ -373,7 +376,8 @@ namespace Selene
             new Option { Group = "Look", Key = "logosize", Label = "Even logo sizes", About = "Size Collection logos by their shape, so tall logos aren't small." },
             new Option { Group = "Look", Key = "squareart", Label = "Square art from SteamGridDB", About = "Get square tile art from SteamGridDB with the art downloads. Needs a free key." },
             new Option { Group = "Look", Key = "steamgridkey", Label = "SteamGridDB key", About = "Paste a free key from steamgriddb.com.", Action = "Paste", Note = SquareFetch.Status },
-            new Option { Group = "Collection", Key = "collection23", Label = "2:3 covers", About = "Shape Collection's tiles like the covers, so none are cut. Also sets Playnite's grid to 2:3." },
+            new Option { Group = "Collection", Key = "collection23", Label = "2:3 covers", About = "Shape Collection's tiles like the covers, so none are cut. Desktop mode and other themes keep your own grid shape." },
+            new Option { Group = "Collection", Key = "collectionsize", Slider = true, Label = "Cover size", About = "Set how big Collection's covers are. Smaller fits more across.", Choices = new[] { "small", "medium", "large" }, Names = new[] { "Small", "Medium", "Large" }, Default = "large" },
             new Option { Group = "Collection", Key = "collectionhero", Label = "Same art as Spotlight", About = "Show Spotlight's game art behind Collection too. Applies after restarting Playnite." },
             new Option { Group = "Collection", Key = "librarytrailer", Label = "Collection trailers", About = "Play a game's trailer when you stay on it. Press R3 for sound." },
             new Option { Group = "Collection", Key = "collectioninfo", Label = "Game details", About = "Show playtime, last played, release year and genres under the game's logo." },
@@ -468,6 +472,7 @@ namespace Selene
             new Option { Group = "Advanced", Key = "calmmotion", Label = "Calm background motion", About = "Reduce background animation to 30 FPS. Restart Playnite to apply." },
             new Option { Group = "Advanced", Key = "idlecalm", Label = "Calm when idle", About = "Pause the moving background after 45 seconds without input, to save power and GPU. Any press brings it back." },
             new Option { Group = "Advanced", Key = "presence", Label = "Pause when out of view", About = "Pause background motion and trailers while Selene is out of view." },
+            new Option { Group = "Advanced", Key = "perfhint", Label = "Suggest Performance mode", About = "Suggest Performance mode once if Selene keeps running slowly on this PC." },
             new Option { Group = "Look", Key = "perfmode", Label = "Performance mode", About = "For slower PCs: no moving background or trailer previews. Motion and art stay. Applies after restarting Playnite.", DefaultOn = false },
             new Option { Group = "Advanced", Key = "asynccovers", Label = "Load covers in the background", About = "Covers load without holding up scrolling and fade in. Applies after restarting Playnite." },
             new Option { Group = "Advanced", Key = "lightweight", Label = "Reduce memory use", About = "Cache fewer images and preload fewer games.", DefaultOn = false },
@@ -590,6 +595,13 @@ namespace Selene
             if (added) settings.CapturesFolders.Add(folder); else settings.CapturesFolders.Remove(have);
             if (save != null) save();
             return added;
+        }
+
+        // a saved value that isn't a setting of its own (a note like "already suggested"), "" when there is none
+        public static string Raw(string key)
+        {
+            string v;
+            return settings != null && settings.Values != null && settings.Values.TryGetValue(key, out v) && v != null ? v : "";
         }
 
         public static void SetValue(string key, string value)

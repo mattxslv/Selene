@@ -5,19 +5,21 @@
          rounded rows with Material icons, the chosen section's items on the right as glass rows with Selene's switches.
          Playnite builds the screen itself; these are the styles it takes from the theme. -->
 
-    <!-- the column of sections: no panel of its own, Playnite's dimming behind it is the page -->
+    <!-- the column of sections (Playnite puts it at the right, in a 500 px column): no panel of its own -->
     <Style x:Key="SettingsMenuBorder" TargetType="Border">
         <Setter Property="Background" Value="Transparent" />
-        <Setter Property="Padding" Value="120,110,0,0" />
-        <Setter Property="Width" Value="520" />
+        <Setter Property="Padding" Value="24,110,24,0" />
         <Setter Property="VerticalAlignment" Value="Stretch" />
     </Style>
 
-    <!-- the chosen section's items -->
+    <!-- the chosen section's items: one glass panel over the page, reaching into the empty space at the left. Playnite's own
+         column for it is ~620 px wide, so the rows (at least 760) were cut off at the right, switches and focus ring included
+         (#44); and over a bright home the rows were hard to read without a panel behind them -->
     <Style x:Key="SettingsSectionBorder" TargetType="Border">
-        <Setter Property="Background" Value="Transparent" />
-        <Setter Property="CornerRadius" Value="0" />
-        <Setter Property="Margin" Value="24,204,120,0" />
+        <Setter Property="Background" Value="{DynamicResource SeleneGlassSolidBrush}" />
+        <Setter Property="CornerRadius" Value="24" />
+        <Setter Property="Padding" Value="0,12,24,12" />
+        <Setter Property="Margin" Value="-470,150,40,0" />
         <Setter Property="VerticalAlignment" Value="Top" />
     </Style>
 
@@ -64,7 +66,7 @@
 
     <!-- a slider on a glass row -->
     <Style x:Key="SettingsSectionSlider" TargetType="SliderEx" BasedOn="{StaticResource {x:Type SliderEx}}">
-        <Setter Property="Width" Value="360" />
+        <Setter Property="Width" Value="420" />
         <Setter Property="Margin" Value="{DynamicResource SettingsSectionItemSpacing}" />
     </Style>
 
@@ -76,7 +78,6 @@
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
         <Setter Property="HorizontalAlignment" Value="Stretch" />
-        <Setter Property="MinWidth" Value="760" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="CheckBox">

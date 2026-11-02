@@ -307,6 +307,8 @@ namespace Selene
             {
                 Action load;
                 var tile = MakeTile(row.Items[row.Tiles.Count], out load);
+                int at = row.Tiles.Count;
+                tile.Click = () => PointAt(row, at);
                 row.Tiles.Add(tile);
                 row.Loaders.Add(load);
                 row.Panel.Children.Add(tile.Root);
@@ -404,9 +406,7 @@ namespace Selene
             for (int r = 0; r < rows.Count; r++)
             {
                 if (rows[r].Block == null) continue;
-                var blur = rows[r].Block.Effect as System.Windows.Media.Effects.BlurEffect;
-                if (blur == null) { blur = new System.Windows.Media.Effects.BlurEffect { Radius = r == rowIndex ? 0 : 5, RenderingBias = System.Windows.Media.Effects.RenderingBias.Performance }; rows[r].Block.Effect = blur; }
-                blur.BeginAnimation(System.Windows.Media.Effects.BlurEffect.RadiusProperty, new DoubleAnimation(r == rowIndex ? 0 : 5, TimeSpan.FromMilliseconds(animate ? 240 : 0)));
+                Ui.BlurTo(rows[r].Block, r == rowIndex ? 0 : 5, animate ? 240 : 0);   // (the focused row has no effect at all: it wobbled, #107)
             }
             for (int r = 0; r < rows.Count; r++)
                 for (int i = 0; i < rows[r].Tiles.Count; i++) rows[r].Tiles[i].Focus(r == rowIndex && i == rows[r].Index);
@@ -482,6 +482,23 @@ namespace Selene
             savedTab = tab;
             savedRow = rowIndex;
             foreach (var r in rows) savedIndex[Tabs[tab] + "/" + r.Title] = r.Index;
+        }
+
+        // a tile clicked: the focus goes to it (its row glides as with the pad); clicked again, it opens (#40)
+        private void PointAt(Row row, int i)
+        {
+            int r = rows.IndexOf(row);
+            if (r < 0 || i < 0 || i >= row.Items.Count) return;
+            if (r == rowIndex && row.Index == i) { Handle("A"); return; }
+            bool otherRow = r != rowIndex;
+            rowIndex = r;
+            row.Index = i;
+            row.Shift.BeginAnimation(TranslateTransform.XProperty, Ui.Fast(new DoubleAnimation(-Math.Max(0, i - 1) * Pitch, TimeSpan.FromMilliseconds(220)) { EasingFunction = Ui.Out() }));
+            if (otherRow) PlaceRows(true);
+            Ui.Tick();
+            LoadNearby();
+            MoreFor(row);
+            ShowFocus(true);
         }
 
         public override void Handle(string b)

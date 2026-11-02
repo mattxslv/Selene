@@ -55,7 +55,26 @@ namespace Selene
         {
             if (when == null) return "Never";
             int days = (int)(DateTime.Now.Date - when.Value.ToLocalTime().Date).TotalDays;
-            return days <= 0 ? "Today" : days == 1 ? "Yesterday" : days < 7 ? days + " days ago" : when.Value.ToLocalTime().ToString("MMM d, yyyy");
+            return days <= 0 ? "Today" : days == 1 ? "Yesterday" : days < 7 ? days + " days ago" : Date(when.Value.ToLocalTime(), "MMM d, yyyy");
+        }
+
+        // A date in the language Selene shows (English, or the translation in use), on the Gregorian calendar. Formatted with the
+        // PC's own culture, a Thai PC got Thai month names inside English text and Buddhist-era years (2569) (#45).
+        public static string Date(DateTime when, string pattern) { return when.ToString(pattern, DateCulture()); }
+
+        private static System.Globalization.CultureInfo dateCulture;
+        private static System.Globalization.CultureInfo DateCulture()
+        {
+            if (dateCulture != null) return dateCulture;
+            System.Globalization.CultureInfo c;
+            try { c = Lang.Active && !string.IsNullOrEmpty(Lang.Language) ? new System.Globalization.CultureInfo(Lang.Language.Replace('_', '-')) : new System.Globalization.CultureInfo("en-US"); }
+            catch { c = new System.Globalization.CultureInfo("en-US"); }
+            if (!(c.Calendar is System.Globalization.GregorianCalendar))
+            {
+                c = (System.Globalization.CultureInfo)c.Clone();
+                foreach (var cal in c.OptionalCalendars) if (cal is System.Globalization.GregorianCalendar) { c.DateTimeFormat.Calendar = cal; break; }
+            }
+            return dateCulture = c;
         }
 
         public static string CoverPath(Game g)

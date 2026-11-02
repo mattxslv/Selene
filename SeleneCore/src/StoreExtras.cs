@@ -154,7 +154,7 @@ namespace Selene
                 .Where(i => !i.Owned && !string.IsNullOrEmpty(i.Image));
             foreach (var s in pool)
             {
-                if (picks.Count >= 4) break;   // four big pictures across the card
+                if (picks.Count >= Ui.CardTiles) break;   // big pictures across the card, as many as the screen's width holds
                 var k = StoreData.Key(s.Title ?? "");
                 if (!featured.Contains(k) && !picks.Any(p => StoreData.Key(p.Title ?? "") == k)) picks.Add(s);
             }

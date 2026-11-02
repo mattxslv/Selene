@@ -1,0 +1,10 @@
+# Keeps the pinned GitHub Actions above up to date: once a month, one pull request with all their updates.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]

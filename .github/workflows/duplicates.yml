@@ -1,0 +1,28 @@
+name: Possible duplicates
+# A new issue is compared with recent ones by an AI model (GitHub Models, free for public repositories); when it looks like
+# one already open, a comment links them so the duplicate can be closed (label "duplicate").
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+  models: read
+
+concurrency:
+  group: duplicates-${{ github.event.issue.number }}
+
+jobs:
+  dedup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: pelikhan/action-genai-issue-dedup@bdb3b5d9451c1090ffcdf123d7447a5e7c7a2528 # v0.0.19
+        with:
+          github_token: ${{ github.token }}
+          github_issue: ${{ github.event.issue.number }}
+          count: 40
+          state: open
+          max_duplicates: 3
+          # only a comment: the "duplicate" label closes an issue, which stays a person's call

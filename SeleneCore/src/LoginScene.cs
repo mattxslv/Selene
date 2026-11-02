@@ -231,6 +231,7 @@ namespace Selene
                 else if (step[1] == "localscan") LocalGames.Scan();
                 else if (step[1] == "games?") foreach (var x in HomeNav.Api.Database.Games.Where(x => x.PluginId == Guid.Empty)) HomeNav.Log("dev game: " + x.Name + " hidden=" + x.Hidden + " dir=" + x.InstallDirectory);
                 else if (step[1] == "music?") HomeNav.Log("dev music: " + MusicLevel.Describe());
+                else if (step[1].StartsWith("trailersound:")) HomeNav.TrailerSound(step[1].EndsWith("1"));   // R3 on a trailer: its sound on (1) or off (0)
                 else if (step[1].StartsWith("set:"))
                 {
                     // a setting changed the way its row would (set:musicvolume=25, set:musicmuted=on)

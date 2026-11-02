@@ -4,6 +4,11 @@ Selene (theme) and Selene Core (add-on) share one version number and are release
 
 ## Unreleased
 
+## 1.5.4 - 2026-11-02
+
+- The song in the top bar and the Music card in the menu now show only while a song really plays: not for the default (background) music, and not while a trailer's sound, a loading screen or a capture has paused the music. A Music card you paused from stays, to play it again.
+- Fixed: a long song name in the top bar ran over the filter tabs (All games, Not played yet...); it is now cut short before them.
+
 ## 1.5.3 - 2026-11-02
 
 - Music volume and Mute music (Selene settings > Sound & music) now control all music, UniPlaySong's included: before, UniPlaySong kept its own volume, so the start-up and home music played on with both at off. UniPlaySong's own saved volume stays as it is. Mute music is also kept between starts now (Playnite forgot it). Thanks to amogh-w for this and the rest of their Sound & music work (#99).

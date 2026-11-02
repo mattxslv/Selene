@@ -330,10 +330,44 @@ namespace Selene
                 var svc = Service();
                 var m = svc != null ? svc.GetType().GetMethod(method, Type.EmptyTypes) : null;
                 if (m == null) { HomeNav.Log("music: UniPlaySong has no " + method + "()"); return; }
+                if (method == "TogglePlayPauseInternal" && Playing()) userPaused = true;
                 m.Invoke(svc, null);
                 HomeNav.Log("music: " + method);
             }
             catch (Exception ex) { HomeNav.Log("music: " + method + ": " + (ex.InnerException ?? ex).Message); }
+        }
+
+        // A song really playing, the only time the now-playing line and the Music card show: UniPlaySong's player playing and
+        // not paused (a trailer's sound, a running game or the card's own pause pause it), heard (not muted, level above 0),
+        // and a real song: the default music (the background track UniPlaySong falls back to, e.g. a login theme) doesn't
+        // count. Spotify as the ambient counts while it plays.
+        private static bool userPaused;   // paused from the Music card: the card stays, to play it again
+
+        public static bool Playing()
+        {
+            try
+            {
+                if (!Installed()) return false;
+                if (Features.On("music") && (Muted() || applied.HasValue && applied.Value < 0.001)) return false;
+                // a trailer with its sound, a loading screen or a capture: Selene pauses the music for it (UniPlaySong's own
+                // state can still read as playing then)
+                if (HomeNav.MusicHeldForVideo) return false;
+                if (SpotifyAmbient() && SpotifyPlaying()) { userPaused = false; return true; }
+                var svc = Service();
+                if (svc == null || !Flag(svc, "IsPlaying") || Flag(svc, "IsPaused")) return false;
+                if (Flag(svc, "IsPlayingDefaultMusic") || Flag(svc, "IsPlayingBundledPreset") || Flag(svc, "IsPlayingPoolBasedDefault")) return false;
+                userPaused = false;
+                return true;
+            }
+            catch { return false; }
+        }
+
+        public static bool CardWanted() { return Playing() || userPaused && Paused(); }
+
+        private static bool Flag(object o, string name)
+        {
+            var p = o.GetType().GetProperty(name);
+            return p != null && Equals(p.GetValue(o, null), true);
         }
 
         public static bool Paused()
@@ -354,7 +388,7 @@ namespace Selene
             var held = svc != null ? svc.GetType().GetField("_volumeMultiplier", BindingFlags.Instance | BindingFlags.NonPublic) : null;
             return "installed=" + Installed() + " player=" + (svc != null) + " volume=" + Volume() + " muted=" + Muted()
                 + " multiplier=" + (held != null ? Convert.ToDouble(held.GetValue(svc)).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) : "?")
-                + " paused=" + Paused() + " movesound=" + HomeNav.MoveSoundState() + " spotify=" + SpotifyAmbient() + " playing='" + NowPlaying() + "'";
+                + " paused=" + Paused() + " video=" + HomeNav.MusicHeldForVideo + " realsong=" + Playing() + " default=" + (svc != null && Flag(svc, "IsPlayingDefaultMusic")) + " movesound=" + HomeNav.MoveSoundState() + " spotify=" + SpotifyAmbient() + " playing='" + NowPlaying() + "'";
         }
 
         // ---- finding things ----

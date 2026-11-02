@@ -101,7 +101,7 @@ namespace Selene
             items.Add(new Item { Icon = Ui.Icon(0xe40a), Label = "Theme", Run = ChangeTheme });
             items.Add(new Item { Icon = Ui.Icon(0xe429), Label = "Selene settings", Badge = Background.Any, Run = () => LoginScene.Show(new SettingsScreen(true), 1) });   // (the dot: something still running behind the scenes)
             if (Features.On("soundmenu")) items.Add(new Item { Icon = Ui.Icon(0xe050), Label = "Sound", Sub = SystemAudio.Summary() ?? (Features.On("livevolume") ? "\u2014" : null), Run = OpenSound });   // Windows' volume and output
-            if (Features.On("musiccard") && MusicLevel.Installed()) items.Add(new Item { Icon = Ui.Icon(0xe405), Label = "Music", Run = () => OpenPower(true) });   // UniPlaySong's play, pause and skip
+            if (Features.On("musiccard") && MusicLevel.CardWanted()) items.Add(new Item { Icon = Ui.Icon(0xe405), Label = "Music", Run = () => OpenPower(true) });   // UniPlaySong's play, pause and skip
             items.Add(new Item { Icon = Ui.Icon(0xe8ac), Label = "Power", Run = () => OpenPower() });
             // the add-ons' own menus (Playnite's Extensions menu): audio switchers, metadata tools...
             items.Add(new Item { Icon = Ui.Icon(0xe87b), Picture = Ui.Glyph(Ui.Icon(0xe87b), Ui.Icons, 34, Ink.Brush("SeleneInkColor"), true), Label = "Extensions", Run = () => LoginScene.Show(GameOptionsScreen.Extensions(), 1) });   // (the piece centred by its body, not its knobs)

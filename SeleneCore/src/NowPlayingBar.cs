@@ -35,8 +35,10 @@ namespace Selene
             try
             {
                 string title = null, artist = null;
-                bool on = Features.On("nowplaying") && MusicLevel.Installed();
+                // only while a song really plays (MusicLevel.Playing): not the default music, not paused by a trailer or a game
+                bool on = Features.On("nowplaying") && MusicLevel.Playing();
                 if (on) MusicLevel.Song(out title, out artist);
+                if (on && !Fit()) on = false;
                 if (!on || string.IsNullOrEmpty(title))
                 {
                     if (shown) { shown = false; Ui.Fade(slot, 0, 200, 0, () => { if (!shown) slot.Visibility = Visibility.Collapsed; }); }
@@ -58,6 +60,34 @@ namespace Selene
                 }
             }
             catch (Exception ex) { HomeNav.Log("now playing: " + ex.Message); }
+        }
+
+        // The line sits in the right part of the top bar and the filter tabs (All games, Not played yet...) are centered in the
+        // same bar: the song is cut short before the tabs (it ran over them), and left out when not even a short name fits.
+        private const double Gap = 32, NoteWidth = 34, MaxText = 320, MinText = 90;
+
+        private static bool Fit()
+        {
+            var bar = slot.Parent as Panel;   // the right-side row
+            var top = bar != null ? bar.Parent as FrameworkElement : null;
+            var tabs = top != null ? HomeNav.FindByName(top, "SeleneFilterTabs") : null;
+            if (tabs == null || bar.ActualWidth <= 0 || tabs.ActualWidth <= 0 || tabs.Visibility != Visibility.Visible) { text.MaxWidth = MaxText; return true; }
+            // the slot's right edge: where the next shown part of the row (profile, clock) starts, shown or not (the row is
+            // right-aligned, so that doesn't move as the song changes)
+            double right = bar.TranslatePoint(new Point(bar.ActualWidth, 0), top).X;
+            for (int i = bar.Children.IndexOf(slot) + 1; i < bar.Children.Count; i++)
+            {
+                var next = bar.Children[i] as FrameworkElement;
+                if (next == null || next.Visibility != Visibility.Visible) continue;
+                right = next.TranslatePoint(new Point(0, 0), top).X - next.Margin.Left;
+                break;
+            }
+            right -= slot.Margin.Right;
+            var tabsRight = tabs.TranslatePoint(new Point(tabs.ActualWidth, 0), top).X;
+            var room = right - tabsRight - Gap - NoteWidth;
+            if (room < MinText) return false;
+            text.MaxWidth = Math.Min(MaxText, room);
+            return true;
         }
     }
 }

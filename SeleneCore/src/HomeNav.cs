@@ -2649,6 +2649,8 @@ namespace Selene
 
         // UniPlaySong pauses while its "video is playing" flag is up: under a trailer with sound
         private static bool? videoPause;
+        // the music paused for a trailer with its sound, a loading screen or a capture (MusicLevel.Playing: nothing shown as playing)
+        internal static bool MusicHeldForVideo { get { return videoPause == true; } }
 
         // from Play until the game shows: no default music over the loading screen (UniPlaySong pauses for the running game after)
         private static bool musicHeldForLaunch;

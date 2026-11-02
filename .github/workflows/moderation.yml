@@ -1,0 +1,30 @@
+name: Spam check
+# New issues and comments are checked by an AI model (GitHub Models) for spam and link spam: those get the label "spam"
+# and spam comments are hidden (minimized), not deleted, so a mistake can be undone. Written-with-AI text is allowed.
+
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  models: read
+
+jobs:
+  spam:
+    if: github.event.sender.type != 'Bot'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: github/ai-moderator@81159c370785e295c97461ade67d7c33576e9319 # v1.1.4
+        with:
+          token: ${{ github.token }}
+          spam-label: spam
+          minimize-detected-comments: true
+          enable-spam-detection: true
+          enable-link-spam-detection: true
+          enable-ai-detection: false

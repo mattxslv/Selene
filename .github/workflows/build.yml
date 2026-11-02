@@ -1,0 +1,25 @@
+name: Build check
+# Every change to main (and every pull request) is compiled: Selene Core as C# 5 against Playnite's SDK, the same rules as
+# tools\build.ps1, through tools/linux-check (no Windows or Playnite needed). A release can't go out with code that doesn't build.
+
+on:
+  push:
+    branches: [main]
+    paths: ["SeleneCore/**", "tools/linux-check/**", ".github/workflows/build.yml"]
+  pull_request:
+    paths: ["SeleneCore/**", "tools/linux-check/**", ".github/workflows/build.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: "8.0.x"
+      - name: Compile Selene Core
+        run: dotnet build tools/linux-check -c Release -nologo

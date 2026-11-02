@@ -1,0 +1,33 @@
+name: Close what a release fixed
+# Publishing a release closes every open issue labelled "fixed in next", each with a note saying which version has the fix.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to announce (e.g. v1.5.2)"
+        required: true
+
+permissions:
+  issues: write
+
+jobs:
+  close-fixed:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Comment and close
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          VERSION="${TAG#v}"
+          URL="https://github.com/$REPO/releases/tag/$TAG"
+          for n in $(gh issue list -R "$REPO" --label "fixed in next" --state open --limit 200 --json number -q '.[].number'); do
+            gh issue comment "$n" -R "$REPO" --body "Out in Selene $VERSION: $URL. If it still happens after updating, tell me here and I'll reopen it."
+            gh issue edit "$n" -R "$REPO" --remove-label "fixed in next" --add-label "released"
+            gh issue close "$n" -R "$REPO" --reason completed
+            echo "closed #$n"
+          done

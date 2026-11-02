@@ -1,0 +1,52 @@
+name: AI triage
+# A new bug is read by an AI model (GitHub Models): when something essential is missing it asks the reporter for it in a
+# short comment and labels the issue "needs info" (which also starts the two-week close); a complete report gets nothing.
+# Re-run on any issue by adding the label "request ai review".
+
+on:
+  issues:
+    types: [opened, labeled]
+
+permissions:
+  contents: read
+  issues: write
+  models: read
+
+jobs:
+  assess:
+    if: >
+      (github.event.action == 'opened' && contains(github.event.issue.labels.*.name, 'bug')) ||
+      (github.event.action == 'labeled' && github.event.label.name == 'request ai review')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github/prompts
+
+      - name: Mark for review
+        if: github.event.action == 'opened'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue edit "${{ github.event.issue.number }}" -R "${{ github.repository }}" --add-label "request ai review"
+
+      - name: Assess
+        id: assess
+        uses: github/ai-assessment-comment-labeler@e3bedc38cfffa9179fe4cee8f7ecc93bffb3fee7 # v1.0.1
+        with:
+          token: ${{ github.token }}
+          issue_number: ${{ github.event.issue.number }}
+          issue_body: ${{ github.event.issue.body }}
+          repo_name: ${{ github.event.repository.name }}
+          owner: ${{ github.repository_owner }}
+          ai_review_label: "request ai review"
+          prompts_directory: ./.github/prompts
+          labels_to_prompts_mapping: "bug,bug-review.prompt.yml"
+          no_comment_regex_pattern: "<!--.*no.*comment.*-->"
+          no_comment_regex_flags: "i"
+          suppress_labels: true
+
+      - name: Needs info when details are missing
+        if: contains(steps.assess.outputs.ai_assessments, 'missing details')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue edit "${{ github.event.issue.number }}" -R "${{ github.repository }}" --add-label "needs info"

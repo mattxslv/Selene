@@ -1,0 +1,21 @@
+name: Area labels
+# A new bug gets the label of the part of Selene it's about (from "Where in Selene?"), so bugs can be filtered by area.
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: github/issue-labeler@ccca1e16fcb66762200e616fc29b57b940c1cb67 # v3.5
+        with:
+          repo-token: ${{ github.token }}
+          configuration-path: .github/issue-labeler.yml
+          enable-versioned-regex: 0
+          include-title: 0

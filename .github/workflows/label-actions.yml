@@ -1,0 +1,19 @@
+name: Label replies
+# Adding a label posts the reply that goes with it and closes where it fits (see .github/label-actions.yml).
+
+on:
+  issues:
+    types: [labeled, unlabeled]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  reply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: dessant/label-actions@65225c179d3b2502f6eda7b3d15101a3f412366b # v5.0.3
+        with:
+          github-token: ${{ github.token }}
+          process-only: issues

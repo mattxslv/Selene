@@ -1,0 +1,28 @@
+name: Lock old closed issues
+# Issues closed and quiet for 30 days are locked, so a new problem gets a new report (with its own logs) instead of a reply
+# on an old one. Discussions are left open.
+
+on:
+  schedule:
+    - cron: "41 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+concurrency:
+  group: lock-threads
+
+jobs:
+  lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: dessant/lock-threads@89ae32b08ed1a541efecbab17912962a5e38981c # v6.0.2
+        with:
+          github-token: ${{ github.token }}
+          process-only: issues
+          issue-inactive-days: 30
+          issue-lock-reason: resolved
+          issue-comment: >
+            This issue was closed a while ago, so it's locked now. If something similar happens on the latest Selene,
+            please send a new report (from Selene: press both sticks in) so it comes with fresh logs.

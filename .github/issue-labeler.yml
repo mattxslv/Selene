@@ -1,0 +1,20 @@
+# Area labels from "Where in Selene?": the bug form puts it under its own heading, Selene's Report a problem in the first
+# heading ("### Something doesn't work · Spotlight"). Used by .github/workflows/issue-area.yml.
+"area: start-up":
+  - '(### Where in Selene\?\s+Starting Playnite|^### .+ · Starting Playnite)'
+"area: spotlight":
+  - '(### Where in Selene\?\s+Spotlight|^### .+ · Spotlight)'
+"area: collection":
+  - '(### Where in Selene\?\s+Collection|^### .+ · Collection)'
+"area: game page":
+  - "(### Where in Selene\\?\\s+A game's page|^### .+ · A game's page)"
+"area: store":
+  - '(### Where in Selene\?\s+Store|^### .+ · Store)'
+"area: captures":
+  - '(### Where in Selene\?\s+Captures|^### .+ · Captures)'
+"area: settings":
+  - '(### Where in Selene\?\s+Settings or menu|^### .+ · Settings or menu)'
+"area: launching":
+  - '(### Where in Selene\?\s+Starting or playing a game|^### .+ · Starting or playing a game)'
+"area: quitting":
+  - '(### Where in Selene\?\s+Quitting|^### .+ · Quitting)'

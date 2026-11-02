@@ -1,0 +1,44 @@
+# What happens when a label is added (or taken off) an issue: a short reply, and closing where it fits.
+# Used by .github/workflows/label-actions.yml.
+
+"needs info":
+  issues:
+    comment: >
+      Thanks for the report! To look into this I need a bit more: what you did right before it happened, and Selene's log.
+      The easiest way is from Selene itself: press both sticks in (or Selene settings > Advanced > Report a problem), which
+      sends the logs for you. You can also attach `%TEMP%\selene.log` here.
+      If there's no reply in two weeks this closes on its own, and it opens again when you answer.
+
+"fixed in next":
+  issues:
+    comment: >
+      Fixed for the next update. This closes when it's out; if it still happens after that, tell me here.
+
+duplicate:
+  issues:
+    comment: >
+      Thanks! This is already being tracked in another issue (linked above or below), so I'm closing this one to keep it in
+      one place. Follow that one for updates.
+    close: true
+    close-reason: not planned
+
+"not planned":
+  issues:
+    comment: >
+      Thanks for taking the time. This isn't something I plan to change in Selene, so I'm closing it.
+    close: true
+    close-reason: not planned
+
+idea:
+  issues:
+    comment: >
+      Thanks for the idea! Ideas live in [Discussions > Ideas](https://github.com/mattxslv/Selene/discussions/categories/ideas),
+      where everyone can vote for the ones they want most. Please post it there (or it gets moved there) so it can collect votes.
+
+"cannot reproduce":
+  issues:
+    comment: >
+      I couldn't make this happen on my side. If it still happens on the latest Selene, please send a report from Selene
+      (both sticks in) right after it happens, so the log shows what went wrong.
+    close: true
+    close-reason: not planned

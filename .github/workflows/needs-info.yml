@@ -1,0 +1,55 @@
+name: Needs info
+# An issue labelled "needs info" with no answer closes after two weeks: a reminder after 7 days without activity, closed
+# 7 days after that. The reporter answering takes the label off (and reopens it if it was closed for this).
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  close-quiet:
+    if: github.event_name != 'issue_comment'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@4391f3da665fdf50b6810c1a66712fb9ba21aa93 # v11.0.0
+        with:
+          repo-token: ${{ github.token }}
+          only-issue-labels: "needs info"
+          days-before-issue-stale: 7
+          days-before-issue-close: 7
+          days-before-pr-stale: -1
+          days-before-pr-close: -1
+          stale-issue-label: "no reply"
+          stale-issue-message: >
+            Still need a little more to look into this (see above). It closes in a week if there's no answer; it opens again
+            when you reply.
+          close-issue-message: >
+            Closing since it's been quiet. Reply here (or send a report from Selene) if it still happens, and it opens again.
+          close-issue-reason: not_planned
+          remove-stale-when-updated: true
+          operations-per-run: 60
+
+  reporter-answered:
+    # the person who opened it answered: no longer waiting on them
+    if: >
+      github.event_name == 'issue_comment' && !github.event.issue.pull_request &&
+      github.event.comment.user.login == github.event.issue.user.login &&
+      (contains(github.event.issue.labels.*.name, 'needs info') || contains(github.event.issue.labels.*.name, 'no reply'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Take the label off, reopen if it closed for no reply
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.issue.number }}
+          STATE: ${{ github.event.issue.state }}
+          NO_REPLY: ${{ contains(github.event.issue.labels.*.name, 'no reply') }}
+        run: |
+          gh issue edit "$NUMBER" -R "$REPO" --remove-label "needs info" --remove-label "no reply" || true
+          if [ "$STATE" = "closed" ] && [ "$NO_REPLY" = "true" ]; then gh issue reopen "$NUMBER" -R "$REPO"; fi

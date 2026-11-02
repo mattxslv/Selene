@@ -50,6 +50,12 @@ body:
   - type: textarea
     id: logs
     attributes:
-      label: Logs
+      label: Selene's log (required)
       description: |
-        Drag them in if you can: `%AppData%\Playnite\playnite.log` (portable: in the Playnite folder) and `%TEMP%\selene.log`. Paste `%AppData%` or `%TEMP%` into File Explorer's address bar to open those folders.
+        Without the log there's usually no way to tell what went wrong, so reports without one get asked for it first. Any of these works:
+        - **Easiest:** in Selene, open Selene settings and press **Copy log** (Y on a controller, F2 on a keyboard), then paste here.
+        - Or drag in the file `%TEMP%\selene.log` (paste `%TEMP%` into File Explorer's address bar to open the folder). `%AppData%\Playnite\playnite.log` helps too (portable Playnite: in its own folder).
+        - Or skip this form: in Selene press both sticks in (or Selene settings > Advanced > Report a problem). It sends the logs for you.
+      placeholder: Paste the log here, or drag selene.log into this box.
+    validations:
+      required: true

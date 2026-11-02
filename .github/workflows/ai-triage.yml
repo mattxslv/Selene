@@ -1,7 +1,8 @@
 name: AI triage
-# A new bug is read by an AI model (GitHub Models): when something essential is missing it asks the reporter for it in a
-# short comment and labels the issue "needs info" (which also starts the two-week close); a complete report gets nothing.
-# Re-run on any issue by adding the label "request ai review".
+# A new bug must come with Selene's log: without one (no log lines, no attached file, no "Full logs" link) the reporter is
+# asked for it at once and the issue is labelled "needs info" (which also starts the two-week close).
+# With a log, an AI model (GitHub Models) reads it: when something else essential is missing it asks in a short comment and
+# labels it "needs info"; a complete report gets nothing. Re-run the AI check on any issue with the label "request ai review".
 
 on:
   issues:
@@ -19,18 +20,43 @@ jobs:
       (github.event.action == 'labeled' && github.event.label.name == 'request ai review')
     runs-on: ubuntu-latest
     steps:
+      - name: Log check
+        id: logs
+        if: github.event.action == 'opened'
+        env:
+          BODY: ${{ github.event.issue.body }}
+        run: |
+          # selene.log lines (12:34:56.789), playnite.log lines (|ERROR |), an attached file, or the report service's full logs
+          if printf '%s' "$BODY" | grep -qE '[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}|github\.com/user-attachments/files/|workers\.dev/logs/|\|(INFO|WARN|ERROR|DEBUG) *\|'; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Ask for the log
+        if: steps.logs.outputs.ok == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh issue comment "$NUMBER" -R "$REPO" --body "Thanks for the report! Every bug needs Selene's log to be looked into, and this one doesn't have it yet. The easiest way: in Selene, open Selene settings and press **Copy log** (Y on a controller, F2 on a keyboard), then paste it here. You can also drag in \`%TEMP%\\selene.log\`, or send the report from Selene itself (press both sticks in), which adds the logs for you. Without a log this closes in two weeks; it opens again when you add one."
+          gh issue edit "$NUMBER" -R "$REPO" --add-label "needs info"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.logs.outputs.ok != 'false'
         with:
           sparse-checkout: .github/prompts
 
       - name: Mark for review
-        if: github.event.action == 'opened'
+        if: github.event.action == 'opened' && steps.logs.outputs.ok != 'false'
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh issue edit "${{ github.event.issue.number }}" -R "${{ github.repository }}" --add-label "request ai review"
 
       - name: Assess
         id: assess
+        if: steps.logs.outputs.ok != 'false'
         uses: github/ai-assessment-comment-labeler@e3bedc38cfffa9179fe4cee8f7ecc93bffb3fee7 # v1.0.1
         with:
           token: ${{ github.token }}
@@ -46,7 +72,7 @@ jobs:
           suppress_labels: true
 
       - name: Needs info when details are missing
-        if: contains(steps.assess.outputs.ai_assessments, 'missing details')
+        if: steps.logs.outputs.ok != 'false' && contains(steps.assess.outputs.ai_assessments, 'missing details')
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh issue edit "${{ github.event.issue.number }}" -R "${{ github.repository }}" --add-label "needs info"

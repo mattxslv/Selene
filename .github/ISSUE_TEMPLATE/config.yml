@@ -1,1 +1,8 @@
 blank_issues_enabled: false
+contact_links:
+  - name: Have an idea?
+    url: https://github.com/mattxslv/Selene/discussions/categories/ideas
+    about: Ideas and requests live in Discussions, where everyone can vote for the ones they want most.
+  - name: Need help or have a question?
+    url: https://github.com/mattxslv/Selene/discussions/categories/q-a
+    about: Ask in Q&A. Issues are for bugs (something in Selene doesn't work or looks wrong).

@@ -6,6 +6,8 @@ body:
     attributes:
       value: |
         **Quicker from Selene itself:** press both sticks in (or Selene settings > Advanced > Report a problem). It sends a picture of the screen, your versions and the logs for you, no account needed.
+
+        Issues are for bugs only. Ideas and requests go to [Discussions > Ideas](https://github.com/mattxslv/Selene/discussions/categories/ideas), questions to [Q&A](https://github.com/mattxslv/Selene/discussions/categories/q-a).
   - type: textarea
     id: what
     attributes:

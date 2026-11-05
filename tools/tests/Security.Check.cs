@@ -27,8 +27,11 @@ public static class SecurityCheck
         Assert(LegacyElevation.LauncherTask("schtasks.exe", "/run /tn \"Selene\\A Game\"") == @"\Selene\A Game", "Recover the exact game task name");
         Assert(LegacyElevation.LauncherTask("schtasks.exe", @"/run /tn Selene\Helper") == null, "Never migrate the retired helper task");
         string recoveredPath, recoveredArgs, recoveredDir;
-        var taskXml = "<Task xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\"><Actions><Exec><Command>C:\\Games\\Game.exe</Command><Arguments>--name &quot;A B&quot;</Arguments><WorkingDirectory>C:\\Games</WorkingDirectory></Exec></Actions></Task>";
-        Assert(LegacyElevation.ReadDirectAction(taskXml, out recoveredPath, out recoveredArgs, out recoveredDir) && recoveredPath == @"C:\Games\Game.exe" && recoveredArgs == "--name \"A B\"" && recoveredDir == @"C:\Games", "Recover executable, escaped arguments and working directory");
+        // ReadDirectAction uses the host's rooted-path validation. Use a rooted fixture on both Windows and Linux.
+        var executable = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "Selene-security-games", "Game.exe"));
+        var directory = Path.GetDirectoryName(executable);
+        var taskXml = "<Task xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\"><Actions><Exec><Command>" + System.Security.SecurityElement.Escape(executable) + "</Command><Arguments>--name &quot;A B&quot;</Arguments><WorkingDirectory>" + System.Security.SecurityElement.Escape(directory) + "</WorkingDirectory></Exec></Actions></Task>";
+        Assert(LegacyElevation.ReadDirectAction(taskXml, out recoveredPath, out recoveredArgs, out recoveredDir) && recoveredPath == executable && recoveredArgs == "--name \"A B\"" && recoveredDir == directory, "Recover executable, escaped arguments and working directory");
         Assert(!LegacyElevation.ReadDirectAction(taskXml.Replace("</Actions>", "<Exec><Command>C:\\Other.exe</Command></Exec></Actions>"), out recoveredPath, out recoveredArgs, out recoveredDir), "Reject ambiguous task actions");
         Assert(!LegacyElevation.ReadDirectAction(taskXml.Replace("Game.exe", "SeleneHelper.exe"), out recoveredPath, out recoveredArgs, out recoveredDir), "Never restore a helper executable");
         Assert(!LegacyElevation.ReadDirectAction("<!DOCTYPE Task [<!ENTITY x SYSTEM 'file:///secret'>]><Task>&x;</Task>", out recoveredPath, out recoveredArgs, out recoveredDir), "Reject XML entities");

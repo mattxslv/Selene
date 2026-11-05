@@ -153,8 +153,8 @@ namespace Selene
             if (current.WantsText)
             {
                 if (key == Key.Back) { current.Erase(); e.Handled = true; return; }
-                if (key == Key.Space) return;   // typed as text
                 if (key == Key.Enter) { FromKeyboard("Start"); e.Handled = true; return; }   // Enter = done
+                if (TypedAsText(key)) { e.Handled = true; return; }
             }
             string b = key == Key.Enter || key == Key.Space ? "A"
                      : key == Key.Escape || key == Key.Back ? "B"
@@ -164,6 +164,27 @@ namespace Selene
                      : key == Key.PageUp ? "LeftShoulder" : key == Key.PageDown ? "RightShoulder"
                      : key == Key.OemMinus || key == Key.Subtract ? "TriggerLeft" : key == Key.OemPlus || key == Key.Add ? "TriggerRight" : null;
             if (b != null) { FromKeyboard(b); e.Handled = true; }
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool TranslateMessage(ref System.Windows.Interop.MSG msg);
+        [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern uint MapVirtualKey(uint code, uint mapType);
+
+        // A letter or space while a screen takes text. Left alone it reaches Playnite's own shortcuts behind the screen first, which
+        // ate it or opened something (F, R, Y: #155). Stopped here, Windows would never make it into text, so that step is done
+        // for it; the text then arrives at OnText as usual (other layouts, AltGr and accents included).
+        private static bool TypedAsText(Key key)
+        {
+            var held = Keyboard.Modifiers;
+            bool altGr = (held & ModifierKeys.Control) != 0 && (held & ModifierKeys.Alt) != 0;
+            if (!altGr && (held & (ModifierKeys.Control | ModifierKeys.Alt)) != 0) return false;   // shortcuts stay shortcuts
+            if (key == Key.ImeProcessed || key == Key.DeadCharProcessed) return false;
+            int vk = KeyInterop.VirtualKeyFromKey(key);
+            uint character = vk != 0 ? MapVirtualKey((uint)vk, 2) & 0x7FFFFFFF : 0;
+            if (character < 32) return false;   // not a key that types (arrows, Esc, Tab, F keys...)
+            var msg = System.Windows.Interop.ComponentDispatcher.CurrentKeyboardMessage;
+            if (msg.message != 0x0100 && msg.message != 0x0104) return false;
+            TranslateMessage(ref msg);
+            return true;
         }
 
         private static void OnText(object sender, TextCompositionEventArgs e)

@@ -71,7 +71,7 @@ namespace Selene
             library.Command = new Relay(ShowLibrary);
             LoginScene.AttachHomeGlow(main);   // the login's glow behind the home's cards
             LibraryStage.Attach(main);         // Collection's background trailer
-            TopProfile.Attach(main);
+            DeviceBattery.Attach(Application.Current.MainWindow); HomeNav.ApplyHubAchievements(); TopProfile.Attach(main);
             NowPlayingBar.Attach(main);        // the song playing, left of the profile
             StoreData.AttachCard();            // the Store card's free games
             Contrast.Apply();                  // the home's shades as deep as the wallpaper needs           // the signed-in profile beside the clock
@@ -125,6 +125,7 @@ namespace Selene
             Wire("SeleneNav_surprise", () => new SurpriseScreen());
             Wire("SeleneNav_news", () => new NewsPage(null));
             Wire("SeleneNav_achievements", () => new AchievementsHub());
+            Wire("SeleneTopAchievements", () => new AchievementsHub());
             HomeNav.ApplyValueSettings();
             Ui.WatchFullRate(main);            // the screen's own refresh rate while Playnite is in front
             // minimized, in the tray or behind a game: the background video, trailers, dust and light pause (ScreenPresence)
@@ -135,6 +136,7 @@ namespace Selene
             ScreenPresence.Watch(main);
             Ui.ApplyViewWidth(main);          // the screen's shape: ultrawide, 16:9 or a 16:10 handheld
             DetailsStage.Attach(main);         // the details page's lower half
+            BackgroundChangerBridge.AttachMain(main);
             ApplyNowPlaying();
             ProgressToast.WatchLibraryStatus(main);   // the library update's words as a notification card
             GameFacts.CardStats();
@@ -252,6 +254,7 @@ namespace Selene
             if (home == null || library == null) return;
             int mine = ++switchCount;
             CollectionActive = true;
+            BackgroundChangerBridge.RefreshAll();
             RememberScreen("collection");
             HomeNav.UpdateFilterTabs();
             library.BeginAnimation(UIElement.OpacityProperty, null);
@@ -323,6 +326,7 @@ namespace Selene
             if (home == null) return;
             int mine = ++switchCount;
             CollectionActive = false;
+            BackgroundChangerBridge.RefreshAll();
             RememberScreen("spotlight");
             HomeNav.UpdateFilterTabs();
             if (instant)

@@ -264,17 +264,162 @@ namespace Selene
             return "";
         }
 
-        // an icon as a file on this PC (the add-on keeps them in its folder; paths there can be relative to it)
+        // the add-on's display form is "cachebust|<token>|gray:<path>": neither prefix is part of the path (#149)
+        private static string PlainIconPath(string path)
+        {
+            var plain = (path ?? "").Trim();
+            while (true)
+            {
+                if (plain.StartsWith("cachebust|", StringComparison.OrdinalIgnoreCase))
+                {
+                    var tokenEnd = plain.IndexOf('|', "cachebust|".Length);
+                    if (tokenEnd < 0) return plain;
+                    plain = plain.Substring(tokenEnd + 1);
+                }
+                else if (plain.StartsWith("gray:", StringComparison.OrdinalIgnoreCase)) plain = plain.Substring("gray:".Length);
+                else return plain;
+            }
+        }
+
+        private static bool IsWebIcon(string path)
+        {
+            return path != null && (path.StartsWith("https://", StringComparison.OrdinalIgnoreCase) || path.StartsWith("http://", StringComparison.OrdinalIgnoreCase));
+        }
+
+        // an icon as a file on this PC (the add-on keeps them in its folder; paths there can be relative to it),
+        // or its web address when the add-on has none on disk and art downloads are allowed (LocalIcon gets it)
         private static string IconFile(string path)
         {
+            path = PlainIconPath(path);
             if (string.IsNullOrWhiteSpace(path)) return null;
-            if (path.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return null;
+            if (IsWebIcon(path)) return DownloadConsent.Allowed("artdownload") ? path : null;
             try
             {
                 var full = Path.IsPathRooted(path) ? path : (dataFolder != null ? Path.Combine(dataFolder, path) : null);
                 return full != null && File.Exists(full) ? full : null;
             }
             catch { return null; }
+        }
+
+        private const int MaxIconBytes = 2 * 1024 * 1024, MaxIconSide = 4096, MaxIconRedirects = 3, IconDeadlineMs = 15000;
+        private static readonly HashSet<string> failedIcons = new HashSet<string>();
+
+        // a web icon as a file, downloaded once (runs off the UI thread); any other path comes back as it is
+        public static string LocalIcon(string icon)
+        {
+            if (!IsWebIcon(icon)) return icon;
+            string target;
+            using (var sha = System.Security.Cryptography.SHA1.Create())
+                target = Path.Combine(SelenePaths.Media("AchievementIcons"), BitConverter.ToString(sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(icon))).Replace("-", "") + ".img");
+            if (File.Exists(target)) return target;
+            lock (failedIcons) { if (failedIcons.Contains(icon)) return null; }
+            if (!DownloadConsent.Allowed("artdownload")) return null;
+            var part = target + "." + Guid.NewGuid().ToString("N") + ".part";
+            try
+            {
+                DownloadIcon(icon, part);
+                RequireIconPicture(part);
+                if (!File.Exists(target)) File.Move(part, target);
+                return target;
+            }
+            catch (Exception ex)
+            {
+                lock (failedIcons) failedIcons.Add(icon);
+                HomeNav.Log("achievements: icon download failed: " + ex.Message);
+                return File.Exists(target) ? target : null;
+            }
+            finally
+            {
+                try { if (File.Exists(part)) File.Delete(part); } catch (Exception ex) { HomeNav.Log("achievements: " + ex.Message); }
+            }
+        }
+
+        // the addresses come from add-on data: redirects are followed by hand so each stop is checked too
+        private static void DownloadIcon(string url, string file)
+        {
+            System.Net.ServicePointManager.SecurityProtocol |= System.Net.SecurityProtocolType.Tls12;
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            var address = new Uri(url);
+            for (int hop = 0; hop <= MaxIconRedirects; hop++)
+            {
+                RequirePublicHost(address);
+                var request = (System.Net.HttpWebRequest)System.Net.WebRequest.Create(address);
+                request.AllowAutoRedirect = false;
+                request.Timeout = 8000;
+                request.ReadWriteTimeout = 8000;
+                using (var response = (System.Net.HttpWebResponse)request.GetResponse())
+                {
+                    int status = (int)response.StatusCode;
+                    if (status >= 300 && status < 400)
+                    {
+                        address = new Uri(address, response.Headers["Location"] ?? "");
+                        continue;
+                    }
+                    using (var from = response.GetResponseStream())
+                    using (var to = File.Create(file))
+                    {
+                        var buffer = new byte[16384];
+                        int read, total = 0;
+                        while ((read = from.Read(buffer, 0, buffer.Length)) > 0)
+                        {
+                            total += read;
+                            if (total > MaxIconBytes) throw new InvalidOperationException("larger than " + MaxIconBytes + " bytes");
+                            if (clock.ElapsedMilliseconds > IconDeadlineMs) throw new TimeoutException("took too long");
+                            to.Write(buffer, 0, read);
+                        }
+                    }
+                    return;
+                }
+            }
+            throw new InvalidOperationException("too many redirects");
+        }
+
+        private static void RequirePublicHost(Uri address)
+        {
+            if (address.Scheme != Uri.UriSchemeHttps && address.Scheme != Uri.UriSchemeHttp) throw new InvalidOperationException("not a web address");
+            foreach (var ip in System.Net.Dns.GetHostAddresses(address.DnsSafeHost))
+                if (IsPrivateAddress(ip)) throw new InvalidOperationException("not a public address: " + address.Host);
+        }
+
+        private static bool IsPrivateAddress(System.Net.IPAddress ip)
+        {
+            if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
+            var b = ip.GetAddressBytes();
+            if (b.Length == 16)
+            {
+                // only global unicast (2000::/3), without the ranges that carry another address inside: Teredo, 6to4; and documentation
+                if ((b[0] & 0xE0) != 0x20) return true;
+                bool teredo = b[0] == 0x20 && b[1] == 0x01 && b[2] == 0 && b[3] == 0;
+                bool sixToFour = b[0] == 0x20 && b[1] == 0x02;
+                bool documentation = b[0] == 0x20 && b[1] == 0x01 && b[2] == 0x0D && b[3] == 0xB8;
+                return teredo || sixToFour || documentation;
+            }
+            return b[0] == 0 || b[0] == 10 || b[0] == 127 || b[0] >= 224
+                || (b[0] == 100 && b[1] >= 64 && b[1] <= 127)
+                || (b[0] == 169 && b[1] == 254)
+                || (b[0] == 172 && b[1] >= 16 && b[1] <= 31)
+                || (b[0] == 192 && b[1] == 0 && (b[2] == 0 || b[2] == 2))
+                || (b[0] == 192 && b[1] == 168)
+                || (b[0] == 198 && (b[1] == 18 || b[1] == 19))
+                || (b[0] == 198 && b[1] == 51 && b[2] == 100)
+                || (b[0] == 203 && b[1] == 0 && b[2] == 113);
+        }
+
+        // only a real picture of a sensible size is kept
+        private static void RequireIconPicture(string file)
+        {
+            using (var stream = File.OpenRead(file))
+            {
+                var frame = System.Windows.Media.Imaging.BitmapFrame.Create(stream, System.Windows.Media.Imaging.BitmapCreateOptions.DelayCreation, System.Windows.Media.Imaging.BitmapCacheOption.None);
+                if (frame.PixelWidth <= 0 || frame.PixelHeight <= 0 || frame.PixelWidth > MaxIconSide || frame.PixelHeight > MaxIconSide)
+                    throw new InvalidOperationException("picture size " + frame.PixelWidth + "x" + frame.PixelHeight);
+            }
+        }
+
+        // pictures of achievements, which may be web addresses
+        public static void LoadIcons(IList<string> icons, int width, Action<int, System.Windows.Media.ImageSource> loaded)
+        {
+            Ui.LoadInOrder(icons, width, loaded, LocalIcon);
         }
 
         private static int? ToInt(object o) { try { return o == null ? (int?)null : System.Convert.ToInt32(o); } catch { return null; } }

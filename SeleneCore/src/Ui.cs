@@ -923,14 +923,14 @@ namespace Selene
         }   // asking before something can't be undone
 
         // decodes pictures one after another off the UI thread and hands each over on it (avatar and wallpaper grids)
-        public static void LoadInOrder(IList<string> files, int width, Action<int, ImageSource> loaded)
+        public static void LoadInOrder(IList<string> files, int width, Action<int, ImageSource> loaded, Func<string, string> toFile = null)
         {
             var dispatcher = Application.Current.Dispatcher;
             System.Threading.Tasks.Task.Factory.StartNew(() =>
             {
                 for (int i = 0; i < files.Count; i++)
                 {
-                    var pic = Wallpapers.Load(files[i], width);
+                    var pic = Wallpapers.Load(toFile != null ? toFile(files[i]) : files[i], width);
                     if (pic == null) continue;
                     int at = i;
                     dispatcher.BeginInvoke(new Action(() => AfterHold(() => loaded(at, pic))), System.Windows.Threading.DispatcherPriority.Background);

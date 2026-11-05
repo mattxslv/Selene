@@ -109,7 +109,7 @@ namespace Selene
             Ui.Play("OpenPanel.wav", 0.8);
             Ui.Rise(header, 40, 14, 320);
             var art = game != null ? GameFacts.BackgroundPath(game) : null;
-            if (art != null) Ui.LoadInOrder(new List<string> { art }, 1920, (k, pic) => { if (closed) return; hero.Source = pic; Ui.Fade(hero, 0.5, 600); });
+            if (art != null) AchievementsData.LoadIcons(new List<string> { art }, 1920, (k, pic) => { if (closed) return; hero.Source = pic; Ui.Fade(hero, 0.5, 600); });
             AchievementsData.ForGame(gameId, s =>
             {
                 if (closed) return;
@@ -159,7 +159,7 @@ namespace Selene
             recentLine.Margin = new Thickness(0, 14, 0, 0);
             box.Children.Add(recentLine);
             Root.Children.Add(box);
-            Ui.LoadInOrder(files, 192, (k, pic) =>
+            AchievementsData.LoadIcons(files, 192, (k, pic) =>
             {
                 if (closed || k >= at.Count) return;
                 var face = new Border { CornerRadius = new CornerRadius(13), Background = new ImageBrush(pic) { Stretch = Stretch.UniformToFill } };
@@ -193,7 +193,7 @@ namespace Selene
             {
                 var img = new Image { MaxHeight = 120, MaxWidth = 520, HorizontalAlignment = HorizontalAlignment.Left, Stretch = Stretch.Uniform };
                 RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.HighQuality);
-                Ui.LoadInOrder(new List<string> { logo }, 1040, (k, pic) => img.Source = pic);
+                AchievementsData.LoadIcons(new List<string> { logo }, 1040, (k, pic) => img.Source = pic);
                 left.Children.Add(img);
             }
             else left.Children.Add(new TextBlock { Text = name, FontSize = 44, FontFamily = Ui.Display, FontWeight = FontWeights.SemiBold, Foreground = Ink.Brush("SeleneInkColor"), TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 1100 });
@@ -366,8 +366,8 @@ namespace Selene
                 var it = shown[i];
                 var icon = new Border { Width = IconSize, Height = IconSize, CornerRadius = new CornerRadius(10), Background = Ink.Brush("SeleneInkColor", 0.08), ClipToBounds = true, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 20, 0) };
                 if (!it.Unlocked) icon.Opacity = 0.55;
+                icon.Child = Ui.Glyph(Ui.Icon(0xea23), Ui.Icons, 30, Ink.Brush("SeleneInkColor", 0.5));
                 if (it.Icon != null) { files.Add(it.Icon); targets.Add(Tuple.Create(icon, !it.Unlocked)); }
-                else icon.Child = Ui.Glyph(Ui.Icon(0xea23), Ui.Icons, 30, Ink.Brush("SeleneInkColor", 0.5));
 
                 var words = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
                 var name = new TextBlock { FontSize = 21, FontWeight = FontWeights.SemiBold, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", it.Unlocked ? 1 : 0.8), TextTrimming = TextTrimming.CharacterEllipsis };
@@ -394,7 +394,7 @@ namespace Selene
                 if (i < 8) Ui.Rise(row, 60 + i * 40, 12, 280);
             }
             built = end;
-            Ui.LoadInOrder(files, 128, (k, pic) =>
+            AchievementsData.LoadIcons(files, 128, (k, pic) =>
             {
                 if (closed || k >= targets.Count) return;
                 var src = pic as BitmapSource;
@@ -502,7 +502,7 @@ namespace Selene
             var card = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Width = 760 };
             var icon = new Border { Width = 168, Height = 168, CornerRadius = new CornerRadius(24), HorizontalAlignment = HorizontalAlignment.Center, Background = Ink.Brush("SeleneInkColor", 0.08), ClipToBounds = true };
             if (it.Icon != null && !secret)
-                Ui.LoadInOrder(new List<string> { it.Icon }, 336, (k, pic) =>
+                AchievementsData.LoadIcons(new List<string> { it.Icon }, 336, (k, pic) =>
                 {
                     var src = pic as BitmapSource;
                     if (!it.Unlocked && src != null) { try { var grey = new FormatConvertedBitmap(src, PixelFormats.Gray8, null, 0); grey.Freeze(); pic = grey; } catch { } }

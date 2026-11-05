@@ -83,7 +83,8 @@ namespace Selene
                 else { key = "game"; hints = new[] { "X", "Details", "Y", "Game options", "A", "Play" }; }
             }
             else if (focused != null && focused.Name.StartsWith("SeleneShotTile")) { key = "shot"; hints = new[] { "A", "View" }; }
-            else if (focused != null && (focused.Name == "SelenePlayBtn" || focused.Name == "SeleneDetailsBtn" || focused.Name == "SeleneFavBtn")) { key = "pill"; hints = new[] { "A", "Select" }; }
+            else if (focused != null && focused.Name == "SeleneTopAchievements") { key = "topachievements"; hints = new[] { "A", "Achievements", "B", "Back" }; }
+            else if (focused != null && (focused.Name == "SelenePlayBtn" || focused.Name == "SeleneDetailsBtn" || focused.Name == "SeleneFavBtn" || focused.Name == "SeleneAchBtn")) { key = "pill"; hints = new[] { "A", "Select" }; }
             else { key = "other"; hints = new string[0]; }
             if (Ui.PlayStationPrompts) key += "|ps";   // the button names changed (Xbox / PlayStation): built again
             if (key == shown) return;

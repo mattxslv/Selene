@@ -80,7 +80,7 @@ namespace Selene
             }
             if (files.Count == 0) return;
             var tiles = s.Tiles;
-            Ui.LoadInOrder(files, 900, (i, pic) =>
+            AchievementsData.LoadIcons(files, 900, (i, pic) =>
             {
                 if (at[i] >= tiles.Count || !ReferenceEquals(s.Tiles, tiles)) return;
                 var frame = tiles[at[i]].Face.Child as Grid;
@@ -100,7 +100,7 @@ namespace Selene
             var icon = new Border { Width = 128, Height = 128, CornerRadius = new CornerRadius(14), ClipToBounds = true, VerticalAlignment = VerticalAlignment.Center, Background = Ink.Brush("SeleneInkColor", 0.08) };
             icon.Child = AchievementsData.TrophyIcon(e.Grade ?? "Bronze", 56);
             ((TextBlock)icon.Child).HorizontalAlignment = HorizontalAlignment.Center;
-            if (e.Icon != null) Ui.LoadInOrder(new List<string> { e.Icon }, 256, (k, pic) =>
+            if (e.Icon != null) AchievementsData.LoadIcons(new List<string> { e.Icon }, 256, (k, pic) =>
             {
                 var bmp = pic as System.Windows.Media.Imaging.BitmapSource;
                 var brush = new ImageBrush(pic) { Stretch = Stretch.UniformToFill };

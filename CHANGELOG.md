@@ -4,6 +4,29 @@ Selene (theme) and Selene Core (add-on) share one version number and are release
 
 ## Unreleased
 
+## 1.5.6 - 2026-11-05
+
+- Background Changer backgrounds (Look, off by default): use the add-on's curated images and rotation on Spotlight, Collection and game pages. Turning it off restores Selene's backgrounds (#140).
+- Battery in the top bar (Look): show the device's battery on laptops and handhelds (#135).
+- Achievements in the top bar (Look): a trophy left of your profile opens the achievements hub. Turn it off to hide it.
+- Screenshots on Spotlight (Spotlight): turn off the picture tile below the game's buttons (#147).
+- Achievements button on Spotlight (Spotlight): open a game's achievements from the trophy beside its buttons (#152).
+- Remember the game in each tab (Spotlight, off by default): keep each filter tab's selection during the session (#123).
+- Playnite's preset tabs now follow the order set in Library Manager instead of A to Z; Spotlight > Use Playnite's preset order turns this off (#150).
+- Fixed: a Playnite preset enabled for fullscreen disappeared from the tabs when it shared a name with one of Selene's, such as Favorites (#146).
+- Fixed: achievements showed a plain trophy instead of their own art with recent versions of Playnite Achievements. Art the add-on only has as a web address downloads with Spotlight's art downloads switch (#149).
+- The closing screen shows the game's logo when it has one, and otherwise its real name instead of its sorting name ("Skate 03"). Look > Logo when a game closes turns the logo off (#151).
+- A game's Platform now shows a real logo: Xbox, PlayStation and Nintendo for consoles and, for PC games, the store they come from (Steam, Epic...) or Windows, instead of the same gamepad for everything. Spotlight > Use game platform metadata off still shows the store and its name (#143).
+- Fixed: More like this on a game's page cut the sides off covers that aren't tall, such as square ones. Look > Keep whole covers in More like this restores the crop (#141).
+- Fixed: the game's sound could keep playing under Selene's music after going back with Guide, when another window such as Explorer had the front for a moment (#137).
+- Fixed: the achievements count under Play on Spotlight flickered when moving between games with and without achievements (#139).
+- Profiles after sleep (Look, off by default): go back to choosing a profile when the PC wakes. It waits if a game is running (#145).
+- Fixed: typing with a keyboard on screens that take text, such as Report a problem or a profile name, lost some letters or opened other things (#155).
+- Sleep from the Power menu closes the menu first, so waking shows Spotlight instead of the menu (#156).
+- Fixed: apps and silent windowed games, such as a browser, stayed hidden behind the loading screen for up to 2 minutes. They now appear after 12 seconds, and Guide no longer brings Playnite back behind the loading screen (#157).
+- Own backgrounds first (Look, off by default): show the background set in Playnite instead of the art Selene downloaded (#153).
+- Loading screen: no black flash as it moves from Selene's window into its own. Games > Smooth loading screen turns this off (#138).
+
 ## 1.5.5 - 2026-11-02
 
 - Fixed: games that start through a launcher, start the real game as another program, or ask for administrator rights could end on a black screen after the loading screen, with the game behind Playnite until you clicked it in the taskbar (#110, #128). Selene now shows the game even when its launcher closes or Playnite loses track of it, checks the game really came to the front and tries again, hands it back if a launcher pulls Playnite forward (or Playnite comes back thinking the game ended), and as a last resort steps Playnite aside into the tray so Windows shows the game. When the game closes, Selene comes back on its own. Switch: Games > Make sure the game comes to the front.

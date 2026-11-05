@@ -68,6 +68,7 @@ namespace Selene
             // Every feature remains enabled; optional startup jobs wait for the intro and quiet frames.
             StartupWork.AfterHome("library refresh", () => { if (Features.On("startrefresh")) RefreshLibrary("start"); }, 2500);
             EventManager.RegisterClassHandler(typeof(Window), Keyboard.PreviewKeyDownEvent, new KeyEventHandler(OnPreviewKeyDown));
+            EventManager.RegisterClassHandler(typeof(Button), Button.ClickEvent, new RoutedEventHandler(OnAchievementsClick));
             EventManager.RegisterClassHandler(typeof(Window), Keyboard.PreviewGotKeyboardFocusEvent, new KeyboardFocusChangedEventHandler(OnWindowPreviewGotFocus));
             SeleneDialogs.Install(Api);   // add-ons' progress tasks behind Selene's card (no Playnite window built for each)
             DialogLook.Install();   // Playnite's message boxes as Selene cards
@@ -141,6 +142,18 @@ namespace Selene
                 if (IntroRunning && (e.Key == Key.Left || e.Key == Key.Right || e.Key == Key.Up || e.Key == Key.Down || e.Key == Key.Enter || e.Key == Key.Space) && FocusOnHome()) { e.Handled = true; return; }
                 // the Store card's game pictures (Down from the card goes into them)
                 var asPad = e.Key == Key.Down ? "DPadDown" : e.Key == Key.Up ? "DPadUp" : e.Key == Key.Left ? "DPadLeft" : e.Key == Key.Right ? "DPadRight" : e.Key == Key.Enter ? "A" : e.Key == Key.Escape || e.Key == Key.Back ? "B" : null;
+                if ((Features.On("hubachievements") || Features.On("topachievements")) && asPad != null)
+                {
+                    var pillFocus = Keyboard.FocusedElement as FrameworkElement;
+                    bool onPill = pillFocus != null && (pillFocus.Name == "SelenePlayBtn" || pillFocus.Name == "SeleneDetailsBtn" || pillFocus.Name == "SeleneFavBtn" || pillFocus.Name == "SeleneAchBtn" || pillFocus.Name == "SeleneTopAchievements");
+                    bool direction = asPad.StartsWith("DPad");
+                    // Controller navigation runs at KeyDown. Its preview must not move the focus first.
+                    if (e.GetType().Name == "GameControllerInputEventArgs")
+                    {
+                        if ((onPill && (direction || asPad == "A")) || (IsInRow(pillFocus) && (asPad == "DPadDown" || asPad == "DPadUp"))) { e.Handled = true; return; }
+                    }
+                    else if (HandleInfoButtons(asPad, direction)) { e.Handled = true; return; }
+                }
                 // a stray Enter as the layer closes over the details page (a capture) reopened it; pad presses come the other way
                 if (asPad == "A" && (DateTime.Now - LoginScene.ClosedAt).TotalMilliseconds < 1500) { Log("keys: Enter right after the layer closed, ignored"); e.Handled = true; return; }
                 if (asPad != null && !e.Handled && (StoreShowcase.Handle(asPad) || CardShowcase.Handle(asPad) || DetailsStage.Handle(asPad))) { e.Handled = true; return; }
@@ -701,6 +714,7 @@ namespace Selene
                     {
                         // home background: the PS Store hero above covers it whenever there is one
                         var heroPath = FindByName(parent, "SeleneHeroPath") as TextBlock;
+                        GameFacts.BindHeroPath(heroPath, "SelectedGame.Id");
                         if (heroPath != null) cf.CanLoad = () => !System.IO.File.Exists(heroPath.Text);
                     }
                     var stretch = fi.GetType().GetProperty("Stretch");
@@ -735,7 +749,8 @@ namespace Selene
             {
                 try
                 {
-                    if (values.Length > 0 && values[0] is Guid)
+                    bool ownFirst = Features.On("ownbackground") && values.Length > 1 && values[1] != null && values[1] != DependencyProperty.UnsetValue;
+                    if (!ownFirst && values.Length > 0 && values[0] is Guid)
                     {
                         var hero = System.IO.Path.Combine(SelenePaths.Media("Hero"), values[0] + ".jpg");
                         if (System.IO.File.Exists(hero)) return hero;
@@ -1376,8 +1391,25 @@ namespace Selene
         // Optional: settings point at a credentials file (line 1 user, line 2 password; keep it readable by this account only).
         private static void OnPowerModeChanged(object sender, Microsoft.Win32.PowerModeChangedEventArgs e)
         {
+            if (e.Mode == Microsoft.Win32.PowerModes.Resume) { ProfilesAfterWake(); return; }
             if (e.Mode != Microsoft.Win32.PowerModes.Suspend) return;
             try { DisconnectStreamClients(); } catch (Exception ex) { Log("sleep disconnect failed: " + ex.Message); }
+        }
+
+        // back to choosing a profile when the PC wakes, like a console (#145); never over a game or first-run setup
+        private static void ProfilesAfterWake()
+        {
+            if (!Features.On("wakeprofiles") || Application.Current == null) return;
+            Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                try
+                {
+                    if (Quitting || launching || AnyGameRunning() || LoginScene.InSetup || CloseToTray.IsHidden) { Log("wake: profiles not shown"); return; }
+                    LoginScene.OpenWith(() => new WhoScreen(null));
+                    Log("wake: profiles shown");
+                }
+                catch (Exception ex) { Log("wake: " + ex.Message); }
+            }));
         }
 
         private static void DisconnectStreamClients()
@@ -2480,8 +2512,34 @@ namespace Selene
         }
 
         // the settings that are a choice of values, read once (the rest are read where they're used)
+        public static void ApplyHubAchievements()
+        {
+            Application.Current.Resources["SeleneHubAchievementsShown"] = Features.On("hubachievements") && Features.On("achievements") && AchievementsData.Available() ? Visibility.Visible : Visibility.Collapsed;
+            Application.Current.Resources["SeleneTopAchievementsShown"] = Features.On("topachievements") && Features.On("achievements") && AchievementsData.Available() ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private static void OnAchievementsClick(object sender, RoutedEventArgs e)
+        {
+            var button = sender as Button;
+            if (button == null || button.Name != "SeleneAchBtn" || !button.IsVisible || LoginScene.IsActive) return;
+            var row = LiveRow();
+            if (row != null && row.IsVisible && OpenGameAchievements(row.SelectedItem)) e.Handled = true;
+        }
+
+        private static bool OpenGameAchievements(object game)
+        {
+            if (!Features.On("hubachievements") || !Features.On("achievements") || !AchievementsData.Available() || game == null || game is string) return false;
+            var id = Prop(game, "Id");
+            if (!(id is Guid)) return false;
+            Ui.Confirm(); HidePreview(); var openId = (Guid)id;
+            Log("achievements button -> " + game);
+            LoginScene.OpenWith(() => new AchievementsScreen(openId, null));
+            return true;
+        }
+
         public static void ApplyValueSettings()
         {
+            ApplyHubAchievements();
             previewSound = Features.On("trailersound") && !Isolated;
             Ui.RefreshPrompts();   // Button names
             // the tab set may have changed (Selene's / Playnite's / both): rebuilt, shown, and the row refiltered
@@ -4264,12 +4322,20 @@ namespace Selene
             var row = LiveRow();
             if (row == null || !row.IsVisible) return false;
             var w = Window.GetWindow(row);
+            var top = w != null ? FindByName(w, "SeleneTopAchievements") as Button : null;
+            bool topShown = Features.On("topachievements") && Features.On("achievements") && top != null && top.IsVisible;
+            if (topShown && ReferenceEquals(focused, top))
+            {
+                if (pressed == "A") { Ui.Confirm(); HidePreview(); LoginScene.OpenWith(() => new AchievementsHub()); return true; }
+                if (pressed == "B" || (dirPad && pressed.EndsWith("Down"))) { ReleasePillLock(); FocusRowSoon(0); return true; }
+                return dirPad;
+            }
             bool down = dirPad && pressed.EndsWith("Down"), up = dirPad && pressed.EndsWith("Up");
             bool left = dirPad && pressed.EndsWith("Left"), right = dirPad && pressed.EndsWith("Right");
             // cheap exits first: this runs on every controller press, and left/right inside the row never concerns the pills
             if (!dirPad && pressed != "A") return false;
             bool inRow = focused != null && IsInRow(focused);
-            if (inRow && up) return true;   // nothing above the row (focus went to hidden parts and the row dropped away)
+            if (inRow && up) { if (topShown) FocusPill(top); return true; }
             if (inRow && !down) return false;
             // the Library and Store cards have nothing under them: Down stays put (it used to move focus somewhere unseen)
             if (inRow && down && movingCard == null && movingGame == null && row.SelectedItem is string) return true;
@@ -4277,16 +4343,17 @@ namespace Selene
             Button[] pills;
             if (!rowPills.TryGetValue(row, out pills) || pills[0] == null)
             {
-                pills = new Button[3];
+                pills = new Button[4];
                 for (DependencyObject d = row; d != null && pills[0] == null; d = VisualTreeHelper.GetParent(d))
                 {
                     pills[0] = FindByName(d, "SelenePlayBtn") as Button;
                     pills[1] = pills[0] != null ? FindByName(d, "SeleneDetailsBtn") as Button : null;
                     pills[2] = pills[0] != null ? FindByName(d, "SeleneFavBtn") as Button : null;
+                    pills[3] = pills[0] != null ? FindByName(d, "SeleneAchBtn") as Button : null;
                 }
                 if (pills[0] != null) { rowPills.Remove(row); rowPills.Add(row, pills); }
             }
-            Button play = pills[0], details = pills[1], fav = pills[2];
+            Button play = pills[0], details = pills[1], fav = pills[2], ach = pills[3];
             if (play == null || details == null || !play.IsVisible) return false;
 
             if (focused != null && IsInRow(focused) && down && movingCard == null && movingGame == null)
@@ -4296,9 +4363,9 @@ namespace Selene
                 FocusPill(play);
                 return true;
             }
-            bool onPlay = ReferenceEquals(focused, play), onDetails = ReferenceEquals(focused, details), onFav = fav != null && ReferenceEquals(focused, fav);
+            bool onPlay = ReferenceEquals(focused, play), onDetails = ReferenceEquals(focused, details), onFav = fav != null && ReferenceEquals(focused, fav), onAch = ach != null && ReferenceEquals(focused, ach);
             // Up from anything below the pills on the home screen (Library News / Latest News) lands on Play, not the row
-            if (up && !onPlay && !onDetails && !onFav && focused != null && !IsInRow(focused) && w != null)
+            if (up && !onPlay && !onDetails && !onFav && !onAch && focused != null && !IsInRow(focused) && w != null)
             {
                 var hub = FindByName(w, "WelcomeHubOverlay");
                 if (hub != null && hub.IsVisible && focused.IsVisible && hub.IsAncestorOf(focused))
@@ -4309,14 +4376,16 @@ namespace Selene
                     if (focusedY > playBottom && it != null && !(it is string)) { FocusPill(play); return true; }
                 }
             }
-            if (!onPlay && !onDetails && !onFav) return false;
+            if (!onPlay && !onDetails && !onFav && !onAch) return false;
             if (up) { ReleasePillLock(); FocusRowSoon(0); return true; }
             if (left || right)
             {
                 // Play | Details | Favourite (ends stay put)
-                var order = fav != null && fav.IsVisible ? new[] { play, details, fav } : new[] { play, details };
-                int at = onPlay ? 0 : onDetails ? 1 : 2;
-                FocusPill(order[Math.Max(0, Math.Min(order.Length - 1, at + (left ? -1 : 1)))]);
+                var order = new List<Button> { play, details };
+                if (fav != null && fav.IsVisible) order.Add(fav);
+                if (ach != null && ach.IsVisible) order.Add(ach);
+                int at = Math.Max(0, order.IndexOf(focused as Button));
+                FocusPill(order[Math.Max(0, Math.Min(order.Count - 1, at + (left ? -1 : 1)))]);
                 return true;
             }
             if (pressed != "A") { if (down) ReleasePillLock(); return false; }
@@ -4325,6 +4394,11 @@ namespace Selene
             var game = row.SelectedItem;
             if (game == null || game is string) return true;
             if (onFav) { ToggleFavorite(game); return true; }
+            if (onAch)
+            {
+                OpenGameAchievements(game);
+                return true;
+            }
             var running = Prop(game, "IsRunning");
             bool isRunning = running is bool && (bool)running && CanReturnToGame();
             HidePreview();
@@ -5168,9 +5242,11 @@ namespace Selene
                 {
                     var own = new HashSet<Guid>(BuiltInFilters.Select(CollectionPresets.For));
                     own.Add(BigScreenPreset);   // Selene's own working preset
-                    foreach (var fp in Api.Database.FilterPresets.Where(PresetVisible).OrderBy(p => p.Name))
+                    foreach (var fp in OrderedPresets().Where(PresetVisible))
                     {
-                        if (own.Contains(fp.Id) || string.IsNullOrWhiteSpace(fp.Name)) continue;
+                        // Selene finds its own presets by name, so a user's "Favorites" counts as Selene's: enabled for fullscreen, it is still theirs to see (#146)
+                        bool enabledByUser = Features.On("fullscreenpresets") && fp.ShowInFullscreeQuickSelection && fp.Id != BigScreenPreset;
+                        if ((own.Contains(fp.Id) && !enabledByUser) || string.IsNullOrWhiteSpace(fp.Name)) continue;
                         keys.Add(PresetKey + fp.Id);
                         labels.Add(fp.Name);
                     }
@@ -5193,6 +5269,24 @@ namespace Selene
             RowFilterLabels = labels.ToArray();
             if (current != null) rowFilter = Math.Max(0, Array.IndexOf(RowFilters, current));
         }
+
+        // the order set in Playnite's Library Manager (#150); alphabetical with the switch off, or if Playnite can't say
+        private static List<Playnite.SDK.Models.FilterPreset> OrderedPresets()
+        {
+            var alphabetical = Api.Database.FilterPresets.OrderBy(p => p.Name).ToList();
+            if (!Features.On("presetorder")) return alphabetical;
+            try
+            {
+                var sorted = PlaynitePresetOrder();
+                if (sorted == null) return alphabetical;
+                var placed = new HashSet<Guid>(sorted.Select(p => p.Id));
+                return sorted.Concat(alphabetical.Where(p => !placed.Contains(p.Id))).ToList();
+            }
+            catch (Exception ex) { Log("filter presets: Playnite's order: " + ex.Message); return alphabetical; }
+        }
+
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private static List<Playnite.SDK.Models.FilterPreset> PlaynitePresetOrder() { return Api.MainView.GetSortedFilterPresets(); }
 
         private static bool PresetVisible(Playnite.SDK.Models.FilterPreset preset)
         {
@@ -5281,6 +5375,7 @@ namespace Selene
         {
             var row = LiveRow();
             if (row == null) return;
+            RememberTabGame(row);
             rowFilter = (RowFilter + dir + RowFilters.Length) % RowFilters.Length;
             try { System.IO.File.WriteAllText(RowFilterFile, RowFilters[rowFilter]); } catch { }
             filterDir = dir;
@@ -5328,6 +5423,28 @@ namespace Selene
             cacheGrow.Tick += fast;
         }
 
+        // the game each filter tab was on, for this session (Remember the game in each tab: #123)
+        private static readonly Dictionary<string, Guid> tabGames = new Dictionary<string, Guid>();
+        private static void RememberTabGame(ListBox row)
+        {
+            if (!Features.On("tabmemory")) return;
+            var id = row.SelectedItem != null && !(row.SelectedItem is string) && !(row.SelectedItem is RowPad) ? Prop(row.SelectedItem, "Id") : null;
+            if (id is Guid) tabGames[RowFilters[RowFilter]] = (Guid)id;
+        }
+        private static int RememberedTabGame(ListBox row, int first)
+        {
+            Guid id;
+            if (!Features.On("tabmemory") || !tabGames.TryGetValue(RowFilters[RowFilter], out id)) return first;
+            for (int i = 0; i < row.Items.Count; i++)
+            {
+                var item = row.Items[i];
+                if (item is string || item is RowPad) continue;
+                var at = Prop(item, "Id");
+                if (at is Guid && (Guid)at == id) return i;
+            }
+            return first;
+        }
+
         private static void ApplyRowFilter(ListBox row)
         {
             int dir = filterDir;
@@ -5340,6 +5457,7 @@ namespace Selene
             int idx = FirstGameIndex(row);
             if (idx >= 0)
             {
+                idx = RememberedTabGame(row, idx);
                 row.SelectedIndex = idx;
                 var sv = FindChild<ScrollViewer>(row);
                 if (sv != null) sv.ScrollToHorizontalOffset(Math.Max(0, idx - AnchorSlot));
@@ -6189,6 +6307,20 @@ namespace Selene
                 // (freezing it would hang the taskbar and desktop)
                 string proc = "";
                 try { proc = System.Diagnostics.Process.GetProcessById((int)pid).ProcessName.ToLowerInvariant(); } catch { }
+                // Guide took Explorer as the game when it was in front for a moment: the pause was skipped and the game's sound
+                // stayed on under Selene's music (#137). The game's real window, when it can be found, is the one to pause.
+                if (name != null && (proc == "explorer" || proc == "shellexperiencehost" || proc == "startmenuexperiencehost" || proc == "searchhost"))
+                {
+                    var real = BestGameWindow();
+                    if (real != IntPtr.Zero && real != gameWindow)
+                    {
+                        Log("pause: " + proc + " was in front -> " + WindowInfo(real));
+                        gameWindow = real;
+                        GetWindowThreadProcessId(real, out pid);
+                        if (pid == 0 || pid == (uint)System.Diagnostics.Process.GetCurrentProcess().Id) return;
+                        try { proc = System.Diagnostics.Process.GetProcessById((int)pid).ProcessName.ToLowerInvariant(); } catch { }
+                    }
+                }
                 if (name == null || proc == "explorer" || proc == "shellexperiencehost" || proc == "startmenuexperiencehost" || proc == "searchhost")
                 {
                     Log("pause skipped: " + (name == null ? "no game running" : proc));
@@ -6251,7 +6383,8 @@ namespace Selene
                 var id = Prop(game, "Id");
                 if (!(id is Guid) || Api == null) return;
                 var g0 = Api.Database.Games.Get((Guid)id);
-                var name = Convert.ToString(Prop(game, "Name"));
+                // (not the list entry's Name: Playnite gives its sorting name there, "Skate 03" for Skate 3: #151)
+                var name = g0 != null ? g0.Name : Convert.ToString(Prop(game, "Name"));
                 // Check every target before sending any close message or starting the closing screen.
                 var pids = new System.Collections.Generic.HashSet<int>();
                 if (gameWindow != IntPtr.Zero) { uint wp; GetWindowThreadProcessId(gameWindow, out wp); if (wp != 0) pids.Add((int)wp); }
@@ -6334,8 +6467,28 @@ namespace Selene
         private static string ClosingArt(Playnite.SDK.Models.Game g)
         {
             if (g == null) return null;
-            var hero = System.IO.Path.Combine(SelenePaths.Media("Hero"), g.Id + ".jpg");
-            return System.IO.File.Exists(hero) ? hero : GameFacts.BackgroundPath(g);
+            return GameFacts.HeroPath(g) ?? GameFacts.BackgroundPath(g);
+
+        }
+
+        // the game's own logo in place of its name (#151); null without one, or with the switch off
+        private static Image ClosingLogo(Playnite.SDK.Models.Game g)
+        {
+            if (g == null || !Features.On("closinglogo")) return null;
+            string bg, logo;
+            CoverArtPaths(g.Id, out bg, out logo);
+            if (logo == null) return null;
+            try
+            {
+                var image = new Image
+                {
+                    Source = LoadNow(logo, 0), MaxWidth = 620, MaxHeight = 180, Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 34, 0, 0),
+                    Effect = new System.Windows.Media.Effects.DropShadowEffect { ShadowDepth = 0, BlurRadius = 30, Opacity = 0.55 }
+                };
+                RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.HighQuality);
+                return image;
+            }
+            catch (Exception ex) { Log("closing screen: logo: " + ex.Message); return null; }
         }
 
         private static void ShowClosingScreen(Window main, Playnite.SDK.Models.Game g, string name)
@@ -6388,7 +6541,9 @@ namespace Selene
                     };
                     stack.Children.Add(tile);
                 }
-                stack.Children.Add(new TextBlock
+                var closingLogo = ClosingLogo(g);
+                if (closingLogo != null) stack.Children.Add(closingLogo);
+                else stack.Children.Add(new TextBlock
                 {
                     Text = name, FontSize = 38, FontFamily = new FontFamily("Segoe UI Variable Display, Segoe UI"), FontWeight = FontWeights.SemiBold, Foreground = Brushes.White,
                     HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 34, 0, 0), TextAlignment = TextAlignment.Center
@@ -6448,7 +6603,8 @@ namespace Selene
             {
                 var id = Prop(game, "Id");
                 if (!(id is Guid) || Api == null) return;
-                var name = Convert.ToString(Prop(game, "Name"));
+                var restarting = Api.Database.Games.Get((Guid)id);
+                var name = restarting != null ? restarting.Name : Convert.ToString(Prop(game, "Name"));
                 var target = gameWindow;
                 uint pid;
                 GetWindowThreadProcessId(target, out pid);
@@ -6722,9 +6878,9 @@ namespace Selene
         {
             bg = null; logo = null;
             if (gameId == Guid.Empty || Api == null) return;
-            var hero = System.IO.Path.Combine(SelenePaths.Media("Hero"), gameId + ".jpg");
             var g = Api.Database.Games.Get(gameId);
-            if (System.IO.File.Exists(hero)) bg = hero;
+            var hero = GameFacts.HeroPath(g);
+            if (hero != null) bg = hero;
             else if (g != null && !string.IsNullOrEmpty(g.BackgroundImage)) bg = Api.Database.GetFullFilePath(g.BackgroundImage);
             var lp = System.IO.Path.Combine(Api.Paths.ConfigurationPath, "ExtraMetadata", "games", gameId.ToString(), "logo.png");
             if (System.IO.File.Exists(lp)) logo = lp;
@@ -6782,11 +6938,13 @@ namespace Selene
                 var artStretch = BackgroundFit.Current;
                 double shade = Features.Number("launchshade");
                 if (coverArtStage != null) { coverArtStage.Stop(); coverArtStage = null; }
+                System.Windows.Media.Imaging.BitmapImage handoverArt = null;
                 if (showArt && bg != null && System.IO.File.Exists(bg))
                 {
                     // the art and its slow drift on a thread of their own: Playnite's start and the game's launch block the UI
                     // thread for a few hundred ms at a time, which froze the drift mid-way
                     var bmp = LoadNow(bg, (int)Math.Max(1920, main.ActualWidth));
+                    handoverArt = bmp;
                     var art = new OffThread(sz =>
                     {
                         var img = new Image { Source = bmp, Stretch = artStretch, RenderTransformOrigin = new Point(0.5, 0.5) };
@@ -6870,16 +7028,55 @@ namespace Selene
                         removeCoverOverlay = null;
                         overlay.Children.Remove(root);
                         host.Children.Remove(overlay);
-                        if (coverWindow != cwShow) return;  // cancelled meanwhile
-                        cwShow.Content = root;
-                        cwShow.Show();
+                        var drawn = cwShow.Content as Grid;
+                        if (coverWindow != cwShow)
+                        {
+                            // cancelled meanwhile (a window drawing off screen is shown already: nobody else closes it)
+                            if (drawn != null) { try { cwShow.Close(); } catch (Exception ex) { Log("loading screen: " + ex.Message); } }
+                            return;
+                        }
+                        if (drawn != null)
+                        {
+                            // the same picture is on screen in the window first; the art, on its own thread, arrives over it
+                            cwShow.Left = main.Left;
+                            root.Background = Brushes.Transparent;
+                            drawn.Children.Add(root);
+                            var settled = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(600) };
+                            settled.Tick += (s2, e2) => { settled.Stop(); root.Background = Brushes.Black; if (drawn.Children.Count > 1) drawn.Children.RemoveAt(0); };
+                            settled.Start();
+                        }
+                        else
+                        {
+                            cwShow.Content = root;
+                            cwShow.Show();
+                        }
                         var startLogo = pendingLogo;
                         pendingLogo = null;
                         if (startLogo != null) startLogo();
                     };
                     removeCoverOverlay = handOver;
                     var fadeIn = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(360)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
-                    fadeIn.Completed += (s, e) => handOver();
+                    bool seamless = handoverArt != null && Features.On("launchseamless");
+                    var seamlessArt = handoverArt;
+                    fadeIn.Completed += (s, e) =>
+                    {
+                        if (!seamless) { handOver(); return; }
+                        if (removeCoverOverlay != handOver || coverWindow != cwShow) return;
+                        // A new window's first frame is empty (a black flash, #138), so it draws the art off screen and only then
+                        // comes on screen, before the loading screen leaves Playnite's window.
+                        var drawnArt = new Grid { Background = Brushes.Black };
+                        double zoom = moveArt ? 1.04 : 1;
+                        drawnArt.Children.Add(new Image { Source = seamlessArt, Stretch = artStretch, RenderTransformOrigin = new Point(0.5, 0.5), RenderTransform = new ScaleTransform(zoom, zoom) });
+                        cwShow.Content = drawnArt;
+                        cwShow.Left = -20000;
+                        EventHandler rendered = null;
+                        rendered = (s2, e2) => { cwShow.ContentRendered -= rendered; handOver(); };
+                        cwShow.ContentRendered += rendered;
+                        var noFrame = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+                        noFrame.Tick += (s2, e2) => { noFrame.Stop(); handOver(); };
+                        noFrame.Start();
+                        cwShow.Show();
+                    };
                     overlay.BeginAnimation(UIElement.OpacityProperty, fadeIn);
                 }
                 else coverWindow.Show();
@@ -7173,7 +7370,7 @@ namespace Selene
                 lastGameWindow = IntPtr.Zero;
                 gamePids.Clear();
                 gamePidsAt = DateTime.MinValue;
-                soundSince = DateTime.MinValue;
+                normalWindowGame = Guid.Empty; soundSince = DateTime.MinValue;
                 lastSoundAt = DateTime.MinValue;
                 launchGameId = gameId;
                 launchGrace = LaunchGrace(gameId);
@@ -7321,6 +7518,11 @@ namespace Selene
                 why = "game sound for 10 s (windowed game)";
                 if (readyWindow == IntPtr.Zero) readyWindow = GetForegroundWindow();
             }
+            else if (found == IntPtr.Zero && gameWindowSeenAt == DateTime.MinValue)
+            {
+                var normal = NormalWindowUp(now);
+                if (normal != IntPtr.Zero) { readyWindow = normal; why = "normal window up 12 s (an app or windowed game)"; }
+            }
             if (why != null)
             {
                 if (coverCancelledByGuide)
@@ -7345,6 +7547,41 @@ namespace Selene
             // ...but once the art has darkened to black, let the game come over it: pushing back over a game that is already
             // drawing made its first frame blink through for a moment
             if (coverHwnd != IntPtr.Zero && !coverDark) SetWindowPos(coverHwnd, new IntPtr(-1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010);  // HWND_TOPMOST, NOSIZE | NOMOVE | NOACTIVATE
+        }
+
+        // An app or a silent windowed game has neither a full-screen window nor sound: it sat behind the loading screen for 2 min and
+        // looked like a black screen (Firefox: #157). Its biggest new normal window, once it has been up for 12 s; looked for once a second.
+        private static DateTime normalWindowSince = DateTime.MinValue, normalWindowLooked = DateTime.MinValue;
+        private static Guid normalWindowGame;
+        private static IntPtr normalWindow;
+        private static IntPtr NormalWindowUp(DateTime now)
+        {
+            if (!Features.On("launchhandoff")) return IntPtr.Zero;
+            if (normalWindowGame != launchGameId) { normalWindowGame = launchGameId; normalWindow = IntPtr.Zero; normalWindowSince = DateTime.MinValue; normalWindowLooked = DateTime.MinValue; }
+            if ((now - normalWindowLooked).TotalSeconds >= 1)
+            {
+                normalWindowLooked = now;
+                IntPtr biggest = IntPtr.Zero;
+                long biggestArea = 0;
+                if (gamePids.Count > 0)
+                    EnumWindows((h, l) =>
+                    {
+                        uint pid;
+                        GetWindowThreadProcessId(h, out pid);
+                        if (!gamePids.Contains((int)pid) || preLaunchWindows.Contains(h) || !UsableGameWindow(h) || IsIconic(h)) return true;
+                        int ex = GetWindowLong(h, -20);
+                        if ((ex & 0x20) != 0 || (ex & 0x80) != 0 || (ex & 0x08000000) != 0) return true;   // transparent / tool / no-activate
+                        RECT r;
+                        if (!GetWindowRect(h, out r)) return true;
+                        long area = (long)(r.Right - r.Left) * (r.Bottom - r.Top);
+                        if (area > biggestArea) { biggestArea = area; biggest = h; }
+                        return true;
+                    }, IntPtr.Zero);
+                if (biggest == IntPtr.Zero) normalWindowSince = DateTime.MinValue;
+                else if (normalWindowSince == DateTime.MinValue) normalWindowSince = now;
+                normalWindow = biggest;
+            }
+            return normalWindow != IntPtr.Zero && normalWindowSince != DateTime.MinValue && (now - normalWindowSince).TotalSeconds >= 12 * launchGrace ? normalWindow : IntPtr.Zero;
         }
 
         private static void RevealGame(IntPtr game, string why)
@@ -8427,10 +8664,11 @@ namespace Selene
                 HideCursorForController();
                 var w = Application.Current.MainWindow;
                 if (w == null) return;
+                // stay on the loading screen until the game starts (Playnite stays hidden too: coming out of the tray behind it, the home reopened and lost its place: #157)
+                if (launching) { Log("guide ignored: game still loading"); return; }
                 if (CloseToTray.IsHidden) { CloseToTray.Unhide(); Log("guide -> unhidden from tray"); }
                 var hwnd = new System.Windows.Interop.WindowInteropHelper(w).Handle;
                 DisableWindowTransitions(hwnd);
-                if (launching) { Log("guide ignored: game still loading"); return; }  // stay on the loading screen until the game starts
                 // Home brought Selene up over the game: the next press goes back, even while Selene is still coming forward
                 // (Windows hadn't handed Selene the screen yet, so that press was taken for "go home" again and did nothing)
                 if (guideAtHome && gameWindow != IntPtr.Zero && GetForegroundWindow() == gameWindow && !IsIconic(gameWindow)) guideAtHome = false;   // went back some other way

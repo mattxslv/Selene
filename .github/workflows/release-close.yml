@@ -1,33 +1,34 @@
-name: Close what a release fixed
-# Publishing a release closes every open issue labelled "fixed in next", each with a note saying which version has the fix.
-
+name: Notify what a release fixed
 on:
   release:
     types: [published]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to announce (e.g. v1.5.2)"
+        description: 'Published release tag (for example v1.5.6)'
         required: true
-
+      dry_run:
+        description: 'Preview without posting, labelling or closing'
+        type: boolean
+        default: true
 permissions:
+  contents: read
   issues: write
-
+concurrency:
+  group: release-notify-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
 jobs:
-  close-fixed:
+  notify:
     runs-on: ubuntu-latest
     steps:
-      - name: Comment and close
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          TAG: ${{ github.event.release.tag_name || inputs.tag }}
-        run: |
-          VERSION="${TAG#v}"
-          URL="https://github.com/$REPO/releases/tag/$TAG"
-          for n in $(gh issue list -R "$REPO" --label "fixed in next" --state open --limit 200 --json number -q '.[].number'); do
-            gh issue comment "$n" -R "$REPO" --body "Out in Selene $VERSION: $URL. If it still happens after updating, tell me here and I'll reopen it."
-            gh issue edit "$n" -R "$REPO" --remove-label "fixed in next" --add-label "released"
-            gh issue close "$n" -R "$REPO" --reason completed
-            echo "closed #$n"
-          done
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
+        with:
+          script: |
+            const notify = require('./.github/scripts/release-notify.cjs');
+            const fixes = require('./.github/release-fixes.json');
+            await notify({github, context, tag: process.env.RELEASE_TAG, fixes,
+              dryRun: process.env.DRY_RUN === 'true', log: core.info});

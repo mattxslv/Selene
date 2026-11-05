@@ -1,0 +1,18 @@
+{
+  "labels": {
+    "idea: investigating": {"color": "d4c5f9", "description": "Checking behavior or feasibility; no implementation promise"},
+    "idea: planned": {"color": "0052cc", "description": "Maintainer-approved work that has not shipped"},
+    "idea: implemented": {"color": "0e8a16", "description": "The requested behavior has shipped"},
+    "idea: waiting": {"color": "fbca04", "description": "Waiting on an external dependency or reporter response"}
+  },
+  "discussions": {
+    "123": "idea: implemented",
+    "135": "idea: implemented",
+    "140": "idea: implemented",
+    "147": "idea: implemented",
+    "152": "idea: implemented",
+    "144": "idea: investigating",
+    "154": "idea: investigating",
+    "125": "idea: waiting"
+  }
+}

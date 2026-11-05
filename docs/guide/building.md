@@ -20,9 +20,10 @@ into `%APPDATA%\Playnite\Themes\Fullscreen\Selene_a98e0027-fa6a-4f5e-a087-bad8d6
   (the animated banner).
 - `dotnet build tools/linux-check` checks that Selene Core compiles anywhere (C# 5).
 
-**Releasing:** `python tools/release.py <version>` moves the Unreleased notes to the version and sets it everywhere;
-commit and push; `tools\package.ps1`; then
-`gh release create v<version> dist\Selene.pthm dist\SeleneCore.pext dist\SHA256SUMS dist\BUILDINFO.txt --title "Selene <version>"`.
+**Checks:** `tools\test.ps1` builds and runs every local suite, with a final pass/fail table.
+
+**Releasing:** follow the [maintainer release checklist](../releasing.md). Start with
+`python tools/release.py <version> --dry-run`; use `python tools/release.py --check` after packaging.
 
 `tools\package.ps1` requires a clean committed tree, checks package contents against the fresh stage and rejects
 known old-helper content. It writes SHA256SUMS and BUILDINFO.txt with the source commit and tool/input hashes.

@@ -5,9 +5,9 @@ name: Build check
 on:
   push:
     branches: [main]
-    paths: ["SeleneCore/**", "tools/linux-check/**", ".github/workflows/build.yml"]
+    paths: ["SeleneCore/**", "theme/**", "tools/**", ".github/**"]
   pull_request:
-    paths: ["SeleneCore/**", "tools/linux-check/**", ".github/workflows/build.yml"]
+    paths: ["SeleneCore/**", "theme/**", "tools/**", ".github/**"]
   workflow_dispatch:
 
 permissions:
@@ -23,3 +23,15 @@ jobs:
           dotnet-version: "8.0.x"
       - name: Compile Selene Core
         run: dotnet build tools/linux-check -c Release -nologo
+
+  maintenance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Security and package regression checks
+        shell: pwsh
+        run: ./tools/tests/security.ps1
+      - name: Release preparation checks
+        run: python3 -m unittest discover -s tools/tests -p 'test_*.py' -v
+      - name: Release notification checks
+        run: node --test tools/tests/release-notify.test.cjs

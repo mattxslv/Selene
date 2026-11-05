@@ -82,6 +82,8 @@
     <sys:String x:Key="SeleneStoreHeadline">Store</sys:String>
     <sys:String x:Key="SeleneStoreAbout">Find something new in the store apps on this PC. Selene is here when you come back.</sys:String>
     <sys:String x:Key="SeleneHeartGlyph">&#xE006;</sys:String>
+    <Visibility x:Key="SeleneHubAchievementsShown">Collapsed</Visibility>
+    <Visibility x:Key="SeleneTopAchievementsShown">Collapsed</Visibility>
     <!-- home background: the game's art over the wallpaper (Selene Core sets 0 for a profile that wants the wallpaper only) -->
     <sys:Double x:Key="SeleneArtOpacity">1</sys:Double>
     <DropShadowEffect x:Key="SeleneFocusGlow" ShadowDepth="0" BlurRadius="18" Color="{DynamicResource SeleneFocusColor}" Opacity="0.35" />

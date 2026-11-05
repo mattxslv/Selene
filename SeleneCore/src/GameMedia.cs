@@ -107,6 +107,8 @@ namespace Selene
             var g = AsGame(o);
             if (g == null) { Clear(); return; }  // Capture / Store / Library tiles: no game, no strip
             try { HltbFetch.ForPage(g); } catch (Exception ex) { HomeNav.Log("hltb: " + ex.Message); }   // its times, shown under its name, once a session
+            // Screenshots on Spotlight off: none on the home, while a game's page still gets its own (#147)
+            if (!Features.On("spotlightshots") && !DetailsStage.PageOpen) { Clear(); return; }
             if (g.Id == shown)
             {
                 // back on the game already loaded (moved away and back before another loaded): the strip had started to
@@ -603,8 +605,8 @@ namespace Selene
 
         private static string Background(Playnite.SDK.Models.Game g)
         {
-            string hero = System.IO.Path.Combine(SelenePaths.Media("Hero"), g.Id + ".jpg");
-            if (System.IO.File.Exists(hero)) return hero;
+            string hero = GameFacts.HeroPath(g);
+            if (hero != null) return hero;
             if (!string.IsNullOrEmpty(g.BackgroundImage) && HomeNav.Api != null) return HomeNav.Api.Database.GetFullFilePath(g.BackgroundImage);
             return null;
         }

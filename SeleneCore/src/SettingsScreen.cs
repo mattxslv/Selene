@@ -42,8 +42,8 @@ namespace Selene
         private static readonly Dictionary<string, string[][]> Sections = new Dictionary<string, string[][]>
         {
             { "Spotlight", new[] {
-                new[] { "Row", "steadyhold", "pickscroll", "rowedges", "filtertabs", "visibletabs", "fullscreenpresets", "consistentfavorites", "shade", "idle" },
-                new[] { "Cards", "cardactivity", "actualplatform", "activitysessions", "cardcaptures", "capturesfolders", "cardachievements", "cardsurprise", "cardnews", "newsfeeds", "cardstore", "cardpictures" },
+                new[] { "Row", "steadyhold", "pickscroll", "rowedges", "filtertabs", "visibletabs", "tabmemory", "fullscreenpresets", "presetorder", "consistentfavorites", "shade", "idle" },
+                new[] { "Cards", "cardactivity", "actualplatform", "activitysessions", "cardcaptures", "capturesfolders", "spotlightshots", "hubachievements", "cardachievements", "cardsurprise", "cardnews", "newsfeeds", "cardstore", "cardpictures" },
                 new[] { "Trailers and downloads", "trailerdelay", "trailerdownload", "artdownload", "screenshotsdownload" } } },
             { "Sound & music", new[] {
                 new[] { "Music", "musicvolume", "musicmuted", "upsgame", "independentmusic", "upsdefault", "selenemusic", "upsspotify", "upsnight", "nowplaying", "musiccard" },
@@ -52,15 +52,15 @@ namespace Selene
                 new[] { "Music setup", "music", "songsetup", "songsettle" } } },
             { "Games", new[] {
                 new[] { "Your library", "gamesget", "gamesask" },
-                new[] { "Launching", "launchstyle", "launchmotion", "launchshade", "loadingscreen", "launchchoice", "aftergame", "guidefocus" },
+                new[] { "Launching", "launchstyle", "launchmotion", "launchshade", "loadingscreen", "launchseamless", "launchchoice", "aftergame", "guidefocus" },
                 new[] { "While playing", "freeze", "powerconfirm", "tray", "quietbackups" },
                 new[] { "Game pages", "gameoptions", "achievements", "achcelebrate", "achsetup", "hltb", "hltbauto", "metadatacomplete", "metasource" },
                 new[] { "Store", "storepage", "storetrailers", "storetab", "storeregion" },
                 new[] { "Surprise me", "surprisepool", "surprisenorepeat" } } },
             { "Look", new[] {
-                new[] { "Background", "homebackground", "glow", "backgroundfit", "guidefade", "smoothswitch", "perfmode" },
-                new[] { "Art", "trimlogos", "logosize", "squareart", "steamgridkey", "smartcrop", "previewartfit", "activitycoverfit", "trailerlogogap", "screenshotskeleton" },
-                new[] { "Text and hints", "textshadow", "hints", "prompts", "detailsbadges", "captureplayerfit", "dialogs", "topprofile", "language", "languagerestart" } } },
+                new[] { "Background", "homebackground", "ownbackground", "backgroundchanger", "glow", "backgroundfit", "guidefade", "smoothswitch", "perfmode" },
+                new[] { "Art", "trimlogos", "logosize", "squareart", "steamgridkey", "smartcrop", "previewartfit", "closinglogo", "morecoverfit", "activitycoverfit", "trailerlogogap", "screenshotskeleton" },
+                new[] { "Text and hints", "textshadow", "hints", "prompts", "detailsbadges", "captureplayerfit", "dialogs", "topprofile", "topbattery", "topachievements", "wakeprofiles", "language", "languagerestart" } } },
             { "Advanced", new[] {
                 new[] { "Help", "report", "setupcheck", "storelibraries", "xboxsignin", "gamesfolder", "shortaddonask", "reportchord", "perflog" },
                 new[] { "Performance", "fullrate", "calmmotion", "presence", "asynccovers", "lightweight" },
@@ -509,6 +509,9 @@ namespace Selene
                 if (key == "brand") Brand.Apply();
                 if (key == "downloadprogress") { ShowGroup(false); ShowFocus(); }
                 if (key == "topprofile") TopProfile.Refresh();
+                if (key == "topbattery") DeviceBattery.Refresh();
+                if (key == "backgroundchanger") BackgroundChangerBridge.RefreshAll();
+                if (key == "hubachievements" || key == "topachievements" || key == "achievements") HomeNav.ApplyHubAchievements();
                 if (key == "nowplaying") NowPlayingBar.Refresh();
                 if (key == "sounds" || key == "soundvolume") HomeNav.SyncMoveSound();
                 if (key == "hltb" || key == "achievements" || key == "rowedges" || key == "collectioninfo" || key == "collectionhints") SeleneShell.ApplyNowPlaying();
@@ -517,7 +520,7 @@ namespace Selene
                 ShowSwitch(index, true);
                 if (key == "hints") { HomeHints.Update(); SeleneShell.ApplyNowPlaying(); }
                 if (key == "detailsbadges") Ui.PublishPrompts();
-                if (key == "fullscreenpresets") HomeNav.ApplyValueSettings();
+                if (key == "fullscreenpresets" || key == "presetorder") HomeNav.ApplyValueSettings();
                 if (key == "fullrate") Ui.FullRateChanged();
                 if (key == "presence") ScreenPresence.Evaluate();
                 if (key == "calmmotion") Ui.Notice("Restart Playnite to apply.");
@@ -622,6 +625,7 @@ namespace Selene
             if (opt.Key == "shade") Contrast.Apply();
             if (opt.Key == "prompts") Ui.RefreshPrompts();   // the hints show the new button names
             if (opt.Key == "homebackground") Profiles.ApplyLook();
+            if (opt.Key == "homebackground") BackgroundChangerBridge.RefreshAll();
             if (opt.Key == "backgroundfit") BackgroundFit.Apply();
             if (opt.Key == "idle") IdleScreen.Restart();
             if (opt.Key == "clipvolume") CapturesScreen.ClipVolumeChanged();

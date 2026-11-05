@@ -27,6 +27,7 @@ namespace Selene
         private static Border sink;
         private static System.Windows.Input.ICommand playniteOptions;   // Playnite's own Game Options, kept for when Selene's is off   // the keyboard focus while a band has Selene's focus (on a pill, that pill lit up too)
 
+        public static bool PageOpen { get { return details != null && details.IsVisible; } }
         public static bool InBand { get { return details != null && details.IsVisible && zone > 0; } }
 
         public static void FocusBand() { if (sink != null) sink.Focus(); }
@@ -118,7 +119,9 @@ namespace Selene
                 shownId = g.Id;
                 Fill(g);
                 Blur(false);
-                HomeNav.Log("details stage: " + g.Name + " (bands " + tiles[0].Count + "/" + tiles[1].Count + "/" + tiles[2].Count + ")");
+                GameFacts.BindHeroPath(Part<System.Windows.Controls.TextBlock>("HeroPath"), "Id");
+                BackgroundChangerBridge.AttachDetails(details);
+            HomeNav.Log("details stage: " + g.Name + " (bands " + tiles[0].Count + "/" + tiles[1].Count + "/" + tiles[2].Count + ")");
                 var idle = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1500) };
                 idle.Tick += (s2, e2) => { idle.Stop(); if (details.IsVisible) Ui.MeasureFrames("details at rest", 500); };
                 idle.Start();
@@ -154,6 +157,7 @@ namespace Selene
 
         private static void Closed()
         {
+            BackgroundChangerBridge.RefreshAll();
             WatchStick(false);
             HideUnder(false);
             zone = 0;
@@ -392,7 +396,7 @@ namespace Selene
                 });
                 Ui.Rise(item, i * 35, 10, 240);
             }
-            GameFacts.FillCovers(like, tiles[2], 400);
+            GameFacts.FillCovers(like, tiles[2], 400, Features.On("morecoverfit"));
             if (at[2] >= tiles[2].Count) at[2] = 0;
         }
 

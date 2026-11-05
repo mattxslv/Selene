@@ -293,7 +293,7 @@ namespace Selene
                 recentTiles.Add(t);
                 Ui.Rise(item, 140 + i * 35, 14, 300);
             }
-            Ui.LoadInOrder(files, 300, (k, pic) =>
+            AchievementsData.LoadIcons(files, 300, (k, pic) =>
             {
                 if (closed || k >= at.Count) return;
                 var face = new Border { CornerRadius = new CornerRadius(13), Background = new ImageBrush(pic) { Stretch = Stretch.UniformToFill }, Opacity = 0 };
@@ -365,7 +365,7 @@ namespace Selene
                 if (i < 5 && from == 0 && !reordering) Ui.Rise(r, 60 + i * 30, 12, 240);
             }
             if (files.Count == 0) return;
-            Ui.LoadInOrder(files, 160, (k, pic) =>
+            AchievementsData.LoadIcons(files, 160, (k, pic) =>
             {
                 if (closed || k >= faces.Count) return;
                 faces[k].Child = new Border { Background = new ImageBrush(pic) { Stretch = Stretch.UniformToFill } };
@@ -419,7 +419,7 @@ namespace Selene
             if (path == heroShown) return;
             heroShown = path;
             if (path == null) { Ui.Fade(hero, 0, 400); return; }
-            Ui.LoadInOrder(new List<string> { path }, 1920, (i, pic) =>
+            AchievementsData.LoadIcons(new List<string> { path }, 1920, (i, pic) =>
             {
                 if (closed || path != heroShown) return;
                 // a crossfade: the art showing goes under, the new one fades in over it, then the old one melts away

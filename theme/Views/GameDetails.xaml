@@ -121,6 +121,7 @@
                             </TextBlock.Style>
                         </TextBlock>
                         <FadeImage Source="{Binding Text, ElementName=HeroPath}" RenderOptions.BitmapScalingMode="Fant" Stretch="{DynamicResource SeleneBackgroundStretch}"/>
+                        <Grid x:Name="SeleneBackgroundChangerDetails" IsHitTestVisible="False"/>
                         <!-- the words' side dark, the bottom dark, a soft vignette at the edges -->
                         <Border Background="{DynamicResource SeleneScrimBrush}">
                             <Border.OpacityMask>

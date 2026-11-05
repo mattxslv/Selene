@@ -101,6 +101,39 @@ namespace Selene
             catch { return null; }
         }
 
+        // Selene's downloaded picture of a game, unless the player's own Playnite background comes first (Look > Own backgrounds first: #153)
+        public static string HeroPath(Game g)
+        {
+            if (g == null) return null;
+            if (Features.On("ownbackground") && BackgroundPath(g) != null) return null;
+            var hero = System.IO.Path.Combine(SelenePaths.Media("Hero"), g.Id + ".jpg");
+            return System.IO.File.Exists(hero) ? hero : null;
+        }
+
+        // The theme's hero picture follows a hidden text holding its path (Spotlight and the game page). With Own backgrounds first,
+        // a game with its own background gets no path, which the theme already handles as "no hero art".
+        public static void BindHeroPath(System.Windows.Controls.TextBlock pathText, string idPath)
+        {
+            if (pathText == null) return;
+            var path = new System.Windows.Data.MultiBinding { Converter = new HeroPathConverter() };
+            path.Bindings.Add(new System.Windows.Data.Binding("Tag") { RelativeSource = new System.Windows.Data.RelativeSource(System.Windows.Data.RelativeSourceMode.Self) });
+            path.Bindings.Add(new System.Windows.Data.Binding(idPath));
+            pathText.SetBinding(System.Windows.Controls.TextBlock.TextProperty, path);
+        }
+
+        private class HeroPathConverter : System.Windows.Data.IMultiValueConverter
+        {
+            public object Convert(object[] values, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+            {
+                var root = values.Length > 0 ? values[0] as string : null;
+                if (string.IsNullOrEmpty(root)) return "";
+                object id = values.Length > 1 ? values[1] : null;
+                if (id is Guid && Features.On("ownbackground") && HomeNav.Api != null && BackgroundPath(HomeNav.Api.Database.Games.Get((Guid)id)) != null) return "";
+                return root + "\\Hero\\" + id + ".jpg";
+            }
+            public object[] ConvertBack(object value, Type[] targetTypes, object parameter, System.Globalization.CultureInfo culture) { throw new NotSupportedException(); }
+        }
+
         public static string BackgroundPath(Game g)
         {
             try

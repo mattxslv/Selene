@@ -9,6 +9,8 @@
     <sys:Boolean x:Key="SeleneAmbientMotionEnabled">True</sys:Boolean>
     <sys:String x:Key="SelenePlatformFallbackGlyph">&#xEA12;</sys:String>
     <Thickness x:Key="SeleneSpotlightLogoMargin">0,-45,0,0</Thickness>
+    <!-- the game block under the row (Selene Core sets it lower when screenshots on Spotlight are off, #166) -->
+    <Thickness x:Key="SeleneGameBlockMargin">0,30,0,0</Thickness>
     <sys:Double x:Key="SeleneDetailsBadgeWidth">48</sys:Double>
 
     <Stretch x:Key="SeleneBackgroundStretch">UniformToFill</Stretch>

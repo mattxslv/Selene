@@ -247,7 +247,7 @@ namespace Selene
                 else if (step[1] == "collection") SeleneShell.ShowLibrary();
                 else if (step[1].StartsWith("testgame:")) HomeNav.DevTestGame(step[1].Substring(9));
                 else if (step[1] == "refresh") HomeNav.ScreenRefresh("dev key");
-                else if (step[1].StartsWith("addgame:") || step[1].StartsWith("playgame:") || step[1].StartsWith("favgame:") || step[1].StartsWith("dropgame:"))
+                else if (step[1].StartsWith("addgame:") || step[1].StartsWith("playgame:") || step[1].StartsWith("favgame:") || step[1].StartsWith("dropgame:") || step[1].StartsWith("uninstallgame:") || step[1].StartsWith("platformgame:") || step[1].StartsWith("covergame:"))
                 { int c = step[1].IndexOf(':'); HomeNav.DevGameChange(step[1].Substring(0, c - 4), step[1].Substring(c + 1).Replace('_', ' ')); }
                 else if (step[1] == "row?") HomeNav.DevRowOrder();
                 else if (step[1] == "localscan") LocalGames.Scan();
@@ -275,6 +275,7 @@ namespace Selene
                 else if (step[1] == "screen:currency") OpenWith(() => new StoreCurrencyScreen(false, null));
                 else if (step[1] == "screen:report") OpenWith(() => new ReportScreen(null));
                 else if (step[1] == "screen:games") OpenWith(() => new SettingsScreen(false, "Games", "gamesget"));
+                else if (step[1] == "screen:background") OpenWith(() => new ProfileSteps(Profiles.Active, () => new MenuScreen(true), q => Finish(), 3));   // the profile's background step (#163)
                 else if (step[1].StartsWith("screen:settings:")) { var group = step[1].Substring(16).Replace('_', ' '); OpenWith(() => new SettingsScreen(false, group, null)); }
                 else if (step[1] == "minimize" || step[1] == "restore") { var mw = Application.Current.MainWindow; if (mw != null) { mw.WindowState = step[1] == "minimize" ? WindowState.Minimized : WindowState.Normal; HomeNav.Log("dev lifecycle: " + step[1] + " state=" + mw.WindowState); } }   // lifecycle runs (tools/perf-bench.ps1)
                 else if (step[1] == "hidetray") { CloseToTray.HideToTray(); HomeNav.Log("dev lifecycle: hidetray"); }

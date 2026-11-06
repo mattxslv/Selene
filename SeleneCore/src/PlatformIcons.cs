@@ -98,12 +98,14 @@ namespace Selene
             if (p.Contains("xbox")) return "xbox";
             if (p.Contains("playstation")) return "playstation";
             if (p.Contains("nintendo")) return "nintendo";
-            if (p.StartsWith("pc (") || p.Contains("windows"))
+            if (p == "pc" || p.StartsWith("pc (") || p.Contains("windows"))
             {
                 var store = KeyFor(source);
-                return store ?? (p.Contains("windows") ? "microsoft" : null);
+                return store ?? "microsoft";
             }
-            return null;
+            // a platform named after a store ("Steam", "Epic Games": some libraries file games that way) gets that
+            // store's logo, not the plain controller (#170)
+            return KeyFor(platform);
         }
 
         private static string Named(object value)

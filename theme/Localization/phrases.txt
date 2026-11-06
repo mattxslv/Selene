@@ -741,3 +741,6 @@ No screenshots for this game =
 Selene Core isn't running = 
 Selene is this theme plus its add-on, Selene Core. Install SeleneCore.pext from github.com/mattxslv/Selene/releases (open the file, or drag it onto Playnite's window), then restart Playnite. If it is installed already, make sure it is enabled under Add-ons. = 
 Playnite's menu still opens from here (the Start / Menu button on a controller) to pick another theme meanwhile. = 
+Your own pictures: put them in = 
+Controller battery in the top bar = 
+Show your DualSense controller's battery at the top right. Needs the DualSense Battery Level add-on. = 

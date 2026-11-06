@@ -60,7 +60,7 @@ namespace Selene
             { "Look", new[] {
                 new[] { "Background", "homebackground", "ownbackground", "backgroundchanger", "glow", "backgroundfit", "guidefade", "smoothswitch", "perfmode" },
                 new[] { "Art", "trimlogos", "logosize", "squareart", "steamgridkey", "smartcrop", "previewartfit", "closinglogo", "morecoverfit", "activitycoverfit", "trailerlogogap", "screenshotskeleton" },
-                new[] { "Text and hints", "textshadow", "hints", "prompts", "detailsbadges", "captureplayerfit", "dialogs", "topprofile", "topbattery", "topachievements", "wakeprofiles", "language", "languagerestart" } } },
+                new[] { "Text and hints", "textshadow", "hints", "prompts", "detailsbadges", "captureplayerfit", "dialogs", "topprofile", "topbattery", "controllerbattery", "topachievements", "wakeprofiles", "language", "languagerestart" } } },
             { "Advanced", new[] {
                 new[] { "Help", "report", "setupcheck", "storelibraries", "xboxsignin", "gamesfolder", "shortaddonask", "reportchord", "perflog" },
                 new[] { "Performance", "fullrate", "calmmotion", "presence", "asynccovers", "lightweight" },
@@ -510,8 +510,9 @@ namespace Selene
                 if (key == "downloadprogress") { ShowGroup(false); ShowFocus(); }
                 if (key == "topprofile") TopProfile.Refresh();
                 if (key == "topbattery") DeviceBattery.Refresh();
+                if (key == "controllerbattery") ControllerBattery.Refresh();
                 if (key == "backgroundchanger") BackgroundChangerBridge.RefreshAll();
-                if (key == "hubachievements" || key == "topachievements" || key == "achievements") HomeNav.ApplyHubAchievements();
+                if (key == "hubachievements" || key == "topachievements" || key == "achievements" || key == "spotlightshots") HomeNav.ApplyHubAchievements();
                 if (key == "nowplaying") NowPlayingBar.Refresh();
                 if (key == "sounds" || key == "soundvolume") HomeNav.SyncMoveSound();
                 if (key == "hltb" || key == "achievements" || key == "rowedges" || key == "collectioninfo" || key == "collectionhints") SeleneShell.ApplyNowPlaying();

@@ -450,6 +450,7 @@ namespace Selene
             new Option { Group = "Games", Key = "hltbauto", Label = "HowLongToBeat for new games", About = "Get HowLongToBeat times when games are added to your library.", Get = HltbFetch.AutoImport, Put = HltbFetch.SetAutoImport, Available = HltbFetch.Installed },
             new Option { Group = "Look", Key = "wakeprofiles", Label = "Profiles after sleep", About = "Go back to choosing a profile when the PC wakes.", DefaultOn = false },
             new Option { Group = "Look", Key = "topbattery", Label = "Battery in the top bar", About = "Show this device's battery at the top left. Only on devices with a battery." },
+            new Option { Group = "Look", Key = "controllerbattery", Label = "Controller battery in the top bar", About = "Show your DualSense controller's battery at the top right. Needs the DualSense Battery Level add-on." },
             new Option { Group = "Look", Key = "backgroundchanger", Label = "Background Changer backgrounds", About = "Use Background Changer on Spotlight, Collection and game pages. Requires the Background Changer add-on.", DefaultOn = false, Available = BackgroundChangerBridge.Available },
             new Option { Group = "Look", Key = "topachievements", Label = "Achievements in the top bar", About = "Open all your games' achievements from the trophy next to your profile.", Available = AchievementsData.Available },
             new Option { Group = "Look", Key = "topprofile", Label = "Profile in the top bar", About = "Show your avatar next to the clock." },

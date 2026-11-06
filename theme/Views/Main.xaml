@@ -1180,7 +1180,7 @@
                                                      slot, which cut off the picked picture as it grew and its ring) -->
                                                 <StackPanel x:Name="SeleneStoreShowcase" Orientation="Horizontal" Margin="10,28,-80,10" HorizontalAlignment="Left"/>
                                             </StackPanel>
-                                            <StackPanel Margin="0,30,0,0" HorizontalAlignment="Left" Width="900">
+                                            <StackPanel Margin="{DynamicResource SeleneGameBlockMargin}" HorizontalAlignment="Left" Width="900">
                                                 <StackPanel.Style>
                                                     <Style TargetType="StackPanel">
                                                         <Style.Triggers>
@@ -1295,6 +1295,7 @@
                                                                 <Style TargetType="TextBlock">
                                                                     <Setter Property="Text" Value="Play"/>
                                                                     <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding SelectedGame.IsInstalled}" Value="False"><Setter Property="Text" Value="Install"/></DataTrigger>
                                                                         <DataTrigger Binding="{Binding SelectedGame.IsRunning}" Value="True"><Setter Property="Text" Value="Resume"/></DataTrigger>
                                                                     </Style.Triggers>
                                                                 </Style>
@@ -1388,6 +1389,8 @@
                                                                             <BeginStoryboard><Storyboard><DoubleAnimation Storyboard.TargetProperty="Opacity" To="0" BeginTime="0:0:0.12" Duration="0:0:0.12"/></Storyboard></BeginStoryboard>
                                                                         </DataTrigger.ExitActions>
                                                                     </DataTrigger>
+                                                                    <!-- the add-on clears the counts before it says there's no data: never show "0 / 0" on the way out (#171) -->
+                                                                    <DataTrigger Binding="{PluginSettings Plugin=PlayniteAchievements, Path=Total, FallbackValue=0}" Value="0"><Setter Property="Visibility" Value="Hidden"/></DataTrigger>
                                                                 </Style.Triggers>
                                                             </Style>
                                                         </StackPanel.Style>
@@ -1516,6 +1519,8 @@
                                         <TextBlock Text="&#xE8D6;" FontFamily="Segoe MDL2 Assets" Foreground="{DynamicResource SeleneInk60Brush}" FontSize="22" VerticalAlignment="Center" Margin="0,0,12,0"/>
                                         <TextBlock x:Name="SeleneNowPlayingText" Foreground="{DynamicResource SeleneInk90Brush}" FontSize="20" FontFamily="{DynamicResource FontMain}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" MaxWidth="320" VerticalAlignment="Center"/>
                                     </StackPanel>
+                                    <!-- the controller's battery (Selene Core fills it from the DualSense Battery Level add-on; the "Controller battery in the top bar" switch) -->
+                                    <Grid x:Name="SeleneControllerBattery" VerticalAlignment="Center" Margin="0,0,26,0" Visibility="Collapsed" IsHitTestVisible="False"/>
                                     <!-- the signed-in profile's avatar (Selene Core fills it; the "Profile in the top bar" switch) -->
                                     <Button x:Name="SeleneTopAchievements" ToolTip="Achievements" Style="{StaticResource ButtonTopMenu}" Width="48" Height="48" Padding="0" Margin="0,0,20,0" VerticalAlignment="Center" Focusable="True" FocusVisualStyle="{x:Null}" Cursor="Hand" Visibility="{DynamicResource SeleneTopAchievementsShown}">
                                         <TextBlock Text="&#xEA23;" FontFamily="{DynamicResource SeleneIconFont}" Foreground="{DynamicResource SeleneInkBrush}" FontSize="22" HorizontalAlignment="Center" VerticalAlignment="Center"/>

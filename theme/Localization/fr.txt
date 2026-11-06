@@ -749,3 +749,6 @@ What happened? A few words help a lot (optional). = Que s'est-il passé ? Quelqu
 Sounds = Sons
 While you play = Pendant le jeu
 Music setup = Réglages de la musique
+Your own pictures: put them in = Vos propres images : mettez-les dans
+Controller battery in the top bar = Batterie de la manette dans la barre du haut
+Show your DualSense controller's battery at the top right. Needs the DualSense Battery Level add-on. = Afficher la batterie de votre manette DualSense en haut à droite. Nécessite l'extension DualSense Battery Level.

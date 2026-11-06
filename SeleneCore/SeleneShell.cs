@@ -71,7 +71,7 @@ namespace Selene
             library.Command = new Relay(ShowLibrary);
             LoginScene.AttachHomeGlow(main);   // the login's glow behind the home's cards
             LibraryStage.Attach(main);         // Collection's background trailer
-            DeviceBattery.Attach(Application.Current.MainWindow); HomeNav.ApplyHubAchievements(); TopProfile.Attach(main);
+            DeviceBattery.Attach(Application.Current.MainWindow); ControllerBattery.Attach(Application.Current.MainWindow); HomeNav.ApplyHubAchievements(); TopProfile.Attach(main);
             NowPlayingBar.Attach(main);        // the song playing, left of the profile
             StoreData.AttachCard();            // the Store card's free games
             Contrast.Apply();                  // the home's shades as deep as the wallpaper needs           // the signed-in profile beside the clock

@@ -749,3 +749,6 @@ What happened? A few words help a lot (optional). = 发生了什么？简单几�
 Sounds = 音效
 While you play = 游戏时
 Music setup = 音乐设置
+Your own pictures: put them in = 你自己的图片：放到这里
+Controller battery in the top bar = 顶栏显示手柄电量
+Show your DualSense controller's battery at the top right. Needs the DualSense Battery Level add-on. = 在右上角显示 DualSense 手柄的电量。需要 DualSense Battery Level 扩展。

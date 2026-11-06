@@ -4,6 +4,18 @@ Selene (theme) and Selene Core (add-on) share one version number and are release
 
 ## Unreleased
 
+## 1.5.7 - 2026-11-06
+
+- Spotlight: an uninstalled game's button says Install and installs it, instead of a Play that did nothing (#167).
+- Spotlight: with screenshots off, no empty loading cards show while you move, and the game's logo, buttons and stats sit lower to fill the space (#165, #166).
+- Spotlight: no more "0 / 0" achievements flashing when you move to a game without achievements (#171).
+- Spotlight: games further along the row no longer show up before the start-up animation reaches them (#172).
+- Activity: covers are shown at their own shape, without black bars (#169).
+- Platform: games whose platform is named after a store (Steam, Epic Games...) show that store's logo, and a plain "PC" shows the Windows logo (#170).
+- Alt+Tab works while a game starts: the loading screen steps back, and Selene no longer pulls the game back to the front after you switch away (#168).
+- Controller battery in the top bar (Look): your DualSense's battery at the top right, from the DualSense Battery Level add-on (#173).
+- Your own wallpapers: pictures in Selene Core's Wallpapers folder (shown on the background screen) appear under Your wallpapers and survive updates (#163).
+
 ## 1.5.6 - 2026-11-05
 
 - Background Changer backgrounds (Look, off by default): use the add-on's curated images and rotation on Spotlight, Collection and game pages. Turning it off restores Selene's backgrounds (#140).

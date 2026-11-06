@@ -1136,6 +1136,9 @@ namespace Selene
         {
             try
             {
+                // "platformgame:<name>|<platform>" and "covergame:<name>|<picture>": a platform or a cover for a test game
+                string extra = null;
+                if ((what == "platform" || what == "cover") && name.Contains("|")) { extra = name.Substring(name.IndexOf('|') + 1); name = name.Substring(0, name.IndexOf('|')); }
                 var g = Api.Database.Games.FirstOrDefault(x => x.Name == name);
                 string exe = null;   // "addgame:<name>|<play file>": a game pointing at a file (Games-folder duplicates)
                 if (what == "add" && name.Contains("|")) { exe = name.Substring(name.IndexOf('|') + 1); name = name.Substring(0, name.IndexOf('|')); g = Api.Database.Games.FirstOrDefault(x => x.Name == name); }
@@ -1152,6 +1155,13 @@ namespace Selene
                 else if (what == "play") { g.LastActivity = DateTime.Now; g.Playtime += 600; Api.Database.Games.Update(g); }
                 else if (what == "fav") { g.Favorite = !g.Favorite; Api.Database.Games.Update(g); }
                 else if (what == "drop") Api.Database.Games.Remove(g.Id);
+                else if (what == "platform" && extra != null)
+                {
+                    var p = Api.Database.Platforms.FirstOrDefault(x => x.Name == extra) ?? Api.Database.Platforms.Add(extra);
+                    g.PlatformIds = new List<Guid> { p.Id }; Api.Database.Games.Update(g);
+                }
+                else if (what == "cover" && extra != null) { g.CoverImage = Api.Database.AddFile(extra, g.Id); Api.Database.Games.Update(g); }
+                else if (what == "uninstall") { g.IsInstalled = false; Api.Database.Games.Update(g); }   // "uninstallgame:<name>" (#167)
                 Log("dev game: " + what + " " + name);
             }
             catch (Exception ex) { Log("dev game: " + ex.Message); }
@@ -2516,6 +2526,8 @@ namespace Selene
         {
             Application.Current.Resources["SeleneHubAchievementsShown"] = Features.On("hubachievements") && Features.On("achievements") && AchievementsData.Available() ? Visibility.Visible : Visibility.Collapsed;
             Application.Current.Resources["SeleneTopAchievementsShown"] = Features.On("topachievements") && Features.On("achievements") && AchievementsData.Available() ? Visibility.Visible : Visibility.Collapsed;
+            // screenshots on Spotlight off: the logo, buttons and stats sit lower, into the space the strip leaves (#166)
+            Application.Current.Resources["SeleneGameBlockMargin"] = new Thickness(0, Features.On("spotlightshots") ? 30 : 210, 0, 0);
         }
 
         private static void OnAchievementsClick(object sender, RoutedEventArgs e)
@@ -3601,14 +3613,21 @@ namespace Selene
                     if (lift != null && !lift.IsFrozen) lift.BeginAnimation(TranslateTransform.YProperty, Keys(40, 0, 0.9, 0.55, new CubicEase { EasingMode = EasingMode.EaseOut }));
                 }
                 double center = row.ActualWidth / 2;
-                int k = 0;
+                int k = 0, late = 0;
                 for (int i = 0; i < row.Items.Count; i++)
                 {
                     var c = row.ItemContainerGenerator.ContainerFromIndex(i) as FrameworkElement;
                     if (c == null || c.Visibility != Visibility.Visible || c.ActualWidth <= 0 || row.Items[i] is RowPad) continue;
                     double x = c.TranslatePoint(new Point(0, 0), row).X;
                     if (x + c.ActualWidth < 0) continue;
-                    if (x > row.ActualWidth) break;
+                    // past the right edge for now (the row can still be settling its scroll): never up before the rest,
+                    // it fades in after the flown tiles (#172: the far tiles stood there while the others flew in)
+                    if (x > row.ActualWidth)
+                    {
+                        c.BeginAnimation(UIElement.OpacityProperty, Keys(0, 1, 0.30 + k * 0.045, 0.3, null));
+                        if (++late > 12) break;
+                        continue;
+                    }
 
                     var scale = new ScaleTransform(0.35, 0.35);
                     var shift = new TranslateTransform();
@@ -4406,7 +4425,12 @@ namespace Selene
             {
                 if (isRunning) { ReturnToGame(w); return true; }
                 var id = Prop(game, "Id");
-                if (id is Guid && Api != null) { Log("play button -> " + game); StartGameNow((Guid)id); }
+                if (id is Guid && Api != null)
+                {
+                    // the pill reads Install for a game that isn't installed (#167)
+                    if (!Equals(Prop(game, "IsInstalled"), true)) { Log("install button -> " + game); Api.InstallGame((Guid)id); }
+                    else { Log("play button -> " + game); StartGameNow((Guid)id); }
+                }
                 return true;
             }
             if (isRunning) { CloseGame(game); return true; }
@@ -6828,6 +6852,17 @@ namespace Selene
             try { return gameWindow != IntPtr.Zero || (Api != null && Api.Database.Games.Any(g => g.IsRunning)); } catch { return false; }
         }
         private static bool coverCancelledByGuide;
+        // the player switched away (Alt+Tab, the Windows key) while a game started: Selene stops pulling the game to the
+        // front and the loading screen drops behind, until the next launch (#168)
+        private static bool switchedAway;
+        [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern short GetAsyncKeyState(int key);
+        // Alt or a Windows key held now or pressed since the last look (asked on every tick, so a quick Alt+Tab is seen)
+        private static bool SwitchKeys()
+        {
+            bool any = false;
+            foreach (var k in new[] { 0x12 /* Alt */, 0x5B /* left Win */, 0x5C /* right Win */ }) if (GetAsyncKeyState(k) != 0) any = true;
+            return any;
+        }
         private static Guid launchGameId = Guid.Empty;
         // games that start through another launcher (Ubisoft Connect, the EA app, Rockstar, Battle.net, the Xbox app) take
         // longer before anything of the game shows: their waits are stretched by this
@@ -7374,7 +7409,7 @@ namespace Selene
                 lastSoundAt = DateTime.MinValue;
                 launchGameId = gameId;
                 launchGrace = LaunchGrace(gameId);
-                coverCancelledByGuide = false;
+                coverCancelledByGuide = false; switchedAway = false; SwitchKeys();   // (clears a key press from before this launch)
                 steamDialog = IntPtr.Zero;
                 steamDialogTicks = 0; launcherAsk = IntPtr.Zero; launcherAskTicks = 0;
                 var phase = System.Diagnostics.Stopwatch.StartNew();
@@ -7416,6 +7451,22 @@ namespace Selene
                 if (!alive || waited > 120) { RevealGame(known, alive ? "timeout, 2 min" : known != IntPtr.Zero ? "timeout, the game's window is up but Playnite doesn't see it running" : "timeout, nothing running"); return; }
             }
             var me = new System.Windows.Interop.WindowInteropHelper(w).Handle;
+            // Alt+Tab away from the loading screen: it stops covering everything (it was always on top, so the window you
+            // switched to stayed behind it, #168); the game still starts and is shown as usual when you come back
+            if (!switchedAway && SwitchKeys() && coverWindow != null)
+            {
+                var away = GetForegroundWindow();
+                uint awayPid = 0;
+                if (away != IntPtr.Zero) GetWindowThreadProcessId(away, out awayPid);
+                var awayCover = new System.Windows.Interop.WindowInteropHelper(coverWindow).Handle;
+                if (away != IntPtr.Zero && away != awayCover && awayPid != OwnPid && !gamePids.Contains((int)awayPid))
+                {
+                    switchedAway = true;
+                    coverWindow.Topmost = false;
+                    if (awayCover != IntPtr.Zero) SetWindowPos(awayCover, new IntPtr(1) /* bottom */, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010);
+                    Log("launch: switched away to " + WindowInfo(away) + ", the loading screen steps back");
+                }
+            }
             double elapsed = (DateTime.Now - launchStart).TotalSeconds;
             if (elapsed > 3 && launchGameId != Guid.Empty && Api != null)
             {
@@ -7487,7 +7538,7 @@ namespace Selene
                     // for a moment (no window can cover that, and it comes on the game's own schedule): the loading screen
                     // fades to black first and the game gets the focus once it's dark, so the blank can't be seen
                     var gameHwnd = found;
-                    Action focusGame = () => { if (launching && IsWindow(gameHwnd)) ForceForegroundAsync(gameHwnd, KeepCoverOnTop, false); };
+                    Action focusGame = () => { if (launching && !switchedAway && IsWindow(gameHwnd)) ForceForegroundAsync(gameHwnd, KeepCoverOnTop, false); };
                     if (!coverArtGone) { coverArtGone = true; ArtToLogo(focusGame); }
                     else focusGame();
                 }
@@ -7546,7 +7597,7 @@ namespace Selene
             var coverHwnd = coverWindow != null ? new System.Windows.Interop.WindowInteropHelper(coverWindow).Handle : IntPtr.Zero;
             // ...but once the art has darkened to black, let the game come over it: pushing back over a game that is already
             // drawing made its first frame blink through for a moment
-            if (coverHwnd != IntPtr.Zero && !coverDark) SetWindowPos(coverHwnd, new IntPtr(-1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010);  // HWND_TOPMOST, NOSIZE | NOMOVE | NOACTIVATE
+            if (coverHwnd != IntPtr.Zero && !coverDark && !switchedAway) SetWindowPos(coverHwnd, new IntPtr(-1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010);  // HWND_TOPMOST, NOSIZE | NOMOVE | NOACTIVATE
         }
 
         // An app or a silent windowed game has neither a full-screen window nor sound: it sat behind the loading screen for 2 min and
@@ -7705,6 +7756,13 @@ namespace Selene
                 // any of Playnite's windows holding the front counts, a minimized one too (it kept the focus at -32000,-32000
                 // with nothing on screen while the game sat behind)
                 bool playnite = PlayniteInFront();
+                // Alt+Tab / the Windows key: where the player went is where they want to be, nothing is handed back (#168)
+                if (switchedAway || (SwitchKeys() && GetForegroundWindow() != target))
+                {
+                    timer.Stop(); handoffTarget = IntPtr.Zero;
+                    Log("launch: the player switched windows, the game isn't pulled back to the front");
+                    return;
+                }
                 if (!confirmed)
                 {
                     // the desktop in front isn't the game either (the loading screen closed and nothing took its place)
@@ -8087,7 +8145,7 @@ namespace Selene
 
         private static void KeepCoverOnTop()
         {
-            if (coverWindow == null || coverDark) return;   // once dark, the game may come over it
+            if (coverWindow == null || coverDark || switchedAway) return;   // once dark, the game may come over it
             var coverHwnd = new System.Windows.Interop.WindowInteropHelper(coverWindow).Handle;
             if (coverHwnd != IntPtr.Zero) SetWindowPos(coverHwnd, new IntPtr(-1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010);   // TOPMOST, NOSIZE | NOMOVE | NOACTIVATE
         }

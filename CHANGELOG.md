@@ -4,6 +4,8 @@ Selene (theme) and Selene Core (add-on) share one version number and are release
 
 ## Unreleased
 
+- Launch choices use Selene's rounded dialog card and spaced rows. Look > Selene dialogs restores the native layout when off; applies to the next dialog opened.
+
 ## 1.5.7 - 2026-11-09
 
 - Spotlight: an uninstalled game's button says Install and installs it, instead of a Play that did nothing (#167).

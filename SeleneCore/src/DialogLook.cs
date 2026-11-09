@@ -45,6 +45,12 @@ namespace Selene
         {
             var w = sender as Window;
             if (w == null || !Features.On("dialogs")) return;
+            if (w.GetType().Name == "SingleItemSelectionWindow")
+            {
+                try { DressSelection(w); }
+                catch (Exception ex) { HomeNav.Log("selection look: " + ex.Message); }
+                return;
+            }
             if (w.GetType().Name == "ProgressWindow")
             {
                 if (HomeNav.Quitting) { ProgressToast.HideForQuit(w); return; }   // Playnite's "Closing" screen: not shown at all
@@ -55,6 +61,78 @@ namespace Selene
             if (w.GetType().Name != "MessageBoxWindow") return;
             try { Dress(w); }
             catch (Exception ex) { HomeNav.Log("dialog look: " + ex.Message); }
+        }
+
+        // Keep Playnite's item host, commands, virtualization and controller navigation; only dress its surface.
+        private static void DressSelection(Window w)
+        {
+            if (w.Resources.Contains("SeleneSelectionDressed")) return;
+            var items = w.FindName("PART_ItemsHost") as ItemsControl;
+            var panel = items != null ? items.Parent as DockPanel : null;
+            var card = panel != null ? panel.Parent as Border : null;
+            var heading = panel != null ? panel.Children.OfType<TextBlock>().FirstOrDefault() : null;
+            var original = w.TryFindResource("ItemSelectionButton") as Style;
+            if (card == null || heading == null || original == null) return;
+
+            card.Width = 640;
+            card.Padding = new Thickness(30, 28, 30, 30);
+            card.CornerRadius = new CornerRadius(28);
+            card.Background = Ink.Brush("SeleneGlassColor", 0.98);
+            card.BorderBrush = Ink.Brush("SeleneInkColor", 0.16);
+            card.BorderThickness = new Thickness(1);
+            // Shadow on a separate surface keeps the choices and their text sharp.
+            var host = card.Parent as Panel;
+            if (host != null)
+            {
+                var shadow = Ui.ShadowOf(card, 60, 0.5);
+                shadow.HorizontalAlignment = card.HorizontalAlignment;
+                shadow.VerticalAlignment = card.VerticalAlignment;
+                Grid.SetRow(shadow, Grid.GetRow(card)); Grid.SetColumn(shadow, Grid.GetColumn(card));
+                host.Children.Insert(host.Children.IndexOf(card), shadow);
+                host.Background = Ink.Brush("SeleneScrimColor", 0.58);
+            }
+            heading.FontFamily = Ui.Display;
+            heading.FontSize = 30;
+            heading.FontWeight = FontWeights.SemiBold;
+            heading.Foreground = Ink.Brush("SeleneInkColor");
+            heading.Background = Brushes.Transparent;
+            heading.Padding = new Thickness(4, 0, 4, 0);
+            heading.Margin = new Thickness(0, 0, 0, 22);
+
+            var border = new FrameworkElementFactory(typeof(Border));
+            border.SetValue(Border.CornerRadiusProperty, new CornerRadius(14));
+            foreach (var pair in new[] {
+                new { Target = Border.BackgroundProperty, Path = "Background" },
+                new { Target = Border.BorderBrushProperty, Path = "BorderBrush" },
+                new { Target = Border.BorderThicknessProperty, Path = "BorderThickness" },
+                new { Target = Border.PaddingProperty, Path = "Padding" } })
+                border.SetBinding(pair.Target, new System.Windows.Data.Binding(pair.Path) { RelativeSource = System.Windows.Data.RelativeSource.TemplatedParent });
+            var content = new FrameworkElementFactory(typeof(ContentPresenter));
+            content.SetBinding(ContentPresenter.ContentProperty, new System.Windows.Data.Binding("Content") { RelativeSource = System.Windows.Data.RelativeSource.TemplatedParent });
+            content.SetBinding(ContentPresenter.ContentTemplateProperty, new System.Windows.Data.Binding("ContentTemplate") { RelativeSource = System.Windows.Data.RelativeSource.TemplatedParent });
+            content.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+            border.AppendChild(content);
+            var style = new Style(original.TargetType, original);
+            style.Setters.Add(new Setter(Control.TemplateProperty, new ControlTemplate(original.TargetType) { VisualTree = border }));
+            style.Setters.Add(new Setter(FrameworkElement.MinHeightProperty, 64.0));
+            style.Setters.Add(new Setter(FrameworkElement.MarginProperty, new Thickness(0, 4, 0, 4)));
+            style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(20, 14, 20, 14)));
+            style.Setters.Add(new Setter(Control.BackgroundProperty, Ink.Brush("SeleneInkColor", 0.05)));
+            style.Setters.Add(new Setter(Control.BorderBrushProperty, Ink.Brush("SeleneInkColor", 0.12)));
+            style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1)));
+            style.Setters.Add(new Setter(Control.ForegroundProperty, Ink.Brush("SeleneInkColor")));
+            style.Setters.Add(new Setter(Control.FocusVisualStyleProperty, null));
+            var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+            hover.Setters.Add(new Setter(Control.BorderBrushProperty, Ink.Brush("SeleneFocusColor")));
+            style.Triggers.Add(hover);
+            var focus = new Trigger { Property = UIElement.IsKeyboardFocusWithinProperty, Value = true };
+            focus.Setters.Add(new Setter(Control.BackgroundProperty, Ink.Brush("SeleneFocusColor")));
+            focus.Setters.Add(new Setter(Control.ForegroundProperty, Ink.Brush("SeleneOnFocusColor")));
+            focus.Setters.Add(new Setter(Control.BorderBrushProperty, Ink.Brush("SeleneFocusColor")));
+            style.Triggers.Add(focus);
+            w.Resources["ItemSelectionButton"] = style;
+            w.Resources["SeleneSelectionDressed"] = true;
+            HomeNav.Log("selection look: Selene card");
         }
 
         private static void Dress(Window w)

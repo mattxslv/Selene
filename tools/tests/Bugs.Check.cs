@@ -12,6 +12,7 @@ using Selene;
 public class FakeUps { public string DefaultMusicPath { get; set; } public int DefaultMusicSourceOption { get; set; } public string SelectedBundledPreset { get; set; } public FakeUps() { DefaultMusicPath = ""; DefaultMusicSourceOption = 2; SelectedBundledPreset = "tunetank-dark-ambient-soundscape-music.mp3"; } }
 class BugsCheck
 {
+    public class SingleItemSelectionWindow : Window { }
     public class FocusSoundProbe { public static IntPtr NavigateSound { get; set; } }
     public class Named { public string Name { get; set; } }
     public class GameEntry { public Named Source { get; set; } public ArrayList Platforms { get; set; } }
@@ -34,6 +35,23 @@ class BugsCheck
         var window = new Window { Width = 1920, Height = 1080, Left = -32000, Top = -32000, Opacity = 0, ShowActivated = false, ShowInTaskbar = false };
         try
         {
+            var choice = new SingleItemSelectionWindow();
+            var choiceHost = new Grid(); var choicePanel = new DockPanel();
+            var choiceCard = new Border { Width = 500, Child = choicePanel };
+            var choiceItems = new ItemsControl(); var nativeCommand = new System.Windows.Input.RoutedCommand();
+            var choiceButton = new Button { Content = "First action", Command = nativeCommand };
+            choiceItems.Items.Add(choiceButton); choicePanel.Children.Add(new TextBlock { Text = "Select action" }); choicePanel.Children.Add(choiceItems);
+            choiceHost.Children.Add(choiceCard); choice.Content = choiceHost;
+            NameScope.SetNameScope(choice, new NameScope()); choice.RegisterName("PART_ItemsHost", choiceItems);
+            choice.Resources["ItemSelectionButton"] = new Style(typeof(Button));
+            var dressChoice = typeof(DialogLook).GetMethod("OnWindowLoaded", BindingFlags.NonPublic | BindingFlags.Static);
+            Features.Set("dialogs", false); dressChoice.Invoke(null, new object[] { choice, new RoutedEventArgs() });
+            Assert(choiceCard.Width == 500 && choiceHost.Children.Count == 1, "Selene dialogs off preserves native choice layout");
+            Features.Set("dialogs", true); dressChoice.Invoke(null, new object[] { choice, new RoutedEventArgs() });
+            Assert(choiceCard.Width == 640 && choiceCard.CornerRadius.TopLeft == 28, "Launch choices use Selene's roomy rounded card");
+            Assert(choiceItems.Parent == choicePanel && choiceButton.Command == nativeCommand, "Selection styling preserves native items and commands");
+            dressChoice.Invoke(null, new object[] { choice, new RoutedEventArgs() });
+            Assert(choiceHost.Children.Count == 2, "Repeated Loaded does not duplicate the choice shadow");
             var noteItem = new StoreItem { Note = "Free until Nov 13" };
             Assert(noteItem.DisplayNote == noteItem.Note, "#182 English Store note fallback is unchanged");
             var languageTable = typeof(Lang).GetField("table", BindingFlags.NonPublic | BindingFlags.Static);
@@ -137,7 +155,7 @@ class BugsCheck
             Features.Set("trailerlogogap", true); spacing.Invoke(null, new object[] { true }); Settle(600);
             Assert(logo.TranslatePoint(new Point(0, 0), logoRow).Y >= -0.1, "#95 logo stays inside its own row while trailer plays");
             spacing.Invoke(null, new object[] { false });
-            WaitUntil(() => logo.TranslatePoint(new Point(0, 0), logoRow).Y < -40);   // (the logo glides there over 420 ms)
+            WaitUntil(() => !logo.HasAnimatedProperties && logo.Margin.Top == -45);   // (the logo glides there over 420 ms)
 
             Assert(logo.TranslatePoint(new Point(0, 0), logoRow).Y < -40, "Closing the trailer restores original logo layout");
             Features.Set("trailerlogogap", false); spacing.Invoke(null, new object[] { true }); Pump();

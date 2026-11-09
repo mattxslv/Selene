@@ -836,3 +836,5 @@ Free next = Prochainement gratuit
 {0} are free to keep on Epic Games{1}. = {0} sont gratuits et à conserver sur Epic Games {1}.
 Ready. Selene = Prêt. Selene
 Create profile = Créer un profil
+SHOW = AFFICHER
+THEME = THÈME

@@ -28,10 +28,6 @@
 Playnite 10 or newer, Windows 10 / 11, a controller recommended. Everything Selene adds can be switched off in
 **Selene settings**. The **[guide](docs/guide/README.md)** has every screen and button.
 
-**Coming from 1.2.3, 1.3.0 or 1.3.1?** Update to 1.4.0, it removes the old admin helper. Then go to
-**Selene settings > Advanced > Old administrator tasks** to clean up what it left behind. Details in
-[#74](https://github.com/mattxslv/Selene/issues/74).
-
 Heads up: games running as admin can't be paused or closed from the Guide anymore. Alt+Tab still works.
 Downloads (trailers, art, songs) are off until you turn them on, and Selene tells you where they go first.
 
@@ -90,6 +86,14 @@ Downloads (trailers, art, songs) are off until you turn them on, and Selene tell
 ![All themes](docs/readme/themes-strip.jpg)
 
 ![Avatars](docs/readme/avatars.jpg)
+
+## Help translate Selene
+
+Selene is fully translated into French and Simplified Chinese. German, Spanish, Brazilian Portuguese, Japanese and
+Filipino only cover the basics so far. Every phrase is listed in
+[`theme/Localization/phrases.txt`](theme/Localization/phrases.txt): copy it, write your words after each ` = `, and
+share it in [Discussions](https://github.com/mattxslv/Selene/discussions/categories/general) or a pull request.
+[How it works](theme/Localization/README.txt).
 
 ## Building from source
 

@@ -23,10 +23,16 @@ under Playnite → Add-ons → Generic → **Selene Core**. Settings with a choi
 | | Trailer sound | Trailer cards start with their sound on |
 | | Starting tab | The filter tab Spotlight opens on |
 | | Filter tabs | Selene's five, your own Playnite filter presets, or both |
+| | Sort each tab | Start > Sort this tab gives the tab you're on its own order: last played, name, recently added or most played |
+| | Games played elsewhere | With profiles, games last played outside Selene (a console, another launcher) show in Recently played |
+| | Remember the game in each tab | Switching tabs comes back to the game you were on (off by default) |
+| | Screenshots on Spotlight | The game's pictures under its buttons |
+| | Start on the first game | Start-up and sign-in pick the first game instead of the Store card |
 | Sound & music | Interface sounds | Sounds when you move, select and go back |
 | | Music control | Default music while browsing, a game's song with its trailer (needs UniPlaySong) |
 | | Quiet loading screen | A starting game stays quiet until it shows |
 | | Sound volume | How loud Selene's own sounds are |
+| | Control any music player | Start > Music plays, pauses and skips Spotify, Deezer or any player when Selene's own music isn't playing |
 | Look | Selene logo | The logo in Selene settings and on empty screens |
 | | Background sizing | Fill crops proportionally; Fit shows the whole picture with space around it; Stretch changes its proportions to fill the screen |
 | | Language | Follow Playnite or choose English, German, Spanish, French, Brazilian Portuguese, Simplified Chinese, Japanese or Filipino. A changed selection offers Restart now or Later. Language selection is also the first step on a new Selene installation. Bundled translations cover common navigation/settings; missing phrases remain English |
@@ -35,6 +41,11 @@ under Playnite → Add-ons → Generic → **Selene Core**. Settings with a choi
 | | Animated background | The moving backdrop behind the login and cards |
 | | Collection trailers | Rest on a game in Collection and its trailer plays |
 | | Background shade | Lighter, as needed, or deeper |
+| | Fade game pages | A game's page fades in, and fades back to Spotlight when you leave it |
+| | Background Changer / ImageRotater backgrounds | Show those add-ons' backgrounds on Spotlight and game pages |
+| | Battery / Controller battery in the top bar | This device's battery at the top left; a DualSense's at the top right (needs DualSense Battery Level) |
+| | Square art format | PNG or JPG first for SteamGridDB square art. Game options > Next square art shows another one |
+| | Selene dialogs | Launch choices and other Playnite dialogs in Selene's rounded card |
 | Games | Store page | The Store card opens free games, sales and new releases. Off: it picks a store app |
 | | Focus on Guide | Turn off Selene's Guide foreground switching for other overlays. Also turn off Playnite settings > Input > Guide brings Playnite up if enabled |
 | | Launch screen style | Art and logo, art only, logo on black, or minimal game title |
@@ -47,6 +58,8 @@ under Playnite → Add-ons → Generic → **Selene Core**. Settings with a choi
 | | Close to tray | Exit hides Playnite so it comes back instantly |
 | | No-prompt launchers | Admin games skip the Windows prompt after their first run |
 | | Automatic save backups | Ludusavi backs up a game's saves without asking each time |
+| Collection | Logo position | The game's logo and details centered or at the left |
+| Advanced | Rumble on hold | The controller buzzes when holding Share/View or Options opens something |
 
 ## The add-on page
 Playnite → Add-ons → Generic → Selene Core also has the folders: where Selene keeps art and clips, your capture

@@ -21,6 +21,7 @@ class BugsCheck
     static object Field(object target, string name) { return target.GetType().GetField(name, BindingFlags.NonPublic | BindingFlags.Instance).GetValue(target); }
     static object Call(object target, string name, params object[] args) { return target.GetType().GetMethod(name, BindingFlags.NonPublic | BindingFlags.Instance).Invoke(target, args); }
     static void Settle(int ms) { var until = DateTime.Now.AddMilliseconds(ms); while (DateTime.Now < until) { Pump(); System.Threading.Thread.Sleep(15); } }
+    static void WaitUntil(Func<bool> ready) { var deadline = DateTime.UtcNow.AddSeconds(4); while (!ready() && DateTime.UtcNow < deadline) { Settle(25); } Assert(ready(), "Animation reaches its final state within four seconds"); }
     static void Pump() { Dispatcher.CurrentDispatcher.Invoke(DispatcherPriority.ApplicationIdle, new Action(() => {})); }
     [STAThread] static int Main(string[] args)
     {
@@ -135,7 +136,9 @@ class BugsCheck
             var spacing = typeof(HomeNav).GetMethod("SetPreviewLogoSpacing", BindingFlags.Static | BindingFlags.NonPublic);
             Features.Set("trailerlogogap", true); spacing.Invoke(null, new object[] { true }); Settle(600);
             Assert(logo.TranslatePoint(new Point(0, 0), logoRow).Y >= -0.1, "#95 logo stays inside its own row while trailer plays");
-            spacing.Invoke(null, new object[] { false }); Settle(600);   // (the logo glides there over 420 ms)
+            spacing.Invoke(null, new object[] { false });
+            WaitUntil(() => logo.TranslatePoint(new Point(0, 0), logoRow).Y < -40);   // (the logo glides there over 420 ms)
+
             Assert(logo.TranslatePoint(new Point(0, 0), logoRow).Y < -40, "Closing the trailer restores original logo layout");
             Features.Set("trailerlogogap", false); spacing.Invoke(null, new object[] { true }); Pump();
             Assert(logo.Margin.Top == -45, "Logo-spacing switch off preserves the previous overlap-prone layout");

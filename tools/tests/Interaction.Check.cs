@@ -119,16 +119,19 @@ class InteractionCheck
             var ring = (RotateTransform)template.FindName("RingSpin", selected);
             var selectedScale = (ScaleTransform)template.FindName("TileScale", selected);
             Assert(ring.HasAnimatedProperties, "Visible selected tile runs its ambient ring");
-            app.Resources["SeleneAmbientMotionEnabled"] = false; Wait(50);
+            WaitUntil(() => selectedScale.ScaleX > 1.29);
+            window.Hide(); ScreenPresence.Evaluate(); WaitUntil(() => !ring.HasAnimatedProperties);
+
             Assert(!ring.HasAnimatedProperties && selected.IsSelected && selectedScale.ScaleX > 1.29, "Hidden ambient state removes clocks and preserves selected scale");
-            app.Resources["SeleneAmbientMotionEnabled"] = true; Wait(50);
+            window.Show(); ScreenPresence.Evaluate(); WaitUntil(() => ring.HasAnimatedProperties);
             Assert(ring.HasAnimatedProperties, "Restoring ambient state restarts the selected ring");
-            selected.Visibility = Visibility.Collapsed; Wait(50);
+            selected.Visibility = Visibility.Collapsed; WaitUntil(() => !ring.HasAnimatedProperties);
             Assert(!ring.HasAnimatedProperties, "An invisible selected tile has no ambient clocks");
             Console.WriteLine("Passed "+checks+" UI interaction checks; rendered first-language and restart screens."); return 0;
         }
         finally { window.Close(); if(Directory.Exists(scratch))Directory.Delete(scratch,true); }
     }
+    static void WaitUntil(Func<bool> ready) { var deadline = DateTime.UtcNow.AddSeconds(4); while (!ready() && DateTime.UtcNow < deadline) Wait(25); Assert(ready(), "UI state settles within four seconds"); }
     static void Pump() { Dispatcher.CurrentDispatcher.Invoke(DispatcherPriority.ApplicationIdle,new Action(()=>{})); }
     static void Wait(int ms) { var frame=new DispatcherFrame(); var timer=new DispatcherTimer { Interval=TimeSpan.FromMilliseconds(ms) }; timer.Tick+=(s,e)=>{timer.Stop();frame.Continue=false;};timer.Start();Dispatcher.PushFrame(frame); }
     static void Render(FrameworkElement root,string file)

@@ -838,3 +838,6 @@ Ready. Selene = Prêt. Selene
 Create profile = Créer un profil
 SHOW = AFFICHER
 THEME = THÈME
+Free until {0} = Gratuit jusqu’au {0}
+Free from {0} = Gratuit à partir du {0}
+FREE = GRATUIT

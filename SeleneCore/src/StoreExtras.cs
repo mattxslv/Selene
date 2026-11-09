@@ -291,7 +291,7 @@ namespace Selene
             var badge = item.Free ? "FREE" : item.Discount > 0 ? "-" + item.Discount + "%" : null;
             if (badge != null)
                 chip.Children.Add(new Border { Background = Ink.Brush("SeleneFocusColor"), CornerRadius = new CornerRadius(7), Padding = new Thickness(8, 2, 8, 3), Child = new TextBlock { Text = badge, FontSize = 17, FontWeight = FontWeights.Bold, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneOnFocusColor") } });
-            var price = item.Free ? (item.Note ?? "") : item.Price ?? "";
+            var price = item.Free ? (item.DisplayNote ?? "") : item.Price ?? "";
             if (price.Length > 0) chip.Children.Add(new TextBlock { Text = price, FontSize = 18, FontWeight = FontWeights.SemiBold, FontFamily = Ui.Body, Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(badge != null ? 8 : 0, 0, 0, 0) });
             if (chip.Children.Count > 0)
                 frame.Children.Add(new Border { HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(10), Padding = new Thickness(5, 4, 10, 4), CornerRadius = new CornerRadius(10), Background = new SolidColorBrush(Color.FromArgb(0xCC, 0, 0, 0)), Child = chip });

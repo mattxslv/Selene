@@ -33,6 +33,17 @@ class BugsCheck
         var window = new Window { Width = 1920, Height = 1080, Left = -32000, Top = -32000, Opacity = 0, ShowActivated = false, ShowInTaskbar = false };
         try
         {
+            var noteItem = new StoreItem { Note = "Free until Nov 13" };
+            Assert(noteItem.DisplayNote == noteItem.Note, "#182 English Store note fallback is unchanged");
+            var languageTable = typeof(Lang).GetField("table", BindingFlags.NonPublic | BindingFlags.Static);
+            var previousLanguage = languageTable.GetValue(null);
+            try
+            {
+                languageTable.SetValue(null, new System.Collections.Generic.Dictionary<string, string> { { "Free until {0}", "Gratuit jusqu'au {0}" } });
+                Assert(noteItem.DisplayNote == "Gratuit jusqu'au Nov 13", "#182 Store notes translate variable dates");
+                Assert(noteItem.Note == "Free until Nov 13", "#182 translating a note preserves feed parsing data");
+            }
+            finally { languageTable.SetValue(null, previousLanguage); }
             var startIndex = typeof(HomeNav).GetMethod("StartCardIndex", BindingFlags.NonPublic | BindingFlags.Static);
             var startRow = new ListBox(); startRow.Items.Add("nav:captures"); startRow.Items.Add("nav:store"); startRow.Items.Add(new object());
             Features.Set("startfirstgame", true);

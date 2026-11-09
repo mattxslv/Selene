@@ -344,7 +344,7 @@ namespace Selene
             var chip = new StackPanel { Orientation = Orientation.Horizontal };
             if (item.Discount > 0 && !item.Free)
                 chip.Children.Add(new Border { Background = Ink.Brush("SeleneFocusColor"), CornerRadius = new CornerRadius(6), Padding = new Thickness(6, 1, 6, 2), Margin = new Thickness(0, 0, 6, 0), Child = new TextBlock { Text = "-" + item.Discount + "%", FontSize = 17, FontWeight = FontWeights.SemiBold, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneOnFocusColor") } });
-            var label = item.Free ? "Free" : item.Price ?? item.Note;
+            var label = item.Free ? "Free" : item.Price ?? item.DisplayNote;
             if (!string.IsNullOrEmpty(label)) chip.Children.Add(new TextBlock { Text = label, FontSize = 18, FontWeight = FontWeights.SemiBold, FontFamily = Ui.Body, Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center });
             if (chip.Children.Count > 0)
                 g.Children.Add(new Border { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 10, 10), Padding = new Thickness(6, 4, 10, 4), CornerRadius = new CornerRadius(10), Background = new SolidColorBrush(Color.FromArgb(0xCC, 0, 0, 0)), Child = chip });
@@ -424,8 +424,8 @@ namespace Selene
             ((TextBlock)discount.Child).Text = item.Free ? "Free to keep" : "-" + item.Discount + "%";
             discount.Visibility = item.Discount > 0 ? Visibility.Visible : Visibility.Collapsed;
             owned.Visibility = item.Owned ? Visibility.Visible : Visibility.Collapsed;
-            note.Text = item.Note ?? "";
-            note.Visibility = string.IsNullOrEmpty(item.Note) || item.Note == price.Text ? Visibility.Collapsed : Visibility.Visible;
+            note.Text = item.DisplayNote ?? "";
+            note.Visibility = string.IsNullOrEmpty(item.DisplayNote) || item.DisplayNote == price.Text ? Visibility.Collapsed : Visibility.Visible;
             facts.Text = ""; about.Text = "";   // filled once the selection rests (ShowHero)
             facts.Visibility = about.Visibility = Visibility.Collapsed;
             if (animate) { info.Opacity = 0.4; Ui.Fade(info, 1, 180); }

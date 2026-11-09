@@ -257,7 +257,15 @@ namespace Selene
             var p = Active;
             if (p == null) return playniteLastActivity;
             DateTime at;
-            return p.LastPlayed.TryGetValue(gameId, out at) ? at : (DateTime?)null;
+            bool own = p.LastPlayed.TryGetValue(gameId, out at);
+            // played outside Selene (a PS5 game from its library add-on, another launcher): Playnite's date is newer than any
+            // profile's session of it, so it counts for whoever is signed in (#144). Switch: Spotlight > Games played elsewhere.
+            if (playniteLastActivity.HasValue && Features.On("outsideplays"))
+            {
+                var newest = store.Profiles.Select(x => { DateTime t; return x.LastPlayed != null && x.LastPlayed.TryGetValue(gameId, out t) ? t : DateTime.MinValue; }).DefaultIfEmpty(DateTime.MinValue).Max();
+                if (playniteLastActivity.Value > newest.AddMinutes(2)) return own && at > playniteLastActivity.Value ? at : playniteLastActivity;
+            }
+            return own ? at : (DateTime?)null;
         }
 
         public static void RecordSession(Guid gameId, ulong seconds)

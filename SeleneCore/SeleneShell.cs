@@ -382,9 +382,18 @@ namespace Selene
             try
             {
                 if (crossfadeStill != null) host.Children.Remove(crossfadeStill);
-                var rtb = new RenderTargetBitmap((int)Math.Ceiling(el.ActualWidth), (int)Math.Ceiling(el.ActualHeight), 96, 96, PixelFormats.Pbgra32);
-                rtb.Render(el);
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                // drawn at half size: the still only shows while it fades away, and a full-size render of a page with its
+                // blurred art stalled the UI thread ~100 ms on every close (#176)
+                const double scale = 0.5;
+                int pw = (int)Math.Ceiling(el.ActualWidth * scale), ph = (int)Math.Ceiling(el.ActualHeight * scale);
+                var dv = new DrawingVisual();
+                using (var dc = dv.RenderOpen())
+                    dc.DrawRectangle(new VisualBrush(el) { Stretch = Stretch.Fill, ViewboxUnits = BrushMappingMode.Absolute, Viewbox = new Rect(0, 0, el.ActualWidth, el.ActualHeight) }, null, new Rect(0, 0, pw, ph));
+                var rtb = new RenderTargetBitmap(pw, ph, 96, 96, PixelFormats.Pbgra32);
+                rtb.Render(dv);
                 rtb.Freeze();
+                HomeNav.Log("crossfade still: " + pw + "x" + ph + " in " + sw.ElapsedMilliseconds + " ms");
                 var img = new Image { Source = rtb, Stretch = Stretch.Fill, IsHitTestVisible = false };
                 RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.HighQuality);
                 Grid.SetRowSpan(img, 99); Grid.SetColumnSpan(img, 99);

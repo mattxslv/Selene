@@ -3891,7 +3891,7 @@ namespace Selene
             try
             {
                 var w = Application.Current.MainWindow;
-                SeleneShell.FadeFromDetails(w != null ? FindByName(w, "PART_ElemGameDetails") : null, 280);
+                SeleneShell.FadeFromDetails(w != null ? FindByName(w, "PART_ElemGameDetails") : null, 300);
                 SeleneShell.ShowHome(true);
                 PlayniteMenu.Main("ToggleGameDetailsCommand");
             }
@@ -4326,7 +4326,7 @@ namespace Selene
                 }
                 else if (item.DataContext != null)
                 {
-                    bool canMove = RowFilters[RowFilter] != "recent";   // order there is last played, not arranged
+                    bool canMove = RowFilters[RowFilter] != "recent" && TabSort() == "";   // order there is last played or the tab's own, not arranged
                     var moveItem = item;
                     Action move = canMove ? (Action)(() => { movingGame = moveItem.DataContext; SetMoveVisual(moveItem, true); Ui.Tick(); }) : null;
                     var yid = Prop(item.DataContext, "Id");
@@ -5881,6 +5881,43 @@ namespace Selene
             if (!res.Contains("SeleneStatStoresSet")) { res["SeleneStatStores"] = StoreScreen.InstalledNames(); res["SeleneStatStoresSet"] = true; }
         }
 
+        // ---- each tab's own order (Menu > Sort this tab, #154). Switch: Spotlight > Sort each tab ----
+        public static readonly string[] TabSorts = { "", "lastplayed", "name", "namedesc", "added", "playtime" };
+        public static readonly string[] TabSortNames = { "Selene's order", "Last played", "Name A to Z", "Name Z to A", "Recently added", "Most played" };
+        public static string TabSort()
+        {
+            if (!Features.On("tabsort") || rowFilter < 0 || rowFilter >= RowFilters.Length) return "";
+            var v = Features.Remembered("tabsort:" + RowFilters[rowFilter]) ?? "";
+            return Array.IndexOf(TabSorts, v) > 0 ? v : "";
+        }
+        public static bool CanSortTab { get { return Features.On("tabsort") && !SeleneShell.CollectionActive && LiveRow() != null; } }
+        public static void SetTabSort(string sort)
+        {
+            Features.Remember("tabsort:" + RowFilters[RowFilter], sort ?? "");
+            Log("tab sort: " + RowFilters[RowFilter] + " -> " + (sort == "" ? "Selene's order" : sort));
+            var row = LiveRow();
+            if (row != null) ApplyRowFilter(row);
+        }
+        private static List<object> SortTab(List<object> list, string sort)
+        {
+            Func<object, string> name = g => Convert.ToString(Prop(g, "Name")) ?? "";
+            switch (sort)
+            {
+                case "lastplayed": return list.OrderByDescending(g => LastPlayedOf(g) ?? DateTime.MinValue).ThenBy(name, StringComparer.CurrentCultureIgnoreCase).ToList();
+                case "name": return list.OrderBy(name, StringComparer.CurrentCultureIgnoreCase).ToList();
+                case "namedesc": return list.OrderByDescending(name, StringComparer.CurrentCultureIgnoreCase).ToList();
+                case "added": return list.OrderByDescending(g => Prop(g, "Added") as DateTime? ?? DateTime.MinValue).ThenBy(name, StringComparer.CurrentCultureIgnoreCase).ToList();
+                case "playtime": return list.OrderByDescending(g => PlaytimeOf(g)).ThenBy(name, StringComparer.CurrentCultureIgnoreCase).ToList();
+            }
+            return list;
+        }
+        private static ulong PlaytimeOf(object game)
+        {
+            var id = Prop(game, "Id");
+            var g = id is Guid && Api != null ? Api.Database.Games.Get((Guid)id) : null;
+            return g != null ? GameFacts.Seconds(g) : 0;
+        }
+
         private static void RebuildGames(ListBox row)
         {
             if (games == null || gameSource == null) return;
@@ -5893,7 +5930,9 @@ namespace Selene
             // one of Playnite's own filter presets: the row follows the order Playnite sorted it in (#23)
             bool presetOrder = IsPresetTab(RowFilters[RowFilter]) && presetGamesFor != Guid.Empty && presetGamesFor == PresetOf(RowFilters[RowFilter]);
             if (presetOrder) pinned.Clear();
-            list = GameRowOrder.Sort(list, pinned, g => Convert.ToString(Prop(g, "Id")), LastPlayedOf,
+            var sort = TabSort();
+            if (sort != "") list = SortTab(list, sort);   // the tab's own order, picked in the menu (#154)
+            else list = GameRowOrder.Sort(list, pinned, g => Convert.ToString(Prop(g, "Id")), LastPlayedOf,
                 g => Convert.ToString(Prop(g, "Name")), presetOrder ? (Func<object, int>)PresetPlace : null);
             ShowRowEmpty(row, list.Count == 0);
             UpdateCardStats();
@@ -8636,6 +8675,7 @@ namespace Selene
                     holdTimer.Stop();
                     if (holdButton == null) return;
                     holdFired = true;
+                    PadRumble.Hold();
                     if (holdButton == "Start") { Ui.Confirm(); LoginScene.OpenWith(() => new SettingsScreen()); Log("hold start -> Selene settings"); }
                     else OpenLibrarySearch();
                 };
@@ -8987,6 +9027,7 @@ namespace Selene
         private Image back = new Image { Stretch = Stretch.UniformToFill, Opacity = 0 };
         private int request;
         private const double FadeMs = 350;
+        private double Ms { get { return Hub ? 520 : FadeMs; } }   // Spotlight's art changes slower and softer than Collection's (#176: it looked sharp)
 
         public SeleneCrossfade()
         {
@@ -9082,8 +9123,8 @@ namespace Selene
             if (img == null)
             {
                 // nothing to show (a card is selected): both layers go, the one still fading out included
-                front.BeginAnimation(OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(FadeMs)) { EasingFunction = ease });
-                back.BeginAnimation(OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(FadeMs)) { EasingFunction = ease });
+                front.BeginAnimation(OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(Ms)) { EasingFunction = ease });
+                back.BeginAnimation(OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(Ms)) { EasingFunction = ease });
                 return;
             }
             // the old picture goes behind, the new one fades in on top; the old one is released after the fade
@@ -9093,7 +9134,7 @@ namespace Selene
             front.BeginAnimation(OpacityProperty, null);
             front.Opacity = 0;
             front.Source = img;
-            var fadeIn = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(FadeMs)) { EasingFunction = ease };
+            var fadeIn = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(Ms)) { EasingFunction = ease };
             var leaving = back;
             fadeIn.Completed += (s, e) => { if (leaving != front) { leaving.BeginAnimation(OpacityProperty, null); leaving.Opacity = 0; leaving.Source = null; } };
             front.BeginAnimation(OpacityProperty, fadeIn);

@@ -752,3 +752,5 @@ Music setup = 音乐设置
 Your own pictures: put them in = 你自己的图片：放到这里
 Controller battery in the top bar = 顶栏显示手柄电量
 Show your DualSense controller's battery at the top right. Needs the DualSense Battery Level add-on. = 在右上角显示 DualSense 手柄的电量。需要 DualSense Battery Level 扩展。
+Fade game pages = 游戏页面淡入淡出
+Fade a game's page in when it opens, and back to Spotlight when you leave it. = 打开游戏页面时淡入，离开时淡出返回精选页。

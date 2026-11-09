@@ -42,11 +42,11 @@ namespace Selene
         private static readonly Dictionary<string, string[][]> Sections = new Dictionary<string, string[][]>
         {
             { "Spotlight", new[] {
-                new[] { "Row", "steadyhold", "pickscroll", "rowedges", "filtertabs", "visibletabs", "tabmemory", "fullscreenpresets", "presetorder", "consistentfavorites", "shade", "idle" },
+                new[] { "Row", "steadyhold", "pickscroll", "rowedges", "filtertabs", "visibletabs", "tabmemory", "outsideplays", "tabsort", "fullscreenpresets", "presetorder", "consistentfavorites", "shade", "idle" },
                 new[] { "Cards", "cardactivity", "actualplatform", "activitysessions", "cardcaptures", "capturesfolders", "spotlightshots", "hubachievements", "cardachievements", "cardsurprise", "cardnews", "newsfeeds", "cardstore", "cardpictures" },
                 new[] { "Trailers and downloads", "trailerdelay", "trailerdownload", "artdownload", "screenshotsdownload" } } },
             { "Sound & music", new[] {
-                new[] { "Music", "musicvolume", "musicmuted", "upsgame", "independentmusic", "upsdefault", "selenemusic", "upsspotify", "upsnight", "nowplaying", "musiccard" },
+                new[] { "Music", "musicvolume", "musicmuted", "upsgame", "independentmusic", "upsdefault", "selenemusic", "upsspotify", "upsnight", "nowplaying", "musiccard", "mediacontrols" },
                 new[] { "Sounds", "sounds", "soundvolume", "startsound", "notifysound", "quietdetails", "soundmenu", "livevolume" },
                 new[] { "While you play", "trailersound", "launchquiet" },
                 new[] { "Music setup", "music", "songsetup", "songsettle" } } },
@@ -58,13 +58,13 @@ namespace Selene
                 new[] { "Store", "storepage", "storetrailers", "storetab", "storeregion" },
                 new[] { "Surprise me", "surprisepool", "surprisenorepeat" } } },
             { "Look", new[] {
-                new[] { "Background", "homebackground", "ownbackground", "backgroundchanger", "glow", "backgroundfit", "guidefade", "smoothswitch", "perfmode" },
-                new[] { "Art", "trimlogos", "logosize", "squareart", "steamgridkey", "smartcrop", "previewartfit", "closinglogo", "morecoverfit", "activitycoverfit", "trailerlogogap", "screenshotskeleton" },
+                new[] { "Background", "homebackground", "ownbackground", "backgroundchanger", "imagerotater", "glow", "backgroundfit", "guidefade", "smoothswitch", "perfmode" },
+                new[] { "Art", "trimlogos", "logosize", "squareart", "steamgridkey", "squareformat", "smartcrop", "previewartfit", "closinglogo", "morecoverfit", "activitycoverfit", "trailerlogogap", "screenshotskeleton" },
                 new[] { "Text and hints", "textshadow", "hints", "prompts", "detailsbadges", "captureplayerfit", "dialogs", "topprofile", "topbattery", "controllerbattery", "topachievements", "wakeprofiles", "language", "languagerestart" } } },
             { "Advanced", new[] {
                 new[] { "Help", "report", "setupcheck", "storelibraries", "xboxsignin", "gamesfolder", "shortaddonask", "reportchord", "perflog" },
                 new[] { "Performance", "fullrate", "calmmotion", "presence", "asynccovers", "lightweight" },
-                new[] { "Controls and Playnite", "viewswitch", "playnitesettings", "legacytasks" },
+                new[] { "Controls and Playnite", "holdrumble", "viewswitch", "playnitesettings", "legacytasks" },
                 new[] { "Language", "translate", "translatecollect" },
                 new[] { "Reset", "reset" } } },
         };
@@ -511,7 +511,7 @@ namespace Selene
                 if (key == "topprofile") TopProfile.Refresh();
                 if (key == "topbattery") DeviceBattery.Refresh();
                 if (key == "controllerbattery") ControllerBattery.Refresh();
-                if (key == "backgroundchanger") BackgroundChangerBridge.RefreshAll();
+                if (key == "backgroundchanger" || key == "imagerotater") BackgroundChangerBridge.RefreshAll();
                 if (key == "hubachievements" || key == "topachievements" || key == "achievements" || key == "spotlightshots") HomeNav.ApplyHubAchievements();
                 if (key == "nowplaying") NowPlayingBar.Refresh();
                 if (key == "sounds" || key == "soundvolume") HomeNav.SyncMoveSound();
@@ -628,6 +628,7 @@ namespace Selene
             if (opt.Key == "homebackground") Profiles.ApplyLook();
             if (opt.Key == "homebackground") BackgroundChangerBridge.RefreshAll();
             if (opt.Key == "backgroundfit") BackgroundFit.Apply();
+            if (opt.Key == "collectionlogo") LibraryStage.ApplyLogoPosition();
             if (opt.Key == "idle") IdleScreen.Restart();
             if (opt.Key == "clipvolume") CapturesScreen.ClipVolumeChanged();
             if (opt.Key == "starttab" || opt.Key == "filtertabs") HomeNav.ApplyValueSettings();

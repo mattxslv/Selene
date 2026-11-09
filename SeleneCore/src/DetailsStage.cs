@@ -68,6 +68,8 @@ namespace Selene
             HomeNav.QuietDetailsTransition();
             var g = Selected();
             if (g == null) return;
+            // the page fades in instead of cutting in (#176); the same switch fades it back out to Spotlight
+            if (Features.On("smoothswitch")) { details.BeginAnimation(UIElement.OpacityProperty, null); details.Opacity = 0; Ui.Fade(details, 1, 260); }
             WatchStick(true);
             // the page's parts are in the template, made once the view shows
             details.Dispatcher.BeginInvoke(new Action(() =>

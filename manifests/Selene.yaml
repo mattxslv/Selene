@@ -37,6 +37,24 @@ Packages:
         Captures: the video buttons no longer flash when you open a screenshot from a card (#184).
       - >-
         French: the profile steps, power and remove prompts, sound menu, achievements card, Store headlines and newer settings are translated (#182). Uses the existing language setting; restart Playnite to apply.
+      - >-
+        Game pages fade in when they open, and closing one back to Spotlight no longer stalls for a moment (#176). Look > Fade game pages turns both off.
+      - >-
+        Spotlight's background changes more softly, and Find a game's keyboard rows rise in one after another (#176).
+      - >-
+        ImageRotater backgrounds show on Spotlight and game pages too, not only in Collection (#185). Look > ImageRotater backgrounds turns it off.
+      - >-
+        Collection > Logo position: put the game's logo and details at the left, as on Spotlight (#185).
+      - >-
+        Rumble on hold: the controller gives a short buzz when holding a button opens Find a game or Selene settings (#180). Turn it off in Advanced.
+      - >-
+        Sort this tab (Start menu): give each Spotlight tab its own order: last played, name, recently added or most played (#154).
+      - >-
+        With profiles, games last played outside Selene (a console, another launcher) show in Recently played (#144). Spotlight > Games played elsewhere.
+      - >-
+        Music in the menu controls Spotify, Deezer or any player through Windows' media keys when Selene's own music isn't playing (#120).
+      - >-
+        Square art: choose PNG or JPG first (Look > Square art format), and Game options > Next square art shows another picture from SteamGridDB (#148).
   - Version: 1.5.6
     RequiredApiVersion: 2.10.0
     ReleaseDate: 2026-11-05

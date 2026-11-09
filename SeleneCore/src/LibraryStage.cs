@@ -88,6 +88,25 @@ namespace Selene
             HookArtCrossfade(grid);
             HookGlide();
             HookLogoSize(HomeNav.FindByName(library, "SeleneLibraryLogo") as Image);
+            ApplyLogoPosition();
+        }
+
+        // Collection > Logo position: the game's logo, name and details centered in their column, or at its left edge as on
+        // Spotlight (#185)
+        public static void ApplyLogoPosition()
+        {
+            var logo = library != null ? HomeNav.FindByName(library, "SeleneLibraryLogo") as Image : null;
+            var column = logo != null ? LogicalTreeHelper.GetParent(LogicalTreeHelper.GetParent(logo)) as StackPanel : null;
+            if (column == null) return;
+            bool left = Features.Value("collectionlogo") == "left";
+            var side = left ? HorizontalAlignment.Left : HorizontalAlignment.Center;
+            foreach (var child in column.Children.OfType<FrameworkElement>()) child.HorizontalAlignment = child is Grid ? HorizontalAlignment.Stretch : side;
+            foreach (var part in ((Grid)LogicalTreeHelper.GetParent(logo)).Children.OfType<FrameworkElement>())
+            {
+                part.HorizontalAlignment = side;
+                var text = part as TextBlock;
+                if (text != null) text.TextAlignment = left ? TextAlignment.Left : TextAlignment.Center;
+            }
         }
 
         // Logos sized by how much they cover, not by a wide box: a tall one (Monster Hunter Wilds, Path of Exile 2) hit the

@@ -105,6 +105,7 @@ namespace Selene
             l.Entries.Add(new Entry { Label = "HDR", Sub = "Windows' HDR switched on while this game runs.", Icon = 0xe3ee, Toggle = () => game.EnableSystemHdr, Run = () => { game.EnableSystemHdr = !game.EnableSystemHdr; Save(); } });
             l.Entries.Add(new Entry { Label = "Completion status", Icon = 0xe86c, Value = () => Name(api.Database.CompletionStatuses, game.CompletionStatusId, "Not set"), Run = () => PickOne("Completion status", api.Database.CompletionStatuses.OrderBy(c => c.Name).Cast<DatabaseObject>(), game.CompletionStatusId, id => game.CompletionStatusId = id) });
             l.Entries.Add(new Entry { Label = "Edit details", Sub = "Score, tags, categories, genres and the rest.", Icon = 0xe3c9, Opens = true, Run = () => Push(DetailsLevel()) });
+            if (SquareFetch.CanPickAnother) l.Entries.Add(new Entry { Label = "Next square art", Sub = "Show another square picture from SteamGridDB on Spotlight.", Icon = 0xe41f, Run = NextSquare });
             if (Features.On("metasource")) l.Entries.Add(new Entry { Label = "Metadata source", Sub = "Where its screenshots come from: Steam or IGDB, or a Steam AppID / IGDB id of your own.", Icon = 0xe8b6, Opens = true, Run = () => Push(MetadataLevel()) });
             l.Entries.Add(new Entry { Label = "Extensions", Sub = "What your add-ons can do with this game.", Icon = 0xe87b, Opens = true, Run = () => Push(ExtensionsLevel()) });
             l.Entries.Add(new Entry { Label = "Remove from library", Icon = 0xe5cd, Warn = true, Run = AskRemove });
@@ -406,13 +407,28 @@ namespace Selene
 
         private void AskUninstall()
         {
-            ask = new Dialog(Ui.Icon(0xe872), "Uninstall " + game.Name + "?", "Its store or launcher takes it off this PC.", "Uninstall", "Keep it", () =>
+            ask = new Dialog(Ui.Icon(0xe872), string.Format(Lang.T("Uninstall {0}?"), game.Name), "Its store or launcher takes it off this PC.", "Uninstall", "Keep it", () =>
             {
                 ask = null;
                 var id = game.Id;
                 LoginScene.FinishThen(() => { try { HomeNav.Api.UninstallGame(id); } catch (Exception ex) { HomeNav.Log("game options: uninstall failed: " + ex.Message); } });
             }, () => ask = null, true, true);
             ask.Open(Root);
+        }
+
+        // Game options > Next square art (#148): the next of SteamGridDB's squares for it, shown on Spotlight's tile
+        private bool squareBusy;
+        private void NextSquare()
+        {
+            if (squareBusy) return;
+            squareBusy = true;
+            Ui.Notice("Looking for another square picture…", 3000);
+            SquareFetch.Next(game, found =>
+            {
+                squareBusy = false;
+                if (found) { Ui.Play("Success.wav", 0.8); Ui.Notice("New square art", 3000); }
+                else Ui.Notice("No square art found for this game", 4000);
+            });
         }
 
         // ---- the list ----

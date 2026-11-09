@@ -272,6 +272,7 @@ namespace Selene
                 else if (step[1].StartsWith("rclick:")) HomeNav.DevRealClick(step[1].Substring(7));
                 else if (step[1] == "screen:extensions") OpenWith(() => GameOptionsScreen.Extensions());
                 else if (step[1] == "screen:gameoptions") { var tg = HomeNav.Api.Database.Games.FirstOrDefault(x => x.Name == "Selene test game"); if (tg != null) OpenWith(() => new GameOptionsScreen(tg)); else HomeNav.Log("dev: no Selene test game (testgame: makes it)"); }
+                else if (step[1].StartsWith("nextsquare:")) { var sq = HomeNav.Api.Database.Games.FirstOrDefault(x => x.Name == step[1].Substring(11).Replace('_', ' ')); if (sq != null) SquareFetch.Next(sq, ok => HomeNav.Log("dev next square: " + ok)); }   // Game options > Next square art (#148)
                 else if (step[1] == "screen:activity") OpenWith(() => new ActivityScreen());
                 else if (step[1] == "screen:who") OpenWith(() => new WhoScreen(null));   // the profile picker, as Switch profile opens it (#183)
                 else if (step[1].StartsWith("screen:capture:")) OpenWith(() => new CapturesScreen(step[1].Substring(15).Replace('|', ' ')));   // one capture straight away, as a card's picture does (#184)

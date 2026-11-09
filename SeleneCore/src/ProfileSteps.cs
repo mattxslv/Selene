@@ -92,7 +92,7 @@ namespace Selene
                 d.Background = Ink.Brush("SeleneInkColor", i == step ? 1 : 0.3);
                 d.BeginAnimation(FrameworkElement.WidthProperty, new DoubleAnimation(i == step ? 24 : 8, TimeSpan.FromMilliseconds(220)) { EasingFunction = Ui.Out() });
             }
-            nextLabel.Text = steps[step].WantsText ? "Select" : step < steps.Length - 1 ? "Next" : editing != null ? "Save" : "Create profile";
+            nextLabel.Text = Lang.T(steps[step].WantsText ? "Select" : step < steps.Length - 1 ? "Next" : editing != null ? "Save" : "Create profile");
         }
 
         public override void Handle(string b)
@@ -1034,6 +1034,9 @@ namespace Selene
                 lookNote.Foreground = Ink.Brush("SeleneInkColor", 0.6);
                 lookNote.Visibility = Visibility.Collapsed;   // (no note under the choices: the preview shows what each does)
                 right.Children.Add(lookNote);
+                // where your own pictures go (Selene updates never touch that folder, #163)
+                right.Children.Add(new TextBlock { Text = Lang.T("Your own pictures: put them in") + "\n" + SelenePaths.OwnWallpapers, FontSize = 14, FontFamily = Ui.Body,
+                    Foreground = Ink.Brush("SeleneInkColor", 0.55), TextWrapping = TextWrapping.Wrap, MaxWidth = 820, Margin = new Thickness(6, 16, 0, 0) });
                 row.Children.Add(right);
                 Root.Children.Add(row);
             }

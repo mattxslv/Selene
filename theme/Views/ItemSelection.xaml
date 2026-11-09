@@ -2,13 +2,16 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
 
+    <!-- The panel is dark in every color theme: its words use the ink brush, not TextBrush (black in the White theme, #179),
+         and the row's text takes its color from the button, so the focused row reads dark on its light fill. -->
     <Style x:Key="ItemSelectionButton" BasedOn="{StaticResource {x:Type ButtonEx}}" TargetType="ButtonEx">
         <Setter Property="Margin" Value="5" />
+        <Setter Property="Foreground" Value="{DynamicResource SeleneInkBrush}" />
         <Setter Property="ContentTemplate">
             <Setter.Value>
                 <DataTemplate>
-                    <TextBlock Style="{DynamicResource TextBlockBaseStyle}" TextTrimming="CharacterEllipsis"
-                               Text="{Binding}" />
+                    <TextBlock FontSize="{DynamicResource FontSize}" FontFamily="Segoe UI Variable Display, Segoe UI"
+                               TextTrimming="CharacterEllipsis" Text="{Binding}" />
                 </DataTemplate>
             </Setter.Value>
         </Setter>
@@ -16,11 +19,12 @@
 
     <Style x:Key="ItemSelectionCheckBox" BasedOn="{StaticResource {x:Type CheckBoxEx}}" TargetType="CheckBoxEx">
         <Setter Property="Margin" Value="5" />
+        <Setter Property="Foreground" Value="{DynamicResource SeleneInkBrush}" />
         <Setter Property="ContentTemplate">
             <Setter.Value>
                 <DataTemplate>
-                    <TextBlock Style="{DynamicResource TextBlockBaseStyle}" TextTrimming="CharacterEllipsis"
-                               Text="{Binding}" />
+                    <TextBlock FontSize="{DynamicResource FontSize}" FontFamily="Segoe UI Variable Display, Segoe UI"
+                               TextTrimming="CharacterEllipsis" Text="{Binding}" />
                 </DataTemplate>
             </Setter.Value>
         </Setter>
@@ -45,6 +49,7 @@
         <Setter Property="HorizontalAlignment" Value="Stretch" />
         <Setter Property="TextWrapping" Value="Wrap" />
         <Setter Property="Padding" Value="15,15,15,15" />
+        <Setter Property="Foreground" Value="{DynamicResource SeleneInkBrush}" />
         <Setter Property="Background" Value="{DynamicResource SeleneScrim65Brush}" />
     </Style>
 </ResourceDictionary>

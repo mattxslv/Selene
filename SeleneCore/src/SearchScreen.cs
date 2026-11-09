@@ -111,6 +111,7 @@ namespace Selene
                     x += w + gap;
                 }
                 board.Children.Add(rowPanel);
+                Ui.Rise(rowPanel, 80 + (board.Children.Count - 1) * 45, 14, 260);   // the rows come up one after another (#176: it popped in all at once)
                 keys.Add(rowKeys);
                 values.Add(r);
                 centers.Add(rowCenters);

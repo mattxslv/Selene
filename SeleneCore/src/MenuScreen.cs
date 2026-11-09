@@ -60,6 +60,15 @@ namespace Selene
             new object[] { 0xe044, "Next song", 1 },
             new object[] { 0xe042, "Restart song", 2 },
         };
+        // without UniPlaySong playing: Windows' media keys, which reach whatever player has the media session (Spotify,
+        // Deezer, a browser) (#120). Switch: Sound & music > Control any music player.
+        private static readonly object[][] MediaItems =
+        {
+            new object[] { 0xe037, "Play / pause", 10 },
+            new object[] { 0xe044, "Next song", 11 },
+            new object[] { 0xe045, "Previous song", 12 },
+        };
+        private object[][] musicItems = MusicItems;
         private bool musicList;
 
         private static readonly object[][] PowerItems =
@@ -95,13 +104,25 @@ namespace Selene
             Root.Unloaded += (s, e) => StopSoundRefresh();
             var profile = Profiles.Active;
             var running = Features.On("menuclosegame") ? HomeNav.RunningGame() : null;
-            if (running != null) items.Add(new Item { Icon = Ui.Icon(0xe5cd), Label = "Close " + running.Name, Sub = "Close game", Run = () => Later(HomeNav.CloseRunningGame) });
+            if (running != null) items.Add(new Item { Icon = Ui.Icon(0xe5cd), Label = string.Format(Lang.T("Close {0}"), running.Name), Sub = "Close game", Run = () => Later(HomeNav.CloseRunningGame) });
             items.Add(new Item { Icon = Ui.Icon(0xe853), Label = profile != null ? profile.Name : "Switch profile", Sub = profile != null ? "Switch profile" : null, Picture = profile != null ? WhoScreen.Avatar(profile, 52) : null, Run = () => LoginScene.Show(new WhoScreen(null), 1) });
             items.Add(new Item { Icon = Ui.Icon(0xe3c9), Label = "Edit profile", Run = EditProfile });
             items.Add(new Item { Icon = Ui.Icon(0xe40a), Label = "Theme", Run = ChangeTheme });
             items.Add(new Item { Icon = Ui.Icon(0xe429), Label = "Selene settings", Badge = Background.Any, Run = () => LoginScene.Show(new SettingsScreen(true), 1) });   // (the dot: something still running behind the scenes)
             if (Features.On("soundmenu")) items.Add(new Item { Icon = Ui.Icon(0xe050), Label = "Sound", Sub = SystemAudio.Summary() ?? (Features.On("livevolume") ? "\u2014" : null), Run = OpenSound });   // Windows' volume and output
-            if (Features.On("musiccard") && MusicLevel.CardWanted()) items.Add(new Item { Icon = Ui.Icon(0xe405), Label = "Music", Run = () => OpenPower(true) });   // UniPlaySong's play, pause and skip
+            if (HomeNav.CanSortTab)
+            {
+                int now = Math.Max(0, Array.IndexOf(HomeNav.TabSorts, HomeNav.TabSort()));
+                items.Add(new Item { Icon = Ui.Icon(0xe164), Label = "Sort this tab", Sub = HomeNav.TabSortNames[now], Run = () =>
+                {
+                    int cur = Math.Max(0, Array.IndexOf(HomeNav.TabSorts, HomeNav.TabSort()));
+                    musicItems = HomeNav.TabSorts.Select((s, i) => new object[] { i == cur ? 0xe5ca : 0xe164, HomeNav.TabSortNames[i], 20 + i }).ToArray();
+                    OpenPower(true);
+                    powerIndex = cur; ShowPowerFocus();
+                } });
+            }
+            if (Features.On("musiccard") && MusicLevel.CardWanted()) items.Add(new Item { Icon = Ui.Icon(0xe405), Label = "Music", Run = () => { musicItems = MusicItems; OpenPower(true); } });
+            else if (Features.On("mediacontrols")) items.Add(new Item { Icon = Ui.Icon(0xe405), Label = "Music", Sub = "Your music player", Run = () => { musicItems = MediaItems; OpenPower(true); } });   // UniPlaySong's play, pause and skip
             items.Add(new Item { Icon = Ui.Icon(0xe8ac), Label = "Power", Run = () => OpenPower() });
             // the add-ons' own menus (Playnite's Extensions menu): audio switchers, metadata tools...
             items.Add(new Item { Icon = Ui.Icon(0xe87b), Picture = Ui.Glyph(Ui.Icon(0xe87b), Ui.Icons, 34, Ink.Brush("SeleneInkColor"), true), Label = "Extensions", Run = () => LoginScene.Show(GameOptionsScreen.Extensions(), 1) });   // (the piece centred by its body, not its knobs)
@@ -222,7 +243,7 @@ namespace Selene
             musicList = music;
             var list = new StackPanel();
             powerRows.Clear();
-            foreach (var p in music ? MusicItems : PowerItems)
+            foreach (var p in music ? musicItems : PowerItems)
             {
                 var line = new StackPanel { Orientation = Orientation.Horizontal };
                 line.Children.Add(new TextBlock { Text = Ui.Icon((int)p[0]), FontFamily = Ui.Icons, FontSize = 24, Foreground = Ink.Brush("SeleneInkColor"), VerticalAlignment = VerticalAlignment.Center });
@@ -269,8 +290,10 @@ namespace Selene
             {
                 Ui.Confirm();
                 Ui.Pop(powerRows[powerIndex]);
-                var id = (int)MusicItems[powerIndex][2];
-                MusicLevel.Control(id == 0 ? "TogglePlayPauseInternal" : id == 1 ? "SkipToNextSong" : "RestartCurrentSong");   // the list stays up: skip again
+                var id = (int)musicItems[powerIndex][2];
+                if (id >= 20) { var sort = HomeNav.TabSorts[id - 20]; leaving = true; LoginScene.FinishThen(() => HomeNav.SetTabSort(sort)); return; }   // the row re-sorts as the menu closes
+                if (id >= 10) MediaKeys.Press(id == 10 ? MediaKeys.PlayPause : id == 11 ? MediaKeys.Next : MediaKeys.Previous);
+                else MusicLevel.Control(id == 0 ? "TogglePlayPauseInternal" : id == 1 ? "SkipToNextSong" : "RestartCurrentSong");   // the list stays up: skip again
                 return;
             }
             if (b == "A")

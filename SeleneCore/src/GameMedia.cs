@@ -55,7 +55,8 @@ namespace Selene
             var g = AsGame(game);
             if (g != null) PerformanceRecorder.Mark("selection", g.Id + " " + g.Name);
             if (g == null || g.Id != shown) FadeOut();
-            if (g != null && !cache.ContainsKey(g.Id)) ShowLoading();
+            // no loading cards when there's no strip to load (screenshots on Spotlight off, #165)
+            if (g != null && !cache.ContainsKey(g.Id) && (Features.On("spotlightshots") || DetailsStage.PageOpen)) ShowLoading();
             else HideLoading(false);
             debounce.Stop();
             debounce.Start();

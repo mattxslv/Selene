@@ -23,12 +23,19 @@ CS_PATTERNS = [
     r'\bActionPill\(\s*"[^"]*"\s*,\s*' + STR,
     r'\bNotice\(\s*' + STR,
     r'\bLang\.T\(\s*' + STR,
+    r'\bLang\.T\([^;\n]*?\?\s*' + STR + r'\s*:\s*' + STR,
+    r'\bnew Segmented\(\s*' + STR,
+    r'\bnew Segmented\([^\n]*?new\[\]\s*\{\s*' + STR + r'\s*,\s*' + STR,
+    r'\bnew KeyPad\(\s*' + STR,
+    r'\bAddButton\(\s*\w+\s*,\s*' + STR,
     r'\bnew Dialog\([^;]*?,\s*' + STR + r'\s*,\s*' + STR,
     r'\bShowEmpty\(\s*' + STR,
     r'\btitle\s*=\s*' + STR,
     r'\bhint\s*=\s*' + STR,
     r'\b(?:Switch|Slider|Choice)\(\s*"[^"]*"\s*,\s*' + STR + r'\s*,\s*' + STR,   # Selene's Playnite settings rows
     r'\bSection\s*\{\s*Name\s*=\s*' + STR,
+    r'\bHeader\(\s*' + STR + r'\s*,\s*' + STR,                                 # a profile step's title and line under it
+    r'\bSoundRow\(\s*\w+\s*,\s*' + STR,
     r'new object\[\]\s*\{\s*0x[0-9a-fA-F]+\s*,\s*' + STR,                       # icon + label lists (the power menu)
     r'\.Text\s*=\s*[^;"]*\?\s*' + STR + r'\s*:\s*' + STR,                     # x.Text = cond ? "Yes" : "Not yet"
     r'\b(?:SearchGroup|ChangedGroup)\s*=\s*' + STR,                            # the settings sidebar's first two

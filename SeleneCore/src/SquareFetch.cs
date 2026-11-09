@@ -108,9 +108,38 @@ namespace Selene
         }
 
         // from the art download worker: a square picture for a game that has none
-        public static void Fetch(Game g, Func<string> steamId)
+        // which of SteamGridDB's squares this game shows (0: the best one; Game options > Next square art moves it on: #148)
+        private static string PickFile(Guid id) { return Path.Combine(SelenePaths.Media("Square"), id + ".pick"); }
+        private static int Pick(Guid id) { int n; try { return System.IO.File.Exists(PickFile(id)) && int.TryParse(System.IO.File.ReadAllText(PickFile(id)).Trim(), out n) ? Math.Max(0, n) : 0; } catch { return 0; } }
+        public static bool CanPickAnother { get { return Features.On("squareart") && Key != null; } }
+
+        // Game options > Next square art: the next of SteamGridDB's squares for this game (after the last one: the first again)
+        public static void Next(Game g, Action<bool> done)
         {
-            if (!Features.On("squareart") || !DownloadConsent.Allowed("artdownload")) return;
+            var id = g.Id;
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                try
+                {
+                    Directory.CreateDirectory(SelenePaths.Media("Square"));
+                    System.IO.File.WriteAllText(PickFile(id), (Pick(id) + 1).ToString());
+                    var old = SquareFile(id);
+                    if (System.IO.File.Exists(old)) System.IO.File.Delete(old);
+                    var none = Path.Combine(SelenePaths.Media("Trailers"), id + ".nosquare");
+                    if (System.IO.File.Exists(none)) System.IO.File.Delete(none);
+                    string appId = g.PluginId.ToString() == "cb91dfc9-b977-43bf-8e70-55f46e410fab" ? g.GameId : null;
+                    Fetch(g, () => appId ?? GameMedia.SteamAppIdByName(g.Name), true);
+                    return System.IO.File.Exists(old);
+                }
+                catch (Exception ex) { HomeNav.Log("square art: next for " + g.Name + " failed: " + ex.Message); return false; }
+            }).ContinueWith(t => { TileCovers.Forget(SquareFile(id)); TileCovers.SquareArrived(); done(t.Result); }, System.Threading.Tasks.TaskScheduler.FromCurrentSynchronizationContext());
+        }
+
+        public static void Fetch(Game g, Func<string> steamId) { Fetch(g, steamId, false); }
+
+        private static void Fetch(Game g, Func<string> steamId, bool asked)
+        {
+            if (!Features.On("squareart") || (!asked && !DownloadConsent.Allowed("artdownload"))) return;
             var key = Key;
             if (key == null) return;
             var target = SquareFile(g.Id);
@@ -139,14 +168,23 @@ namespace Selene
                     // most votes first; on a tie (often all 0) a full-size JPEG: those are key art, where a PNG is often the
                     // game's app icon (Genshin Impact's came up as Paimon's launcher icon)
                     Func<Dictionary<string, object>, string, double> num = (d, k) => { object v; try { return d.TryGetValue(k, out v) ? Convert.ToDouble(v) : 0; } catch { return 0; } };
-                    var pick = list != null ? (list["data"] as object[] ?? new object[0]).OfType<Dictionary<string, object>>()
+                    // Look > Square art format puts PNGs or JPGs first, ahead of the votes (#148)
+                    var format = Features.Value("squareformat");
+                    Func<Dictionary<string, object>, int> wanted = d =>
+                    {
+                        var mime = Convert.ToString(d.ContainsKey("mime") ? d["mime"] : "");
+                        return format == "png" ? (mime == "image/png" ? 0 : 1) : format == "jpg" ? (mime == "image/jpeg" ? 0 : 1) : 0;
+                    };
+                    var ordered = list != null ? (list["data"] as object[] ?? new object[0]).OfType<Dictionary<string, object>>()
                         .Select((d, i) => new { d, i })
-                        .OrderByDescending(x => num(x.d, "upvotes") - num(x.d, "downvotes"))
+                        .OrderBy(x => wanted(x.d))
+                        .ThenByDescending(x => num(x.d, "upvotes") - num(x.d, "downvotes"))
                         .ThenBy(x => Convert.ToString(x.d.ContainsKey("mime") ? x.d["mime"] : "") == "image/jpeg" ? 0 : 1)
                         .ThenByDescending(x => num(x.d, "width"))
                         .ThenBy(x => x.i)
-                        .Select(x => x.d).FirstOrDefault() : null;
-                    if (pick != null) url = pick["url"] as string;
+                        .Select(x => x.d).ToList() : new List<Dictionary<string, object>>();
+                    var pick = ordered.Count > 0 ? ordered[Pick(g.Id) % ordered.Count] : null;
+                    if (pick != null) { url = pick["url"] as string; HomeNav.Log("square art: " + g.Name + " candidate " + (Pick(g.Id) % ordered.Count + 1) + " of " + ordered.Count + " (" + Convert.ToString(pick.ContainsKey("mime") ? pick["mime"] : "?") + ")"); }
                 }
                 catch (WebException ex)
                 {

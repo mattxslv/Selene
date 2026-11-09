@@ -126,12 +126,12 @@ namespace Selene
                 priceLine.Children.Add(new Border { CornerRadius = new CornerRadius(8), Padding = new Thickness(10, 3, 10, 4), Margin = new Thickness(0, 0, 14, 0), Background = Ink.Brush("SeleneFocusColor"), VerticalAlignment = VerticalAlignment.Center, Child = new TextBlock { Text = item.Free ? "Free to keep" : "-" + item.Discount + "%", FontSize = 20, FontWeight = FontWeights.SemiBold, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneOnFocusColor") } });
             if (!string.IsNullOrEmpty(item.OldPrice))
                 priceLine.Children.Add(new TextBlock { Text = item.OldPrice, FontSize = 22, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.5), TextDecorations = TextDecorations.Strikethrough, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) });
-            priceLine.Children.Add(new TextBlock { Text = item.Free ? "Free" : item.Price ?? item.Note ?? "", FontSize = 34, FontWeight = FontWeights.SemiBold, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor"), VerticalAlignment = VerticalAlignment.Center });
+            priceLine.Children.Add(new TextBlock { Text = item.Free ? "Free" : item.Price ?? item.DisplayNote ?? "", FontSize = 34, FontWeight = FontWeights.SemiBold, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor"), VerticalAlignment = VerticalAlignment.Center });
             if (owned != null)
                 priceLine.Children.Add(new Border { CornerRadius = new CornerRadius(8), Padding = new Thickness(10, 3, 10, 4), Margin = new Thickness(16, 0, 0, 0), Background = Ink.Brush("SeleneInkColor", 0.16), VerticalAlignment = VerticalAlignment.Center, Child = new TextBlock { Text = "In your library", FontSize = 17, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor") } });
             col.Children.Add(priceLine);
-            if (!string.IsNullOrEmpty(item.Note) && item.Note != item.Price && item.Price != null)
-                col.Children.Add(new TextBlock { Text = item.Note, FontSize = 18, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.7), Margin = new Thickness(0, 10, 0, 0) });
+            if (!string.IsNullOrEmpty(item.DisplayNote) && item.DisplayNote != item.Price && item.Price != null)
+                col.Children.Add(new TextBlock { Text = item.DisplayNote, FontSize = 18, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.7), Margin = new Thickness(0, 10, 0, 0) });
             // the cheapest price in another store (filled in when found)
             elsewhereText = new TextBlock { FontSize = 18, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.85), VerticalAlignment = VerticalAlignment.Center };
             var elsewhereRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0), Visibility = Visibility.Collapsed, Opacity = 0 };

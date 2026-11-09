@@ -139,9 +139,11 @@ namespace Selene
                     list.AddRange(PicturesIn(folder, SearchOption.TopDirectoryOnly).Select(f => new WallpaperChoice { File = f, Group = group }));
                 }
             }
+            var mine = new List<string>();
+            try { Directory.CreateDirectory(SelenePaths.OwnWallpapers); mine.AddRange(PicturesIn(SelenePaths.OwnWallpapers, SearchOption.AllDirectories)); } catch { }
             var own = SelenePaths.WallpapersFolder;
-            if (own != "" && Directory.Exists(own))
-                list.AddRange(PicturesIn(own, SearchOption.AllDirectories).Select(f => new WallpaperChoice { File = f, Group = YourGroup }));
+            if (own != "" && Directory.Exists(own)) mine.AddRange(PicturesIn(own, SearchOption.AllDirectories));
+            list.AddRange(mine.Distinct(StringComparer.OrdinalIgnoreCase).Select(f => new WallpaperChoice { File = f, Group = YourGroup }));
             return list;
         }
 

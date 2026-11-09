@@ -4,6 +4,35 @@ Selene (theme) and Selene Core (add-on) share one version number and are release
 
 ## Unreleased
 
+## 1.5.7 - 2026-11-09
+
+- Launch choices use Selene's rounded dialog card and spaced rows. Look > Selene dialogs restores the native layout when off; applies to the next dialog opened.
+
+- Spotlight: an uninstalled game's button says Install and installs it, instead of a Play that did nothing (#167).
+- Spotlight: with screenshots off, no empty loading cards show while you move, and the game's logo, buttons and stats sit lower to fill the space (#165, #166).
+- Spotlight: no more "0 / 0" achievements flashing when you move to a game without achievements (#171).
+- Spotlight: games further along the row no longer show up before the start-up animation reaches them (#172).
+- Activity: covers are shown at their own shape, without black bars (#169).
+- Platform: games whose platform is named after a store (Steam, Epic Games...) show that store's logo, and a plain "PC" shows the Windows logo (#170).
+- Alt+Tab works while a game starts: the loading screen steps back, and Selene no longer pulls the game back to the front after you switch away (#168).
+- Controller battery in the top bar (Look): your DualSense's battery at the top right, from the DualSense Battery Level add-on (#173).
+- Your own wallpapers: pictures in Selene Core's Wallpapers folder (shown on the background screen) appear under Your wallpapers and survive updates (#163).
+- Filter presets as tabs: picking a game outside the current preset tab opens its options without trying to select a missing All games tab (#177; original crash still needs reporter confirmation).
+- Games kept under a Playnite variable like {PlayniteDir} are no longer marked as uninstalled (#178).
+- Launch choices: every option and the title are readable in every color theme, including White (#179).
+- Spotlight: card titles sit in the right place after you switch profile (#183). Start on the first game selects a game at start-up and sign-in; turn it off to keep starting on Store. Applies on the next sign-in or restart.
+- Captures: the video buttons no longer flash when you open a screenshot from a card (#184).
+- French: the profile steps, power and remove prompts, sound menu, achievements card, Store headlines and newer settings are translated (#182). Uses the existing language setting; restart Playnite to apply.
+- Game pages fade in when they open, and closing one back to Spotlight no longer stalls for a moment (#176). Look > Fade game pages turns both off.
+- Spotlight's background changes more softly, and Find a game's keyboard rows rise in one after another (#176).
+- ImageRotater backgrounds show on Spotlight and game pages too, not only in Collection (#185). Look > ImageRotater backgrounds turns it off.
+- Collection > Logo position: put the game's logo and details at the left, as on Spotlight (#185).
+- Rumble on hold: the controller gives a short buzz when holding a button opens Find a game or Selene settings (#180). Turn it off in Advanced.
+- Sort this tab (Start menu): give each Spotlight tab its own order: last played, name, recently added or most played (#154).
+- With profiles, games last played outside Selene (a console, another launcher) show in Recently played (#144). Spotlight > Games played elsewhere.
+- Music in the menu controls Spotify, Deezer or any player through Windows' media keys when Selene's own music isn't playing (#120).
+- Square art: choose PNG or JPG first (Look > Square art format), and Game options > Next square art shows another picture from SteamGridDB (#148).
+
 ## 1.5.6 - 2026-11-05
 
 - Background Changer backgrounds (Look, off by default): use the add-on's curated images and rotation on Spotlight, Collection and game pages. Turning it off restores Selene's backgrounds (#140).

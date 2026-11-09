@@ -16,7 +16,8 @@ namespace Selene
     // A shows the game on Spotlight, X plays it, B goes back.
     public class ActivityScreen : Screen
     {
-        private const double Side = 96, TileW = 150, TileH = 200, Pitch = TileW + 22, RowTop = 330, RowPitch = 318;
+        private const double Side = 96, TileW = 134, TileH = 200,   // 2:3, the shape of a cover (whole covers had black bars, #169)
+            Pitch = TileW + 22, RowTop = 330, RowPitch = 318;
         private const int PerRow = 20, Visible = 2;   // games a row holds; rows on screen at once
         // covers on screen at once across a row: 10 at 16:9, 9 on a handheld, more on an ultrawide (Ui.ViewWidth)
         private static int Across { get { return Math.Max(4, Math.Min(PerRow, (int)((Ui.ViewWidth - Side - 40) / Pitch))); } }

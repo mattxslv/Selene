@@ -22,6 +22,17 @@ namespace Selene
         public string Link, WebLink;                         // the store app's link and the web page (fallback)
         public string SteamAppId;
         public bool Owned;
+        public string DisplayNote
+        {
+            get
+            {
+                if (Note == null) return null;
+                if (Note.StartsWith("Free until ", StringComparison.Ordinal)) return string.Format(Lang.T("Free until {0}"), Note.Substring(11));
+                if (Note.StartsWith("Free from ", StringComparison.Ordinal)) return string.Format(Lang.T("Free from {0}"), Note.Substring(10));
+                if (Note.StartsWith("Sale ends ", StringComparison.Ordinal)) return string.Format(Lang.T("Sale ends {0}"), Note.Substring(10));
+                return Lang.T(Note);
+            }
+        }
     }
 
     // The Store page's data: free public sources, no account or key. Each list arrives on its own (the page fills in

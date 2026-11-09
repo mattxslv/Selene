@@ -409,6 +409,12 @@ namespace Selene
         // it leaves the Installed list, and comes back if the file reappears. Only entries that start a file from their own
         // folder are judged; store/app shortcuts (explorer.exe shell:AppsFolder..., WindowsApps folders we can't read) and
         // Steam-shortcut launches are left alone.
+        private static string Expanded(Game g, string text)
+        {
+            if (string.IsNullOrEmpty(text) || text.IndexOf('{') < 0) return text;
+            try { return HomeNav.Api.ExpandGameVariables(g, text); } catch { return text; }
+        }
+
         private static void SyncInstalledState(Playnite.SDK.IGameDatabaseAPI db, List<Game> games)
         {
             foreach (var g in games.Where(x => x.PluginId == Guid.Empty && !string.IsNullOrWhiteSpace(x.InstallDirectory)))
@@ -423,9 +429,12 @@ namespace Selene
                     continue;
                 }
                 if (play == null || play.Type != GameActionType.File || string.IsNullOrWhiteSpace(play.Path)) continue;
-                var path = play.Path.Replace("{InstallDir}", g.InstallDirectory);
-                if (!Path.IsPathRooted(path)) path = Path.Combine(g.InstallDirectory, path);
-                if (!path.StartsWith(g.InstallDirectory, StringComparison.OrdinalIgnoreCase)) continue;  // starts something outside its folder
+                // (a folder under {PlayniteDir} and the like is only known once Playnite fills in its variables: #178)
+                var dir = Expanded(g, g.InstallDirectory);
+                var path = Expanded(g, play.Path);
+                if (dir.Contains("{") || path.Contains("{")) continue;  // a variable Playnite can't fill in: can't tell
+                if (!Path.IsPathRooted(path)) path = Path.Combine(dir, path);
+                if (!Path.IsPathRooted(path) || !path.StartsWith(dir, StringComparison.OrdinalIgnoreCase)) continue;  // starts something outside its folder
                 bool there = File.Exists(path);
                 if (g.IsInstalled == there) continue;
                 g.IsInstalled = there;
@@ -608,13 +617,14 @@ namespace Selene
             var play = g.GameActions != null ? g.GameActions.FirstOrDefault(a => a.IsPlayAction) : null;
             if (play != null && play.Type == GameActionType.File && !string.IsNullOrWhiteSpace(play.Path) && play.Path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
             {
-                var exe = play.Path.Replace("{InstallDir}", g.InstallDirectory ?? "");
-                if (!Path.IsPathRooted(exe)) exe = Path.Combine(g.InstallDirectory ?? "", exe);
+                var folder = Expanded(g, g.InstallDirectory) ?? "";
+                var exe = Expanded(g, play.Path);
+                if (!Path.IsPathRooted(exe)) exe = Path.Combine(folder, exe);
                 var dir = Path.GetDirectoryName(exe);
                 // a helper started from somewhere else (e.g. a tool started from Downloads, which keeps running after the
                 // game closes) doesn't define the game: then the install folder does
-                bool inside = !string.IsNullOrWhiteSpace(g.InstallDirectory) && dir != null
-                              && Full(dir).StartsWith(Full(g.InstallDirectory));
+                bool inside = !string.IsNullOrWhiteSpace(folder) && dir != null
+                              && Full(dir).StartsWith(Full(folder));
                 if (!string.IsNullOrWhiteSpace(dir) && (inside || string.IsNullOrWhiteSpace(g.InstallDirectory))) return dir;
             }
             return g.InstallDirectory;

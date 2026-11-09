@@ -486,7 +486,14 @@ namespace Selene
             }
         }
 
-        private static string LatestGame(Guid id) { var g = GameFacts.Find(id); return g != null ? " in " + g.Name : ""; }
+        private static string LatestLine(string trophy, Guid id, string grade)
+        {
+            var g = GameFacts.Find(id);
+            var word = Lang.T(grade.ToLowerInvariant());
+            return g != null
+                ? string.Format(Lang.T("Latest: {0} in {1} ({2}). Down for your newest unlocks."), trophy, g.Name, word)
+                : string.Format(Lang.T("Latest: {0} ({1}). Down for your newest unlocks."), trophy, word);
+        }
 
         // ---- the card on Spotlight: the totals and the latest unlocks as pictures (Down goes into them) ----
         public static void FillCard()
@@ -504,9 +511,9 @@ namespace Selene
                     foreach (var grade in new[] { "Gold", "Silver", "Bronze" }) res["SeleneStatAch" + grade] = sets.Sum(s => s.Earned(grade)).ToString();
                     var latest = sets.SelectMany(s => s.Items.Where(i => i.Unlocked && i.When.HasValue).Select(i => new { s.GameId, Item = i }))
                                      .OrderByDescending(x => x.Item.When.Value).Take(Ui.CardTiles).ToList();
-                    string headline = sets.Count == 0 ? "No achievements yet" : earned == 1 ? "1 trophy earned" : earned + " trophies earned";
+                    string headline = sets.Count == 0 ? "No achievements yet" : earned == 1 ? "1 trophy earned" : string.Format(Lang.T("{0} trophies earned"), earned);
                     string about = sets.Count == 0 ? "Your achievements show here as Playnite Achievements fills them in."
-                                 : latest.Count > 0 ? "Latest: " + latest[0].Item.Name + LatestGame(latest[0].GameId) + " (" + latest[0].Item.Grade.ToLowerInvariant() + "). Down for your newest unlocks." : "Across " + sets.Count + " games.";
+                                 : latest.Count > 0 ? LatestLine(latest[0].Item.Name, latest[0].GameId, latest[0].Item.Grade) : string.Format(Lang.T("Across {0} games."), sets.Count);
                     var entries = latest.Select(x =>
                     {
                         var g = GameFacts.Find(x.GameId);

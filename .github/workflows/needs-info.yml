@@ -1,13 +1,16 @@
 name: Needs info
 # An issue labelled "needs info" with no answer closes after two weeks: a reminder after 7 days without activity, closed
 # 7 days after that. Issues waiting on the reporter may also be closed by hand (label kept) to keep the open list to work in
-# progress. The reporter answering takes the label off and reopens it if it was closed while waiting.
+# progress. The reporter answering takes the label off and reopens it if it was closed while waiting, and so does the
+# reporter editing the issue to add the log it was missing (same log test as ai-triage.yml).
 
 on:
   schedule:
     - cron: "17 3 * * *"
   issue_comment:
     types: [created]
+  issues:
+    types: [edited]
   workflow_dispatch:
 
 permissions:
@@ -15,7 +18,7 @@ permissions:
 
 jobs:
   close-quiet:
-    if: github.event_name != 'issue_comment'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/stale@4391f3da665fdf50b6810c1a66712fb9ba21aa93 # v11.0.0
@@ -54,3 +57,26 @@ jobs:
         run: |
           gh issue edit "$NUMBER" -R "$REPO" --remove-label "needs info" --remove-label "no reply" || true
           if [ "$STATE" = "closed" ] && [ "$WAITING" = "true" ]; then gh issue reopen "$NUMBER" -R "$REPO"; fi
+
+  log-added:
+    # the reporter edited the issue and pasted in the log it was missing
+    if: >
+      github.event_name == 'issues' && github.event.changes.body &&
+      github.event.sender.login == github.event.issue.user.login &&
+      (contains(github.event.issue.labels.*.name, 'needs info') || contains(github.event.issue.labels.*.name, 'no reply'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Take the label off when the edit added a log
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.issue.number }}
+          STATE: ${{ github.event.issue.state }}
+          BEFORE: ${{ github.event.changes.body.from }}
+          AFTER: ${{ github.event.issue.body }}
+        run: |
+          # selene.log lines (12:34:56.789), playnite.log lines (|ERROR |), an attached file, or the report service's full logs
+          LOG='[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}|github\.com/user-attachments/files/|workers\.dev/logs/|\|(INFO|WARN|ERROR|DEBUG) *\|'
+          if grep -qE "$LOG" <<<"$BEFORE" || ! grep -qE "$LOG" <<<"$AFTER"; then exit 0; fi
+          gh issue edit "$NUMBER" -R "$REPO" --remove-label "needs info" --remove-label "no reply" || true
+          if [ "$STATE" = "closed" ]; then gh issue reopen "$NUMBER" -R "$REPO"; fi

@@ -12,6 +12,7 @@ using Selene;
 public class FakeUps { public string DefaultMusicPath { get; set; } public int DefaultMusicSourceOption { get; set; } public string SelectedBundledPreset { get; set; } public FakeUps() { DefaultMusicPath = ""; DefaultMusicSourceOption = 2; SelectedBundledPreset = "tunetank-dark-ambient-soundscape-music.mp3"; } }
 class BugsCheck
 {
+    public class SingleItemSelectionWindow : Window { }
     public class FocusSoundProbe { public static IntPtr NavigateSound { get; set; } }
     public class Named { public string Name { get; set; } }
     public class GameEntry { public Named Source { get; set; } public ArrayList Platforms { get; set; } }
@@ -21,6 +22,7 @@ class BugsCheck
     static object Field(object target, string name) { return target.GetType().GetField(name, BindingFlags.NonPublic | BindingFlags.Instance).GetValue(target); }
     static object Call(object target, string name, params object[] args) { return target.GetType().GetMethod(name, BindingFlags.NonPublic | BindingFlags.Instance).Invoke(target, args); }
     static void Settle(int ms) { var until = DateTime.Now.AddMilliseconds(ms); while (DateTime.Now < until) { Pump(); System.Threading.Thread.Sleep(15); } }
+    static void WaitUntil(Func<bool> ready) { var deadline = DateTime.UtcNow.AddSeconds(4); while (!ready() && DateTime.UtcNow < deadline) { Settle(25); } Assert(ready(), "Animation reaches its final state within four seconds"); }
     static void Pump() { Dispatcher.CurrentDispatcher.Invoke(DispatcherPriority.ApplicationIdle, new Action(() => {})); }
     [STAThread] static int Main(string[] args)
     {
@@ -33,6 +35,44 @@ class BugsCheck
         var window = new Window { Width = 1920, Height = 1080, Left = -32000, Top = -32000, Opacity = 0, ShowActivated = false, ShowInTaskbar = false };
         try
         {
+            var choice = new SingleItemSelectionWindow();
+            var choiceHost = new Grid(); var choicePanel = new DockPanel();
+            var choiceCard = new Border { Width = 500, Child = choicePanel };
+            var choiceItems = new ItemsControl(); var nativeCommand = new System.Windows.Input.RoutedCommand();
+            var choiceButton = new Button { Content = "First action", Command = nativeCommand };
+            choiceItems.Items.Add(choiceButton); choicePanel.Children.Add(new TextBlock { Text = "Select action" }); choicePanel.Children.Add(choiceItems);
+            choiceHost.Children.Add(choiceCard); choice.Content = choiceHost;
+            NameScope.SetNameScope(choice, new NameScope()); choice.RegisterName("PART_ItemsHost", choiceItems);
+            choice.Resources["ItemSelectionButton"] = new Style(typeof(Button));
+            var dressChoice = typeof(DialogLook).GetMethod("OnWindowLoaded", BindingFlags.NonPublic | BindingFlags.Static);
+            Features.Set("dialogs", false); dressChoice.Invoke(null, new object[] { choice, new RoutedEventArgs() });
+            Assert(choiceCard.Width == 500 && choiceHost.Children.Count == 1, "Selene dialogs off preserves native choice layout");
+            Features.Set("dialogs", true); dressChoice.Invoke(null, new object[] { choice, new RoutedEventArgs() });
+            Assert(choiceCard.Width == 640 && choiceCard.CornerRadius.TopLeft == 28, "Launch choices use Selene's roomy rounded card");
+            Assert(choiceItems.Parent == choicePanel && choiceButton.Command == nativeCommand, "Selection styling preserves native items and commands");
+            dressChoice.Invoke(null, new object[] { choice, new RoutedEventArgs() });
+            Assert(choiceHost.Children.Count == 2, "Repeated Loaded does not duplicate the choice shadow");
+            var noteItem = new StoreItem { Note = "Free until Nov 13" };
+            Assert(noteItem.DisplayNote == noteItem.Note, "#182 English Store note fallback is unchanged");
+            var languageTable = typeof(Lang).GetField("table", BindingFlags.NonPublic | BindingFlags.Static);
+            var previousLanguage = languageTable.GetValue(null);
+            try
+            {
+                languageTable.SetValue(null, new System.Collections.Generic.Dictionary<string, string> { { "Free until {0}", "Gratuit jusqu'au {0}" } });
+                Assert(noteItem.DisplayNote == "Gratuit jusqu'au Nov 13", "#182 Store notes translate variable dates");
+                Assert(noteItem.Note == "Free until Nov 13", "#182 translating a note preserves feed parsing data");
+            }
+            finally { languageTable.SetValue(null, previousLanguage); }
+            var startIndex = typeof(HomeNav).GetMethod("StartCardIndex", BindingFlags.NonPublic | BindingFlags.Static);
+            var startRow = new ListBox(); startRow.Items.Add("nav:captures"); startRow.Items.Add("nav:store"); startRow.Items.Add(new object());
+            Features.Set("startfirstgame", true);
+            Assert((int)startIndex.Invoke(null, new object[] { startRow }) == 2, "#183 sign-in starts on the first game when enabled");
+            Features.Set("startfirstgame", false);
+            Assert((int)startIndex.Invoke(null, new object[] { startRow }) == 1, "#183 off preserves Store selection");
+            Features.Set("startfirstgame", true); startRow.Items.RemoveAt(2);
+            Assert((int)startIndex.Invoke(null, new object[] { startRow }) == 1, "#183 empty library falls back to Store");
+            startRow.Items.RemoveAt(1);
+            Assert((int)startIndex.Invoke(null, new object[] { startRow }) == 0, "#183 no Store or games falls back to the first card");
             Features.Set("actualplatform", true);
             var game = new GameEntry { Source = new Named { Name = "Steam" }, Platforms = new ArrayList { new Named { Name = "Nintendo Switch" } } };
             PlatformIcons.PublishGame(game);
@@ -114,7 +154,9 @@ class BugsCheck
             var spacing = typeof(HomeNav).GetMethod("SetPreviewLogoSpacing", BindingFlags.Static | BindingFlags.NonPublic);
             Features.Set("trailerlogogap", true); spacing.Invoke(null, new object[] { true }); Settle(600);
             Assert(logo.TranslatePoint(new Point(0, 0), logoRow).Y >= -0.1, "#95 logo stays inside its own row while trailer plays");
-            spacing.Invoke(null, new object[] { false }); Settle(600);   // (the logo glides there over 420 ms)
+            spacing.Invoke(null, new object[] { false });
+            WaitUntil(() => !logo.HasAnimatedProperties && logo.Margin.Top == -45);   // (the logo glides there over 420 ms)
+
             Assert(logo.TranslatePoint(new Point(0, 0), logoRow).Y < -40, "Closing the trailer restores original logo layout");
             Features.Set("trailerlogogap", false); spacing.Invoke(null, new object[] { true }); Pump();
             Assert(logo.Margin.Top == -45, "Logo-spacing switch off preserves the previous overlap-prone layout");

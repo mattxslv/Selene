@@ -30,6 +30,8 @@ namespace Selene
 
         // Selene Core's own data folder (profiles, downloaded helpers)
         public static string DataFolder { get { return plugin != null ? plugin.GetPluginUserDataPath() : Path.Combine(Path.GetTempPath(), "SeleneCore"); } }
+        // pictures dropped here show up as "Your wallpapers"; outside the theme folder, so updates keep them (#163)
+        public static string OwnWallpapers { get { return Path.Combine(DataFolder, "Wallpapers"); } }
 
         // folders scanned for games that no store knows about (empty = off)
         public static string[] GameFolders

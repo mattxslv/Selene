@@ -235,6 +235,17 @@ namespace Selene
             el.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(160)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
         }
 
+        // a picture replaced on disk (another square art picked): its decoded copies go
+        public static void Forget(string path)
+        {
+            foreach (var key in cache.Keys.Where(k => k.StartsWith(path + "|", StringComparison.OrdinalIgnoreCase)).ToList())
+            {
+                cachedBytes -= PixelBytes(cache[key]);
+                cache.Remove(key);
+                recent.Remove(key);
+            }
+        }
+
         private static void Remember(string key, BitmapSource picture)
         {
             BitmapSource previous;

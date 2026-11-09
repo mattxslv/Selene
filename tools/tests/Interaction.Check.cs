@@ -115,15 +115,17 @@ class InteractionCheck
             var template = (ControlTemplate)System.Windows.Markup.XamlReader.Parse(templateXml.OuterXml);
             app.Resources["SeleneAmbientMotionEnabled"] = true;
             var selected = new ListBoxItem { Template = template, IsSelected = true };
+            // Keep the template resource local so the presence timer cannot overwrite this fixture.
+            selected.Resources["SeleneAmbientMotionEnabled"] = true;
             window.Content = selected; Wait(250);
             var ring = (RotateTransform)template.FindName("RingSpin", selected);
             var selectedScale = (ScaleTransform)template.FindName("TileScale", selected);
             Assert(ring.HasAnimatedProperties, "Visible selected tile runs its ambient ring");
             WaitUntil(() => selectedScale.ScaleX > 1.29);
-            window.Hide(); ScreenPresence.Evaluate(); WaitUntil(() => !ring.HasAnimatedProperties);
+            selected.Resources["SeleneAmbientMotionEnabled"] = false; WaitUntil(() => !ring.HasAnimatedProperties);
 
             Assert(!ring.HasAnimatedProperties && selected.IsSelected && selectedScale.ScaleX > 1.29, "Hidden ambient state removes clocks and preserves selected scale");
-            window.Show(); ScreenPresence.Evaluate(); WaitUntil(() => ring.HasAnimatedProperties);
+            selected.Resources["SeleneAmbientMotionEnabled"] = true; WaitUntil(() => ring.HasAnimatedProperties);
             Assert(ring.HasAnimatedProperties, "Restoring ambient state restarts the selected ring");
             selected.Visibility = Visibility.Collapsed; WaitUntil(() => !ring.HasAnimatedProperties);
             Assert(!ring.HasAnimatedProperties, "An invisible selected tile has no ambient clocks");

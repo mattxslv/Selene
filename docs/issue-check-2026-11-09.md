@@ -22,9 +22,9 @@ their attached logs and #185's screenshot. None has been established as fixed.
 
 The trailer-logo and ambient-state regression failures were timing-sensitive.
 The tests now wait up to four seconds for observable animation state, retaining
-the original final-state assertions. Ambient lifecycle checks hide and show the
-owner and call the production presence evaluator, rather than racing its live
-timer by directly overwriting the ambient resource. No production animation
+the original final-state assertions. Existing presence checks hide and show the owner. The tile-template check uses
+a locally scoped ambient resource, so the live presence timer cannot overwrite
+the fixture while it verifies that ambient clocks stop without losing selection. No production animation
 behavior was changed to make those checks pass.
 
 Earlier corrections for #178, #179, #182, #183 and #184 were exercised with a

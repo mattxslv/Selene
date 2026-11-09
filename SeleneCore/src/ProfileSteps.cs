@@ -92,7 +92,7 @@ namespace Selene
                 d.Background = Ink.Brush("SeleneInkColor", i == step ? 1 : 0.3);
                 d.BeginAnimation(FrameworkElement.WidthProperty, new DoubleAnimation(i == step ? 24 : 8, TimeSpan.FromMilliseconds(220)) { EasingFunction = Ui.Out() });
             }
-            nextLabel.Text = steps[step].WantsText ? "Select" : step < steps.Length - 1 ? "Next" : editing != null ? "Save" : "Create profile";
+            nextLabel.Text = Lang.T(steps[step].WantsText ? "Select" : step < steps.Length - 1 ? "Next" : editing != null ? "Save" : "Create profile");
         }
 
         public override void Handle(string b)

@@ -395,7 +395,7 @@ namespace Selene
         // ---- removing, uninstalling: asked first ----
         private void AskRemove()
         {
-            ask = new Dialog(Ui.Icon(0xe5cd), "Remove " + game.Name + "?", "It leaves your library. The game itself stays installed; a library update may bring it back.", "Remove", "Keep it", () =>
+            ask = new Dialog(Ui.Icon(0xe5cd), string.Format(Lang.T("Remove {0}?"), game.Name), "It leaves your library. The game itself stays installed; a library update may bring it back.", "Remove", "Keep it", () =>
             {
                 ask = null;
                 var id = game.Id;

@@ -33,6 +33,16 @@ class BugsCheck
         var window = new Window { Width = 1920, Height = 1080, Left = -32000, Top = -32000, Opacity = 0, ShowActivated = false, ShowInTaskbar = false };
         try
         {
+            var startIndex = typeof(HomeNav).GetMethod("StartCardIndex", BindingFlags.NonPublic | BindingFlags.Static);
+            var startRow = new ListBox(); startRow.Items.Add("nav:captures"); startRow.Items.Add("nav:store"); startRow.Items.Add(new object());
+            Features.Set("startfirstgame", true);
+            Assert((int)startIndex.Invoke(null, new object[] { startRow }) == 2, "#183 sign-in starts on the first game when enabled");
+            Features.Set("startfirstgame", false);
+            Assert((int)startIndex.Invoke(null, new object[] { startRow }) == 1, "#183 off preserves Store selection");
+            Features.Set("startfirstgame", true); startRow.Items.RemoveAt(2);
+            Assert((int)startIndex.Invoke(null, new object[] { startRow }) == 1, "#183 empty library falls back to Store");
+            startRow.Items.RemoveAt(1);
+            Assert((int)startIndex.Invoke(null, new object[] { startRow }) == 0, "#183 no Store or games falls back to the first card");
             Features.Set("actualplatform", true);
             var game = new GameEntry { Source = new Named { Name = "Steam" }, Platforms = new ArrayList { new Named { Name = "Nintendo Switch" } } };
             PlatformIcons.PublishGame(game);

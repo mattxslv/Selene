@@ -95,7 +95,7 @@ namespace Selene
             Root.Unloaded += (s, e) => StopSoundRefresh();
             var profile = Profiles.Active;
             var running = Features.On("menuclosegame") ? HomeNav.RunningGame() : null;
-            if (running != null) items.Add(new Item { Icon = Ui.Icon(0xe5cd), Label = "Close " + running.Name, Sub = "Close game", Run = () => Later(HomeNav.CloseRunningGame) });
+            if (running != null) items.Add(new Item { Icon = Ui.Icon(0xe5cd), Label = string.Format(Lang.T("Close {0}"), running.Name), Sub = "Close game", Run = () => Later(HomeNav.CloseRunningGame) });
             items.Add(new Item { Icon = Ui.Icon(0xe853), Label = profile != null ? profile.Name : "Switch profile", Sub = profile != null ? "Switch profile" : null, Picture = profile != null ? WhoScreen.Avatar(profile, 52) : null, Run = () => LoginScene.Show(new WhoScreen(null), 1) });
             items.Add(new Item { Icon = Ui.Icon(0xe3c9), Label = "Edit profile", Run = EditProfile });
             items.Add(new Item { Icon = Ui.Icon(0xe40a), Label = "Theme", Run = ChangeTheme });

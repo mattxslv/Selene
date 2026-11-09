@@ -164,6 +164,8 @@ namespace Selene
             controls.Children.Add(jumpHint);
             clipHints = PlayerButtons();
             imageHints = Ui.Prompts(true, Ui.Prompt("\u25C0 \u25B6", "Previous / next"));
+            // (none of these until Open knows what it shows: a capture opened from a card is on screen while the list loads: #184)
+            progressTrack.Visibility = timeText.Visibility = clipHints.Visibility = imageHints.Visibility = Visibility.Collapsed;
             controls.Children.Add(clipHints);
             controls.Children.Add(imageHints);
             controls.Children.Add(Ui.Prompts(false, Ui.Prompt("B", "Back")));
@@ -195,6 +197,7 @@ namespace Selene
             System.Threading.Tasks.Task.Factory.StartNew(() =>
             {
                 var found = Scan(MaxItems);
+                if (System.IO.File.Exists(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "selene-dev-slow-captures"))) System.Threading.Thread.Sleep(2000);   // dev: a big capture folder's wait
                 dispatcher.BeginInvoke(new Action(() => { if (closed) return; all.Clear(); all.AddRange(found); Apply(); }), DispatcherPriority.Background);
             });
         }

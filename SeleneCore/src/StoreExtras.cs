@@ -183,7 +183,7 @@ namespace Selene
         private static string Names(List<StoreItem> items)
         {
             var names = items.Select(i => i.Title).ToList();
-            return names.Count == 1 ? names[0] : string.Join(", ", names.Take(names.Count - 1)) + " and " + names.Last();
+            return names.Count == 1 ? names[0] : string.Join(", ", names.Take(names.Count - 1)) + " " + Lang.T("and") + " " + names.Last();
         }
 
         private static void Headline()
@@ -195,25 +195,25 @@ namespace Selene
                 var until = free[0].Note != null && free[0].Note.StartsWith("Free until ") ? free[0].Note.Substring(11) : null;
                 list.Add(new Message
                 {
-                    Head = free.Count == 1 ? "Free this week" : free.Count + " free games this week",
-                    About = Names(free) + (free.Count == 1 ? " is" : " are") + " free to keep on Epic Games" + (until != null ? " until " + until : "") + ".",
+                    Head = free.Count == 1 ? Lang.T("Free this week") : string.Format(Lang.T("{0} free games this week"), free.Count),
+                    About = string.Format(Lang.T(free.Count == 1 ? "{0} is free to keep on Epic Games{1}." : "{0} are free to keep on Epic Games{1}."), Names(free), until != null ? " " + string.Format(Lang.T("until {0}"), until) : ""),
                     Item = free[0]
                 });
             }
             var best = StoreData.List("steam:sale").Concat(StoreData.List("epic:sale")).Concat(StoreData.List("gog:sale")).Where(i => i.Discount > 0 && !i.Free && !i.Owned).OrderByDescending(i => i.Discount).FirstOrDefault();
             if (best != null)
-                list.Add(new Message { Head = "Up to " + best.Discount + "% off", About = best.Title + " is " + best.Price + " on " + best.StoreName + (best.OldPrice != null ? ", down from " + best.OldPrice : "") + ".", Item = best });
+                list.Add(new Message { Head = string.Format(Lang.T("Up to {0}% off"), best.Discount), About = string.Format(Lang.T(best.OldPrice != null ? "{0} is {1} on {2}, down from {3}." : "{0} is {1} on {2}."), best.Title, best.Price, best.StoreName, best.OldPrice), Item = best });
             var fresh = StoreData.List("steam:new").FirstOrDefault(i => !i.Owned && !string.IsNullOrEmpty(i.Image));
             if (fresh != null)
-                list.Add(new Message { Head = "New on Steam", About = fresh.Title + " just came out" + (fresh.Price != null ? " · " + fresh.Price : "") + ".", Item = fresh });
+                list.Add(new Message { Head = Lang.T("New on Steam"), About = string.Format(Lang.T("{0} just came out{1}."), fresh.Title, fresh.Price != null ? " · " + fresh.Price : ""), Item = fresh });
             var ending = StoreData.List("epic:sale").Where(i => !i.Owned && i.Note != null && i.Note.StartsWith("Sale ends ")).OrderByDescending(i => i.Discount).FirstOrDefault();
             if (ending != null)
-                list.Add(new Message { Head = "Sale ends " + ending.Note.Substring(10), About = ending.Title + " is " + ending.Discount + "% off on Epic Games, " + ending.Price + " until then.", Item = ending });
+                list.Add(new Message { Head = string.Format(Lang.T("Sale ends {0}"), ending.Note.Substring(10)), About = string.Format(Lang.T("{0} is {1}% off on Epic Games, {2} until then."), ending.Title, ending.Discount, ending.Price), Item = ending });
             var next = StoreData.List("epic:next");
             if (next.Count > 0)
             {
                 var from = next[0].Note != null && next[0].Note.StartsWith("Free from ") ? next[0].Note.Substring(10) : null;
-                list.Add(new Message { Head = "Free next", About = Names(next) + (next.Count == 1 ? " is" : " are") + " free to keep on Epic Games" + (from != null ? " from " + from : " soon") + ".", Item = next[0] });
+                list.Add(new Message { Head = Lang.T("Free next"), About = string.Format(Lang.T(next.Count == 1 ? "{0} is free to keep on Epic Games{1}." : "{0} are free to keep on Epic Games{1}."), Names(next), from != null ? " " + string.Format(Lang.T("from {0}"), from) : " " + Lang.T("soon")), Item = next[0] });
             }
             if (list.Count == 0) return;
             bool first = messages.Count == 0;

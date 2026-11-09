@@ -350,6 +350,7 @@ namespace Selene
             new Option { Group = "Start-up", Key = "starttab", Label = "Starting tab", About = "Choose the tab Spotlight opens on.", Choices = new[] { "last", "all", "installed", "recent", "favorites", "unplayed" }, Names = new[] { "Where you left it", "All games", "Installed", "Recently played", "Favorites", "Not played yet" }, Default = "last" },
             new Option { Group = "Start-up", Key = "startrefresh", Label = "Update library at start-up", About = "Check for new and removed games after Playnite starts." },
             // ---- Spotlight ----
+            new Option { Group = "Spotlight", Key = "startfirstgame", Label = "Start on the first game", About = "Select the first game when Spotlight opens after start-up or sign-in." },
             new Option { Group = "Spotlight", Key = "cardactivity", Label = "Activity card", About = "Show what you've been playing and for how long." },
             new Option { Group = "Spotlight", Key = "actualplatform", Label = "Use game platform metadata", About = "Show the selected game's platform instead of its store." },
             new Option { Group = "Spotlight", Key = "fullscreenpresets", Label = "Honor fullscreen preset visibility", About = "Show presets enabled for fullscreen mode." },

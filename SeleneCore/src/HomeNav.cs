@@ -1138,7 +1138,27 @@ namespace Selene
             {
                 // "platformgame:<name>|<platform>" and "covergame:<name>|<picture>": a platform or a cover for a test game
                 string extra = null;
-                if ((what == "platform" || what == "cover") && name.Contains("|")) { extra = name.Substring(name.IndexOf('|') + 1); name = name.Substring(0, name.IndexOf('|')); }
+                if ((what == "platform" || what == "cover" || what == "preset") && name.Contains("|")) { extra = name.Substring(name.IndexOf('|') + 1); name = name.Substring(0, name.IndexOf('|')); }
+                // "presetgame:<game>|<preset>": a Playnite filter preset holding just that game, shown as a tab
+                if (what == "preset" && extra != null)
+                {
+                    if (!Api.Database.FilterPresets.Any(x => x.Name == extra))
+                        Api.Database.FilterPresets.Add(new Playnite.SDK.Models.FilterPreset { Name = extra, ShowInFullscreeQuickSelection = true, Settings = extra.StartsWith("Fav") ? new Playnite.SDK.Models.FilterPresetSettings { Favorite = true } : extra.StartsWith("Off") ? new Playnite.SDK.Models.FilterPresetSettings { IsUnInstalled = true } : new Playnite.SDK.Models.FilterPresetSettings { Name = name } });
+                    Log("dev game: preset " + extra + " -> " + name);
+                    return;
+                }
+                // "varpathgame:<name>": an installed game kept under {PlayniteDir} (#178); a name with "Gone" in it has no game file
+                if (what == "varpath")
+                {
+                    var dir = @"{PlayniteDir}\SeleneVarTest\" + name;
+                    var real = Api.ExpandGameVariables(new Playnite.SDK.Models.Game(name), dir);
+                    if (!name.Contains("Gone")) { System.IO.Directory.CreateDirectory(real); System.IO.File.WriteAllBytes(System.IO.Path.Combine(real, "game.exe"), new byte[0]); }
+                    var vg = new Playnite.SDK.Models.Game(name) { IsInstalled = true, Added = DateTime.Now, InstallDirectory = dir };
+                    vg.GameActions = new System.Collections.ObjectModel.ObservableCollection<Playnite.SDK.Models.GameAction> { new Playnite.SDK.Models.GameAction { Name = "Play", Type = Playnite.SDK.Models.GameActionType.File, Path = @"{InstallDir}\game.exe", IsPlayAction = true } };
+                    Api.Database.Games.Add(vg);
+                    Log("dev game: varpath " + name);
+                    return;
+                }
                 var g = Api.Database.Games.FirstOrDefault(x => x.Name == name);
                 string exe = null;   // "addgame:<name>|<play file>": a game pointing at a file (Games-folder duplicates)
                 if (what == "add" && name.Contains("|")) { exe = name.Substring(name.IndexOf('|') + 1); name = name.Substring(0, name.IndexOf('|')); g = Api.Database.Games.FirstOrDefault(x => x.Name == name); }
@@ -1162,6 +1182,21 @@ namespace Selene
                 }
                 else if (what == "cover" && extra != null) { g.CoverImage = Api.Database.AddFile(extra, g.Id); Api.Database.Games.Update(g); }
                 else if (what == "uninstall") { g.IsInstalled = false; Api.Database.Games.Update(g); }   // "uninstallgame:<name>" (#167)
+                else if (what == "show") { var pick = g.Id; if (LoginScene.IsActive) LoginScene.FinishThen(() => ShowGame(pick)); else ShowGame(pick); }   // "showgame:<name>": as picking it on a card (#177)
+                else if (what == "installed") Log("dev game: " + name + " installed=" + g.IsInstalled);   // "installedgame:<name>"
+                else if (what == "choice")   // "choicegame:<name>": two ways to start it, so Playnite asks which (#179)
+                {
+                    var cmd = System.IO.Path.Combine(Environment.SystemDirectory, "cmd.exe");
+                    g.GameActions = new System.Collections.ObjectModel.ObservableCollection<Playnite.SDK.Models.GameAction>
+                    {
+                        new Playnite.SDK.Models.GameAction { Name = "Films / Series", Type = Playnite.SDK.Models.GameActionType.File, Path = cmd, IsPlayAction = true },
+                        new Playnite.SDK.Models.GameAction { Name = "Live TV", Type = Playnite.SDK.Models.GameActionType.File, Path = cmd, IsPlayAction = true },
+                        new Playnite.SDK.Models.GameAction { Name = "Settings", Type = Playnite.SDK.Models.GameActionType.File, Path = cmd, IsPlayAction = true }
+                    };
+                    Api.Database.Games.Update(g);
+                    var game = g;
+                    Application.Current.Dispatcher.BeginInvoke(new Action(() => Api.StartGame(game.Id)));
+                }
                 Log("dev game: " + what + " " + name);
             }
             catch (Exception ex) { Log("dev game: " + ex.Message); }
@@ -1928,9 +1963,11 @@ namespace Selene
             w.Dispatcher.BeginInvoke(new Action(() =>
             {
                 int idx = RowIndexOf(row, id);
-                if (idx < 0 && RowFilters[RowFilter] != "all")
+                // (only Playnite's presets as tabs: no "All games" to go to, the game's options below instead of a rebuild that crashed Playnite: #177)
+                int allTab = Array.IndexOf(RowFilters, "all");
+                if (idx < 0 && allTab >= 0 && RowFilter != allTab)
                 {
-                    rowFilter = Array.IndexOf(RowFilters, "all");
+                    rowFilter = allTab;
                     RenderFilterTabs(w, 0);
                     ApplyRowFilter(row);
                     idx = RowIndexOf(row, id);
@@ -2109,7 +2146,8 @@ namespace Selene
             var w = Application.Current.MainWindow;
             if (w == null) return;
             HidePreview();
-            if (RowFilters[RowFilter] != "all") { rowFilter = Array.IndexOf(RowFilters, "all"); RenderFilterTabs(w, 0); var r = LiveRow(); if (r != null) ApplyRowFilter(r); }
+            int allTab = Array.IndexOf(RowFilters, "all");
+            if (allTab >= 0 && RowFilter != allTab) { rowFilter = allTab; RenderFilterTabs(w, 0); var r = LiveRow(); if (r != null) ApplyRowFilter(r); }
             SeleneShell.ShowLibrary();
             w.Dispatcher.BeginInvoke(new Action(() =>
             {
@@ -3712,7 +3750,7 @@ namespace Selene
             double animated = p.X - RestingLeftRaw(tile, canvas);       // minus the container's intro/drop offset
             var panel = FindChild<VirtualizingStackPanel>(row);
             var slide = panel != null ? panel.RenderTransform as TranslateTransform : null;
-            if (slide != null) animated -= slide.X - glideRest;           // minus what is left of the row's slide (not the offset it rests on)
+            if (slide != null && glideHooked && ReferenceEquals(slide, glideShift)) animated -= slide.X - glideRest;   // minus what is left of a running slide (at rest nothing is: after a rebuild glideRest is out of date, #183)
             double right = edge.TranslatePoint(new Point(edge.ActualWidth, 0), canvas).X + animated;
             right = Math.Max(right, RestingLeftRaw(tile, canvas) + animated + ZoomedTile);
             Canvas.SetLeft(title, right + 16);
@@ -3771,6 +3809,11 @@ namespace Selene
         // where the row starts after Playnite starts or someone signs in: the Store card (the first card without it)
         private static int StartCardIndex(ListBox row)
         {
+            if (Features.On("startfirstgame"))
+            {
+                int game = FirstGameIndex(row);
+                if (game >= 0 && game < row.Items.Count && !(row.Items[game] is string) && !(row.Items[game] is RowPad)) return game;
+            }
             int i = row.Items.IndexOf("nav:store");
             return i >= 0 ? i : 0;
         }

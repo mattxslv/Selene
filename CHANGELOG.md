@@ -15,6 +15,12 @@ Selene (theme) and Selene Core (add-on) share one version number and are release
 - Alt+Tab works while a game starts: the loading screen steps back, and Selene no longer pulls the game back to the front after you switch away (#168).
 - Controller battery in the top bar (Look): your DualSense's battery at the top right, from the DualSense Battery Level add-on (#173).
 - Your own wallpapers: pictures in Selene Core's Wallpapers folder (shown on the background screen) appear under Your wallpapers and survive updates (#163).
+- Filter presets as tabs: picking a game that isn't in the current tab from the Activity card opens its options instead of crashing Playnite (#177).
+- Games kept under a Playnite variable like {PlayniteDir} are no longer marked as uninstalled (#178).
+- Launch choices: every option and the title are readable in every color theme, including White (#179).
+- Spotlight: card titles sit in the right place after you switch profile (#183). Start on the first game selects a game at start-up and sign-in; turn it off to keep starting on Store. Applies on the next sign-in or restart.
+- Captures: the video buttons no longer flash when you open a screenshot from a card (#184).
+- French: the profile steps, power and remove prompts, sound menu, achievements card, Store headlines and newer settings are translated (#182). Uses the existing language setting; restart Playnite to apply.
 
 ## 1.5.6 - 2026-11-05
 

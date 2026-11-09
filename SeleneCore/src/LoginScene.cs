@@ -247,7 +247,7 @@ namespace Selene
                 else if (step[1] == "collection") SeleneShell.ShowLibrary();
                 else if (step[1].StartsWith("testgame:")) HomeNav.DevTestGame(step[1].Substring(9));
                 else if (step[1] == "refresh") HomeNav.ScreenRefresh("dev key");
-                else if (step[1].StartsWith("addgame:") || step[1].StartsWith("playgame:") || step[1].StartsWith("favgame:") || step[1].StartsWith("dropgame:") || step[1].StartsWith("uninstallgame:") || step[1].StartsWith("platformgame:") || step[1].StartsWith("covergame:"))
+                else if (step[1].StartsWith("addgame:") || step[1].StartsWith("playgame:") || step[1].StartsWith("favgame:") || step[1].StartsWith("dropgame:") || step[1].StartsWith("uninstallgame:") || step[1].StartsWith("platformgame:") || step[1].StartsWith("covergame:") || step[1].StartsWith("presetgame:") || step[1].StartsWith("varpathgame:") || step[1].StartsWith("showgame:") || step[1].StartsWith("choicegame:") || step[1].StartsWith("installedgame:"))
                 { int c = step[1].IndexOf(':'); HomeNav.DevGameChange(step[1].Substring(0, c - 4), step[1].Substring(c + 1).Replace('_', ' ')); }
                 else if (step[1] == "row?") HomeNav.DevRowOrder();
                 else if (step[1] == "localscan") LocalGames.Scan();
@@ -272,6 +272,9 @@ namespace Selene
                 else if (step[1].StartsWith("rclick:")) HomeNav.DevRealClick(step[1].Substring(7));
                 else if (step[1] == "screen:extensions") OpenWith(() => GameOptionsScreen.Extensions());
                 else if (step[1] == "screen:gameoptions") { var tg = HomeNav.Api.Database.Games.FirstOrDefault(x => x.Name == "Selene test game"); if (tg != null) OpenWith(() => new GameOptionsScreen(tg)); else HomeNav.Log("dev: no Selene test game (testgame: makes it)"); }
+                else if (step[1] == "screen:activity") OpenWith(() => new ActivityScreen());
+                else if (step[1] == "screen:who") OpenWith(() => new WhoScreen(null));   // the profile picker, as Switch profile opens it (#183)
+                else if (step[1].StartsWith("screen:capture:")) OpenWith(() => new CapturesScreen(step[1].Substring(15).Replace('|', ' ')));   // one capture straight away, as a card's picture does (#184)
                 else if (step[1] == "screen:currency") OpenWith(() => new StoreCurrencyScreen(false, null));
                 else if (step[1] == "screen:report") OpenWith(() => new ReportScreen(null));
                 else if (step[1] == "screen:games") OpenWith(() => new SettingsScreen(false, "Games", "gamesget"));
@@ -1181,7 +1184,7 @@ namespace Selene
         private void Remove(Profile p)
         {
             Ui.Shake(items[index]);
-            confirm = new Dialog("\uE7BA", "Remove " + p.Name + "?", "Their favorites and playtime go with them. Your games stay.", "Remove", "Keep",
+            confirm = new Dialog("\uE7BA", string.Format(Lang.T("Remove {0}?"), p.Name), "Their favorites and playtime go with them. Your games stay.", "Remove", "Keep",
                 () =>
                 {
                     confirm = null;

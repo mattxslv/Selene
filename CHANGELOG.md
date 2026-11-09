@@ -4,7 +4,7 @@ Selene (theme) and Selene Core (add-on) share one version number and are release
 
 ## Unreleased
 
-## 1.5.7 - 2026-11-06
+## 1.5.7 - 2026-11-09
 
 - Spotlight: an uninstalled game's button says Install and installs it, instead of a Play that did nothing (#167).
 - Spotlight: with screenshots off, no empty loading cards show while you move, and the game's logo, buttons and stats sit lower to fill the space (#165, #166).

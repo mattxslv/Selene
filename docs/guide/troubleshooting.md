@@ -22,3 +22,9 @@ issue.
 
 **Known limits.** Windows only (WPF). The clips the browser plays (AV1) start a moment later than the others. Store
 prices are the stores' own pages; buying happens in the store's app.
+
+## Updating from 1.2.3, 1.3.0 or 1.3.1
+
+Update to 1.4.0, it removes the old admin helper. Then go to
+**Selene settings > Advanced > Old administrator tasks** to clean up what it left behind. Details in
+[#74](https://github.com/mattxslv/Selene/issues/74).

@@ -1,0 +1,40 @@
+title: ""
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        One idea per post, please. Search first: if it's already here, vote for it with a 👍 instead.
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like?
+      description: Describe what Selene should do. A screenshot or picture of something similar helps.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: What are you trying to do, and what's in the way now?
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where in Selene?
+      options:
+        - Spotlight
+        - Collection
+        - A game's page
+        - Cards (Store, Captures, Activity, Achievements...)
+        - Menu or settings
+        - Starting or playing a game
+        - Somewhere else
+    validations:
+      required: true
+  - type: input
+    id: setup
+    attributes:
+      label: Your setup (optional)
+      description: Controller, TV or handheld, add-ons it should work with.

@@ -36,7 +36,7 @@ Constructive pull requests are welcome, but please start a discussion first for 
 
 ## Current direction
 
-As of v1.3.1, the focus is on supporting the existing experience, fixing bugs, and polishing what is already there. Future feature work will be chosen as interest and time allow; there is no committed v1.4 feature list.
+As of v1.5.7, the reported bugs are fixed and the next work is polish and smaller requests from Ideas. Bigger ideas like a vertical browse view (#122), an information tile (#119) and a Tools menu (#118) are **Later**: liked, not scheduled. Each idea in Discussions carries its status as a label (`idea: planned`, `idea: implemented`, `idea: waiting`, `idea: investigating`).
 
 ## Not planned
 

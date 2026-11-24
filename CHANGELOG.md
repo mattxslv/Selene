@@ -30,6 +30,7 @@ Selene (theme) and Selene Core (add-on) share one version number and are release
 - A game's page opens more gently: it fades in once it's ready while its content rises a little, and Spotlight or Collection stays underneath until the page covers it (the screen went dark under the page for a moment, #194).
 - Smoother Achievements and Activity: moving through the list no longer redraws every row on each step, the Activity panel no longer rereads every game's play sessions from disk in the middle of browsing, and Captures builds its grid after the screen has slid in (#194).
 - Long sessions stay light: colors that follow the theme no longer pile up a record of every brush made on each move.
+- Pressing Guide twice quickly no longer leaves the game muted and paused behind it.
 
 ## 1.5.7 - 2026-11-09
 

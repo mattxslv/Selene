@@ -46,6 +46,9 @@ namespace Selene
             dark.SetResourceReference(Border.BackgroundProperty, "SeleneScrimBrush");
             Panel.SetZIndex(dark, -10);
             Root.Children.Add(dark);
+            var tint = GameFacts.Tint();   // (the theme's glow, not plain black, behind a game without art)
+            Panel.SetZIndex(tint, -7);
+            Root.Children.Add(tint);
             RenderOptions.SetBitmapScalingMode(hero, BitmapScalingMode.HighQuality);
             Panel.SetZIndex(hero, -5);
             Root.Children.Add(hero);
@@ -197,7 +200,7 @@ namespace Selene
             ImageSource pic;
             FrameworkElement face;
             if (covers.TryGetValue(g.Id, out pic)) face = new Border { CornerRadius = new CornerRadius(17), Background = new ImageBrush(pic) { Stretch = Stretch.UniformToFill } };
-            else face = new TextBlock { Text = g.Name, FontSize = 22, FontFamily = Ui.Display, Foreground = Ink.Brush("SeleneInkColor"), TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, Margin = new Thickness(18), VerticalAlignment = VerticalAlignment.Center };
+            else face = GameFacts.StandIn(g.Name, 17, 22);   // Selene's default cover with the name (no flat grey card)
             tile.Face.Child = face;
             if (!last) Ui.Rise(face, 0, 10, 90);
         }
@@ -222,15 +225,16 @@ namespace Selene
             actions.Children.Add(Ui.ActionPill("A", pick.IsInstalled ? "Play" : "Install", true));
             actions.Children.Add(Ui.ActionPill("X", "Show on Spotlight", false));
             Ui.Rise(name, 60, 10, 300); Ui.Rise(facts, 120, 10, 300); Ui.Rise(actions, 180, 10, 300);
-            var bg = GameFacts.BackgroundPath(pick);
+            bool small;
+            var bg = GameFacts.BackdropPath(pick, out small);   // (no background: its cover, softly blurred)
             if (bg == null) return;
             var want = pick.Id;
-            Ui.LoadInOrder(new List<string> { bg }, 1920, (i, pic) =>
+            Ui.LoadInOrder(new List<string> { bg }, small ? 48 : 1920, (i, pic) =>
             {
                 if (closed || pick == null || pick.Id != want) return;
                 hero.Source = pic;
                 hero.Opacity = 0;
-                Ui.Fade(hero, 0.55, 600);
+                Ui.Fade(hero, small ? 0.45 : 0.55, 600);
             });
         }
 

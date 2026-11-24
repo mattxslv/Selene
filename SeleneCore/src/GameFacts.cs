@@ -163,17 +163,60 @@ namespace Selene
             catch { return null; }
         }
 
-        // a cover-sized tile for a game: its cover as the face, or its name when it has none
+        // a cover-sized tile for a game: its cover as the face, or Selene's default cover with its name when it has none
         public static Tile CoverTile(Game g, double w, double h)
         {
             var t = new Tile(w, h, 12, 5) { FocusScale = 1.06 };
-            if (CoverPath(g) == null)
-                t.Face.Child = new System.Windows.Controls.TextBlock
-                {
-                    Text = g.Name, FontSize = 15, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor"), TextWrapping = System.Windows.TextWrapping.Wrap,
-                    TextAlignment = System.Windows.TextAlignment.Center, Margin = new System.Windows.Thickness(10), VerticalAlignment = System.Windows.VerticalAlignment.Center
-                };
+            if (CoverPath(g) == null) t.Face.Child = StandIn(g.Name, 11, 15);
             return t;
+        }
+
+        // a game without a cover (a fresh install has no art yet): Selene's default cover, its name over a shade at the bottom
+        // (the flat grey card it was read as broken)
+        public static System.Windows.FrameworkElement StandIn(string name, double radius, double size)
+        {
+            var g = new System.Windows.Controls.Grid();
+            var art = System.Windows.Application.Current != null ? System.Windows.Application.Current.TryFindResource("DefaultGameCover") as ImageSource : null;
+            var back = new System.Windows.Controls.Border { CornerRadius = new System.Windows.CornerRadius(radius) };
+            if (art != null) back.Background = new ImageBrush(art) { Stretch = Stretch.UniformToFill };
+            else back.Background = new LinearGradientBrush(new GradientStopCollection { Ink.Stop("SeleneFocusColor", 0.45, 0), Ink.Stop("SeleneGlassColor", 0.9, 1) }, 60);
+            g.Children.Add(back);
+            g.Children.Add(new System.Windows.Controls.Border
+            {
+                CornerRadius = new System.Windows.CornerRadius(radius),
+                Background = new LinearGradientBrush(new GradientStopCollection { Ink.Stop("SeleneScrimColor", 0, 0.35), Ink.Stop("SeleneScrimColor", 0.85, 1) }, 90)
+            });
+            g.Children.Add(new System.Windows.Controls.TextBlock
+            {
+                Text = name, FontSize = size, FontWeight = System.Windows.FontWeights.SemiBold, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor"),
+                TextWrapping = System.Windows.TextWrapping.Wrap, TextTrimming = System.Windows.TextTrimming.CharacterEllipsis, MaxHeight = size * 4.2,
+                TextAlignment = System.Windows.TextAlignment.Center, Margin = new System.Windows.Thickness(size * 0.7), VerticalAlignment = System.Windows.VerticalAlignment.Bottom
+            });
+            return g;
+        }
+
+        // a soft glow in the theme's focus color behind a card screen, so a game without art sits on the theme instead of
+        // plain black (art covers it when there is some)
+        public static System.Windows.Controls.Border Tint()
+        {
+            return new System.Windows.Controls.Border
+            {
+                IsHitTestVisible = false,
+                Background = new RadialGradientBrush(new GradientStopCollection { Ink.Stop("SeleneFocusColor", 0.28, 0), Ink.Stop("SeleneFocusColor", 0.08, 0.6), Ink.Stop("SeleneFocusColor", 0, 1) })
+                { Center = new System.Windows.Point(0.72, 0.3), GradientOrigin = new System.Windows.Point(0.72, 0.3), RadiusX = 0.8, RadiusY = 0.9 }
+            };
+        }
+
+        // the picture behind a game on a card screen: its background, else its cover decoded tiny (scaled up it's a soft blur
+        // of its colors, without the cost of a blur effect); small says which, for the decode width
+        public static string BackdropPath(Game g, out bool small)
+        {
+            small = false;
+            var path = BackgroundPath(g);
+            if (path != null) return path;
+            path = CoverPath(g);
+            small = path != null;
+            return path;
         }
 
         // the covers of a row of tiles, decoded one after another off the UI thread

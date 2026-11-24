@@ -40,6 +40,36 @@ namespace Selene
             return new State();
         }
 
+        // a direction (DPadLeft / Right / Up / Down) held on any connected controller, by its d-pad or left stick; null when no
+        // XInput controller can be read (others, like a PlayStation pad through Playnite, can't be asked)
+        private static int connected;   // the XInput slots that answered last (bits 0-3)
+        private static DateTime slotsCheckedAt = DateTime.MinValue;
+        public static bool? Holding(string direction)
+        {
+            if (HomeNav.Isolated) return null;
+            if (getState == null) getState = Find();
+            int bit = direction == "DPadUp" ? 0x1 : direction == "DPadDown" ? 0x2 : direction == "DPadLeft" ? 0x4 : direction == "DPadRight" ? 0x8 : 0;
+            if (bit == 0) return null;
+            var raw = new byte[16];
+            bool any = false;
+            // (an empty slot is slow to ask, and this runs every repeat of a held direction: the slots that answered are asked each
+            // time, the empty ones about once a second)
+            bool recheck = (DateTime.Now - slotsCheckedAt).TotalMilliseconds > 1000;
+            if (recheck) slotsCheckedAt = DateTime.Now;
+            for (int user = 0; user < 4; user++)
+            {
+                if (!recheck && (connected & (1 << user)) == 0) continue;
+                if (getState(user, raw) != 0) { connected &= ~(1 << user); continue; }
+                connected |= 1 << user;
+                any = true;
+                if ((BitConverter.ToUInt16(raw, 4) & bit) != 0) return true;
+                double x = BitConverter.ToInt16(raw, 8) / 32767.0, y = BitConverter.ToInt16(raw, 10) / 32767.0;
+                const double tilt = 0.3;   // (well inside where Playnite counts the stick as a direction)
+                if ((bit == 0x1 && y > tilt) || (bit == 0x2 && y < -tilt) || (bit == 0x4 && x < -tilt) || (bit == 0x8 && x > tilt)) return true;
+            }
+            return any ? (bool?)false : null;
+        }
+
         private static double Stick(short v)
         {
             double n = Math.Max(-1, v / 32767.0);

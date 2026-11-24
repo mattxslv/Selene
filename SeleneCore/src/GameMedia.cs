@@ -50,16 +50,48 @@ namespace Selene
                 // only once the selection has settled: stepping card by card with short pauses used to load (and animate) the
                 // strip after nearly every card, and that work landed right when the next move started
                 debounce = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(600) };
-                debounce.Tick += (s, e) => { debounce.Stop(); if (HomeNav.SigningIn) return; Load(pending); Preload(pendingNeighbours); };
+                debounce.Tick += (s, e) =>
+                {
+                    debounce.Stop();
+                    if (HomeNav.SigningIn) return;
+                    // Spotlight's game block is waiting for its art: the strip comes with it (HeroShown), not over the last art
+                    if (HomeNav.HeroWaiting && !DetailsStage.PageOpen) { waitsForHero = true; return; }
+                    Load(pending); Preload(pendingNeighbours);
+                };
             }
+            waitsForHero = false;   // (the new selection's own wait follows)
             var g = AsGame(game);
             if (g != null) PerformanceRecorder.Mark("selection", g.Id + " " + g.Name);
-            if (g == null || g.Id != shown) FadeOut();
+            if (g == null || g.Id != shown) { FadeOut(); Application.Current.Resources["SeleneShotsNone"] = Visibility.Collapsed; }   // (the last game's "no screenshots" stayed up)
             // no loading cards when there's no strip to load (screenshots on Spotlight off, #165)
-            if (g != null && !cache.ContainsKey(g.Id) && (Features.On("spotlightshots") || DetailsStage.PageOpen)) ShowLoading();
+            // (Spotlight's game block waiting for its art: they come with it, HeroShown)
+            if (g != null && !cache.ContainsKey(g.Id) && (Features.On("spotlightshots") || DetailsStage.PageOpen) && !(HomeNav.HeroWaiting && !DetailsStage.PageOpen)) ShowLoading();
             else HideLoading(false);
             debounce.Stop();
+            // pictures already decoded come with the game's logo and art (Spotlight pushes its selection 250 ms after a move):
+            // after 600 ms they came in a beat behind the rest. Ones still to load keep the longer wait (work while stepping on)
+            debounce.Interval = TimeSpan.FromMilliseconds(g != null && cache.ContainsKey(g.Id) ? 300 : 600);
             debounce.Start();
+        }
+
+        private static bool waitsForHero;
+
+        // Spotlight's game block came in with its art: the strip waiting for it comes too, and one about to load from the cache
+        // loads now (with the block, not a beat after)
+        public static void HeroShown()
+        {
+            if (debounce == null || HomeNav.SigningIn) return;
+            var g = AsGame(pending);
+            bool due = waitsForHero || (debounce.IsEnabled && (g == null || cache.ContainsKey(g.Id)));
+            waitsForHero = false;
+            if (!due)
+            {
+                // still loading: its loading cards now, with the block
+                if (debounce.IsEnabled && g != null && Features.On("spotlightshots")) ShowLoading();
+                return;
+            }
+            debounce.Stop();
+            Load(pending); Preload(pendingNeighbours);
         }
 
         // the details page: its game's pictures at once (the wait is for Spotlight's row to settle; a page is open already)
@@ -116,6 +148,9 @@ namespace Selene
                 // fade out on the way away, so it comes back
                 var strip = Strip();
                 if (strip != null && strip.Opacity < 0.99) strip.BeginAnimation(UIElement.OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(1, TimeSpan.FromMilliseconds(200)));
+                // ("No screenshots" with the game block, not before it: it showed over the last game's art)
+                Application.Current.Resources["SeleneShotsNone"] = current.Count == 0 && !HomeNav.HeroWaiting ? Visibility.Visible : Visibility.Collapsed;
+                if (current.Count == 0 && HomeNav.HeroWaiting) waitsForHero = true;
                 return;
             }
             List<ShotItem> items;
@@ -245,6 +280,13 @@ namespace Selene
                 res["SeleneShot" + i + "Vis"] = i < items.Count ? Visibility.Visible : Visibility.Collapsed;
             }
             res["SeleneShotsNone"] = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            // "No screenshots" fades in with the game block (it popped in ahead of the block's fade)
+            if (items.Count == 0)
+            {
+                var none = Application.Current.MainWindow != null ? HomeNav.FindByName(Application.Current.MainWindow, "SeleneShotsNoneText") as UIElement : null;
+                if (none != null) { none.BeginAnimation(UIElement.OpacityProperty, null); none.Opacity = 0; }
+                if (none != null) none.BeginAnimation(UIElement.OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(260)) { BeginTime = TimeSpan.FromMilliseconds(80), EasingFunction = Ui.Out() });
+            }
             var strip = Strip();
             if (strip != null) { strip.BeginAnimation(UIElement.OpacityProperty, null); strip.Opacity = 1; }
             // animate once per game: the same game's pictures coming back within 2 s are shown without replaying it
@@ -380,7 +422,7 @@ namespace Selene
                 if (!igdbOnly)
                 {
                     string app = !string.IsNullOrEmpty(chosen.SteamId) ? chosen.SteamId
-                               : pluginId == SteamPlugin && Regex.IsMatch(gameId ?? "", @"^\d+$") ? gameId : SearchAppId(name);
+                               : pluginId == SteamPlugin && Regex.IsMatch(gameId ?? "", @"^\d+$") ? gameId : LinkedAppId(id) ?? SearchAppId(name);
                     if (app != null) found = ParseScreenshots(Download("https://store.steampowered.com/api/appdetails?appids=" + app + "&filters=screenshots"));
                 }
                 if (found.Count == 0 && chosen.Source != "steam") found = !string.IsNullOrEmpty(chosen.IgdbId) ? IgdbScreenshotsById(chosen.IgdbId) : (igdbOnly ? IgdbScreenshots(name) : found);
@@ -407,9 +449,10 @@ namespace Selene
                     if (fromEml.Count > 0) return fromEml;
                 }
             }
-            string appId = pluginId == SteamPlugin && Regex.IsMatch(gameId ?? "", @"^\d+$") ? gameId : SearchAppId(name);
+            string appId = pluginId == SteamPlugin && Regex.IsMatch(gameId ?? "", @"^\d+$") ? gameId : LinkedAppId(id) ?? SearchAppId(name);
             var urls = appId == null ? new List<string>() : ParseScreenshots(Download("https://store.steampowered.com/api/appdetails?appids=" + appId + "&filters=screenshots"));
             if (urls.Count == 0) urls = IgdbScreenshots(name);
+            if (urls.Count == 0 && Plainer(name) != name) urls = IgdbScreenshots(Plainer(name));
             return urls;
         }
 
@@ -446,7 +489,7 @@ namespace Selene
         // 3 key art with its logo; 7 the logo itself (see-through); 6 and 10 (emblems, tall covers) are never backgrounds
         private static readonly int[] HeroTypes = { 2, 1, 3 };
 
-        internal class IgdbArt { public List<string> Heroes = new List<string>(); public string Logo; }
+        internal class IgdbArt { public List<string> Heroes = new List<string>(); public string Logo, Cover, Summary; }
 
         // a game's backgrounds (best first, to try in turn: a picture can turn out to be something else) and logo
         internal static IgdbArt IgdbArtFor(string name)
@@ -459,6 +502,11 @@ namespace Selene
             if (game == null || !game.TryGetValue("data", out g) || !(g is Dictionary<string, object>)) return art;
             var data = (Dictionary<string, object>)g;
             Func<string, string> url = imageId => "https://images.igdb.com/igdb/image/upload/t_original/" + imageId + ".jpg";
+            // its cover (a portrait box art, for games no store gave one) and its summary
+            object cover, summary;
+            var c = data.TryGetValue("cover_expanded", out cover) ? cover as Dictionary<string, object> : null;
+            if (c != null && c.ContainsKey("image_id")) art.Cover = "https://images.igdb.com/igdb/image/upload/t_cover_big_2x/" + c["image_id"] + ".jpg";
+            if (data.TryGetValue("summary", out summary) && !string.IsNullOrWhiteSpace(Convert.ToString(summary))) art.Summary = Convert.ToString(summary).Trim();
             foreach (var field in new[] { "artworks_expanded", "screenshots_expanded" })
             {
                 object list;
@@ -487,6 +535,14 @@ namespace Selene
         }
 
         private static string IgdbIdByName(string name)
+        {
+            var id = IgdbIdByExactName(name);
+            var plainer = Plainer(name);
+            if (id == null && plainer.Length > 0 && plainer != name) id = IgdbIdByExactName(plainer);
+            return id;
+        }
+
+        private static string IgdbIdByExactName(string name)
         {
             if (string.IsNullOrWhiteSpace(name)) return null;
             string body;
@@ -544,7 +600,45 @@ namespace Selene
             return SearchAppId(name, out legacy);
         }
 
+        // A game from GOG, Epic, EA, a launcher or a folder has no Steam id of its own: the Steam store page its metadata links to
+        // (Playnite's metadata adds one for most games), else a search by its name. A name with a tag or mark Steam doesn't use
+        // ("Hades [GOG]", "DOOM (2016)", "Control™") is searched again without it.
+        internal static string LinkedAppId(Guid id)
+        {
+            try
+            {
+                var api = HomeNav.Api;
+                var g = api != null ? api.Database.Games.Get(id) : null;
+                if (g == null || g.Links == null) return null;
+                foreach (var link in g.Links.ToList())
+                {
+                    var m = link != null ? Regex.Match(link.Url ?? "", @"store\.steampowered\.com/app/(\d+)", RegexOptions.IgnoreCase) : Match.Empty;
+                    if (m.Success) return m.Groups[1].Value;
+                }
+            }
+            catch (Exception ex) { HomeNav.Log("screenshots: game links: " + ex.Message); }
+            return null;
+        }
+
+        // the name without trademark marks, [tags], (notes) and a store's own suffix ("Hades [GOG]" -> "Hades")
+        public static string Plainer(string name)
+        {
+            var s = Regex.Replace(name ?? "", @"[\u2122\u00AE\u00A9]", "");
+            s = Regex.Replace(s, @"\s*(?:\[[^\]]*\]|\((?!(?:19|20)\d\d\))[^)]*\))", " ");   // (a year stays: "DOOM (2016)" is not the 1993 DOOM)
+            s = Regex.Replace(s, @"\s+(?:-\s+)?(?:GOG|Epic Games|Windows 10|Win10|PC)(?: Edition| Version)?$", "", RegexOptions.IgnoreCase);
+            s = Regex.Replace(s, @"^(\S+\s+\S+.*?)\s+game$", "$1", RegexOptions.IgnoreCase);   // a folder's name ("Genshin Impact game")
+            return Regex.Replace(s, @"\s+", " ").Trim();
+        }
+
         internal static string SearchAppId(string name, out string legacy)
+        {
+            var found = SearchAppIdAs(name, out legacy);
+            var plainer = Plainer(name);
+            if (found == null && plainer.Length > 0 && plainer != name) found = SearchAppIdAs(plainer, out legacy);
+            return found;
+        }
+
+        private static string SearchAppIdAs(string name, out string legacy)
         {
             legacy = null;
             if (string.IsNullOrWhiteSpace(name)) return null;
@@ -651,8 +745,8 @@ namespace Selene
             if (viewer != null)
             {
                 if (pressed == "B" || pressed == "A") { CloseViewer(); return true; }
-                if (pressed == "DPadRight" || pressed == "LeftStickRight") { Show(viewerIndex + 1); return true; }
-                if (pressed == "DPadLeft" || pressed == "LeftStickLeft") { Show(viewerIndex - 1); return true; }
+                if (pressed == "DPadRight" || pressed == "LeftStickRight") { Flip(1); return true; }
+                if (pressed == "DPadLeft" || pressed == "LeftStickLeft") { Flip(-1); return true; }
                 return true;  // nothing else reaches the home underneath
             }
             if (pressed != "A") return false;
@@ -678,13 +772,48 @@ namespace Selene
                 Foreground = Ink.Brush("SeleneInkColor", 0.7), FontSize = 20, FontFamily = new FontFamily("Segoe UI"),
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 40),
             };
-            viewer = new Grid { Background = Ink.Brush("SeleneScrimColor", 0.95), Focusable = false };
+            viewer = new Grid { Background = Ink.Brush("SeleneScrimColor", 0.95), Focusable = true, FocusVisualStyle = null, Opacity = 0 };
             if (host is Grid) { Grid.SetRowSpan(viewer, 99); Grid.SetColumnSpan(viewer, 99); }
             Panel.SetZIndex(viewer, 99999);
             viewer.Children.Add(viewerImage);
             viewer.Children.Add(viewerCount);
+            // the keyboard too (Enter / Escape / arrows): the viewer holds the focus while it's open (the keys went to the page
+            // underneath, and Escape closed the page with the viewer still up)
+            viewer.PreviewKeyDown += (s, e) =>
+            {
+                if (Ui.KeyIsPadCopy()) { e.Handled = true; return; }
+                if (e.Key == System.Windows.Input.Key.Escape || e.Key == System.Windows.Input.Key.Enter || e.Key == System.Windows.Input.Key.Back || e.Key == System.Windows.Input.Key.Space) { CloseViewer(); e.Handled = true; }
+                else if (e.Key == System.Windows.Input.Key.Right) { Flip(1); e.Handled = true; }
+                else if (e.Key == System.Windows.Input.Key.Left) { Flip(-1); e.Handled = true; }
+                else e.Handled = true;
+            };
             host.Children.Add(viewer);
             Show(index);
+            // in: the dark fades up and the picture grows to its place (200 ms, ease out)
+            Ui.Confirm();
+            viewerImage.RenderTransformOrigin = new Point(0.5, 0.5);
+            viewerImage.RenderTransform = new ScaleTransform(0.96, 0.96);
+            var ease = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut };
+            viewer.BeginAnimation(UIElement.OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(200)) { EasingFunction = ease });
+            foreach (var dp in new[] { ScaleTransform.ScaleXProperty, ScaleTransform.ScaleYProperty })
+                viewerImage.RenderTransform.BeginAnimation(dp, new System.Windows.Media.Animation.DoubleAnimation(0.96, 1, TimeSpan.FromMilliseconds(240)) { EasingFunction = ease });
+            viewer.Focus();
+        }
+
+        // Left / Right: the next picture slides in from that side as the old one goes (a tick, as every move)
+        private static void Flip(int step)
+        {
+            if (viewerItems == null || viewerItems.Count < 2 || viewerImage == null) return;
+            Ui.Tick();
+            Show(viewerIndex + step);
+            var ease = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut };
+            var slide = new TranslateTransform(step * 40, 0);
+            var group = new TransformGroup();
+            group.Children.Add(new ScaleTransform(1, 1));
+            group.Children.Add(slide);
+            viewerImage.RenderTransform = group;
+            slide.BeginAnimation(TranslateTransform.XProperty, new System.Windows.Media.Animation.DoubleAnimation(step * 40, 0, TimeSpan.FromMilliseconds(220)) { EasingFunction = ease });
+            viewerImage.BeginAnimation(UIElement.OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(0.25, 1, TimeSpan.FromMilliseconds(200)) { EasingFunction = ease });
         }
 
         private static void Show(int index)
@@ -698,16 +827,27 @@ namespace Selene
 
         private static void CloseViewer()
         {
-            var p = viewer != null ? viewer.Parent as Panel : null;
-            if (p != null) p.Children.Remove(viewer);
+            var gone = viewer;
+            var p = gone != null ? gone.Parent as Panel : null;
             viewer = null; viewerImage = null; viewerItems = null;
             if (returnFocus != null) returnFocus.Focus();
+            if (gone == null) return;
+            // out: a quick fade (160 ms) with the back sound, then it goes
+            Ui.Back();
+            gone.IsHitTestVisible = false;
+            var fade = new System.Windows.Media.Animation.DoubleAnimation(0, TimeSpan.FromMilliseconds(160)) { EasingFunction = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut } };
+            fade.Completed += (s, e) => { if (p != null) p.Children.Remove(gone); };
+            gone.BeginAnimation(UIElement.OpacityProperty, fade);
         }
 
         // the outermost panel that fills the window, so the viewer covers the whole screen
         private static Panel RootPanel(Window w)
         {
             if (w == null) return null;
+            // inside the scaled layout (Playnite's 1920 x 1080 Viewbox) when there is one: outside it, the viewer didn't scale
+            // with the rest on other screen sizes (and pictures of the screen left it out)
+            var inner = HomeNav.FindByName(w, "PART_MainHost") as Panel;   // the main view's own panel, inside the Viewbox
+            if (inner != null) return inner;
             DependencyObject d = w;
             for (int i = 0; i < 12 && d != null; i++)
             {

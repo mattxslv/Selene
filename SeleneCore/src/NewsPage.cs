@@ -266,7 +266,7 @@ namespace Selene
         private void Open()
         {
             if (index >= articles.Count || !NewsFeeds.WebUrl(articles[index].Url)) return;
-            try { Process.Start(new ProcessStartInfo(articles[index].Url) { UseShellExecute = true }); } catch (Exception ex) { status.Text = "Could not open the article: " + ex.Message; }
+            try { HomeNav.OpenOutside(articles[index].Url); } catch (Exception ex) { status.Text = "Could not open the article: " + ex.Message; }
         }
 
         public override void Handle(string button)

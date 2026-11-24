@@ -284,7 +284,7 @@ namespace Selene
             // UniPlaySong's title follows the game under the cursor while Selene keeps the home music going: what really plays is
             // the file its player has open, so where the two differ the file's name is shown
             var file = PlayingFile();
-            if (!string.IsNullOrEmpty(file) && (string.IsNullOrEmpty(title) || Plain(title).IndexOf(Plain(file), StringComparison.Ordinal) < 0 && Plain(file).IndexOf(Plain(title), StringComparison.Ordinal) < 0))
+            if (!SpotifyPlaying() && !string.IsNullOrEmpty(file) && (string.IsNullOrEmpty(title) || Plain(title).IndexOf(Plain(file), StringComparison.Ordinal) < 0 && Plain(file).IndexOf(Plain(title), StringComparison.Ordinal) < 0))
             { title = Readable(file); artist = null; }
         }
 
@@ -361,6 +361,10 @@ namespace Selene
             }
             catch { return false; }
         }
+
+        // Spotify (as the ambient) playing and heard: the only music the top bar names. A game's own song goes with its page and
+        // trailer, and the default music is the theme's background, so neither is named there.
+        public static bool SpotifyHeard() { return Playing() && SpotifyAmbient() && SpotifyPlaying(); }
 
         public static bool CardWanted() { return Playing() || userPaused && Paused(); }
 

@@ -47,7 +47,7 @@ namespace Selene
             items = SetupCheck.Run(HomeNav.Api);
             var col = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, -20, 0, 0) };
             col.Children.Add(Ui.Title("Let's get Selene ready"));
-            col.Children.Add(Ui.Sub("Selene checks what it needs. You can come back to this anytime from the menu: Extensions, Selene."));
+            col.Children.Add(Ui.Sub("Selene checks what it needs. You can come back to this anytime: Menu > Selene settings > Advanced > Setup check."));
             // rows as even as possible (11 cards: 6 + 5), each centred
             var grid = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 46, 0, 0) };
             int rows = (items.Count + Columns - 1) / Columns, at = 0;
@@ -81,7 +81,7 @@ namespace Selene
             buttons.Children.Add(carryOn.Root);
             col.Children.Add(buttons);
             Root.Children.Add(col);
-            if (!firstRun) Root.Children.Add(Ui.Prompts(false, Ui.Prompt("B", "Back")));
+            Root.Children.Add(Ui.Prompts(false, Ui.Prompt("B", "Back")));   // (first run: back to the language step)
             UpdateInstallAll();
             // the first card that needs something, else Continue
             index = items.FindIndex(i => i.State == SetupState.Missing || i.State == SetupState.Warning);
@@ -95,7 +95,7 @@ namespace Selene
             var tile = new Tile(240, 140, 18, 6) { FocusScale = 1.06 };
             // the same layout in every card: icon, title and status always at the same height (status keeps room for 2 lines)
             var sp = new StackPanel { VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(16, 20, 16, 0) };
-            sp.Children.Add(new TextBlock { Text = Icon(item.Key), FontFamily = Ui.Glyphs, FontSize = 26, Height = 30, Foreground = Ink.Brush("GlyphColor"), HorizontalAlignment = HorizontalAlignment.Center });
+            sp.Children.Add(new TextBlock { Text = Icon(item.Key), FontFamily = Ui.Glyphs, FontSize = 26, Height = 30, Foreground = Ink.Brush("SeleneAccentInkColor"), HorizontalAlignment = HorizontalAlignment.Center });
             sp.Children.Add(new TextBlock { Text = item.Title, FontSize = 18, FontWeight = FontWeights.SemiBold, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor"), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 8, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis });
             // the state as a short chip; the full detail is in the panel below when the card is focused
             var status = new TextBlock { FontSize = 12, FontWeight = FontWeights.Bold, FontFamily = Ui.Body, TextTrimming = TextTrimming.CharacterEllipsis };
@@ -126,7 +126,7 @@ namespace Selene
             switch (item.State)
             {
                 case SetupState.Ready: key = "SeleneSuccessColor"; break;
-                case SetupState.Missing: key = "GlyphColor"; break;
+                case SetupState.Missing: key = "SeleneAccentInkColor"; break;   // (the accent made readable on the glass)
                 case SetupState.Optional: key = "SeleneInkColor"; break;
                 default: key = null; break;
             }
@@ -228,7 +228,9 @@ namespace Selene
             if (index < items.Count)
             {
                 var item = items[index];
-                Describe(item);
+                // (the card says OPENING... while Playnite gets it: the info under it says so too, not "Not installed")
+                if (index == openingAt) info.Show(Icon(item.Key), Tone.Accent, item.Title, "Opening", item.About, "Playnite is getting the add-on. Its question comes up in a moment.");
+                else Describe(item);
             }
             else if (batchRunning && batchInfo != null) batchInfo();
             else if (index == ButtonsStart)
@@ -244,7 +246,7 @@ namespace Selene
                 int ready = items.Count(i => i.State == SetupState.Ready || i.State == SetupState.Optional);
                 var left = items.Where(i => i.State == SetupState.Missing || i.State == SetupState.Warning).Select(i => i.Title).ToList();
                 if (left.Count == 0) info.Show("\uE73E", Tone.Success, "All set", "Ready", firstRun ? "Everything Selene needs is here. Next: your profile." : "Everything Selene needs is here.", "");
-                else info.Show("\uE72A", Tone.Accent, ready + " of " + items.Count + " ready", left.Count + " left", "Still to do: " + string.Join(", ", left) + ".", "You can finish this later from the menu: Setup check.");
+                else info.Show("\uE72A", Tone.Accent, ready + " of " + items.Count + " ready", left.Count + " left", "Still to do: " + string.Join(", ", left) + ".", "You can finish this later: Menu > Selene settings > Advanced > Setup check.");
             }
         }
 
@@ -273,7 +275,7 @@ namespace Selene
             if (ask != null) { ask.Handle(b); return; }   // a question is up: the press is its own
             if (b == "B")
             {
-                if (firstRun) { Ui.Shake(Root.Children[0]); return; }
+                if (firstRun) { Ui.Back(); LoginScene.Show(new LanguageScreen(), -1); return; }   // first run: back to the language step
                 Ui.Back();
                 if (Back != null) LoginScene.Show(Back(), -1);
                 else if (fromMenu) LoginScene.Show(new MenuScreen(true), -1);

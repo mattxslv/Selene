@@ -32,6 +32,7 @@ namespace Selene
         private readonly List<Tile> tiles = new List<Tile>();
         private int index;
 
+        public Func<Screen> Back;   // opened from the Store page (Y): B goes back there, not to the home
         public StoreScreen()
         {
             stores = Known.Where(s => Registered(s.Protocol)).ToList();
@@ -101,7 +102,7 @@ namespace Selene
 
         public override void Handle(string b)
         {
-            if (b == "B") { Ui.Back(); LoginScene.Finish(); return; }
+            if (b == "B") { Ui.Back(); if (Back != null) LoginScene.Show(Back(), -1); else LoginScene.Finish(); return; }
             if ((b == "DPadLeft" || b == "DPadRight") && tiles.Count > 0)
             {
                 int next = index + (b == "DPadLeft" ? -1 : 1);

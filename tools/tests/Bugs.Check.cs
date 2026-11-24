@@ -182,6 +182,12 @@ class BugsCheck
             InputHints.Set(InputKind.Controller); Features.Set("detailsbadges", false); Ui.PublishPrompts(); Pump();
             Assert(scrollBadge.MinWidth == 48, "#96 badge switch off restores the previous Scroll badge");
             Features.Set("detailsbadges", true); Ui.PublishPrompts();
+            Assert(GameMedia.Plainer("Hades [GOG]") == "Hades", "A store tag is left out of the name search");
+            Assert(GameMedia.Plainer("DOOM (2016)") == "DOOM (2016)" && GameMedia.Plainer("Prey (Digital Deluxe)") == "Prey", "A year stays (another game of that name), other notes in brackets go");
+            Assert(GameMedia.Plainer("Control\u2122") == "Control", "A trademark mark is left out of the name search");
+            Assert(GameMedia.Plainer("The Witcher 3: Wild Hunt - GOG Edition") == "The Witcher 3: Wild Hunt", "A store's own edition is left out of the name search");
+            Assert(GameMedia.Plainer("Genshin Impact game") == "Genshin Impact" && GameMedia.Plainer("Hard Game") == "Hard Game", "An install folder's trailing \"game\" is left out, never a two-word title's");
+            Assert(GameMedia.Plainer("Death Stranding: Director's Cut") == "Death Stranding: Director's Cut", "A plain name stays as it is");
             // "Get art for your games?": yes is the consent for art, screenshots, selected-game trailers and missing details
             var allow = typeof(GamesSetup).GetMethod("Allow", BindingFlags.Static | BindingFlags.NonPublic);
             foreach (var key in new[] { "artdownload", "screenshotsdownload", "trailerdownload", "metadatacomplete" }) { if (key != "trailerdownload") Features.Set(key, false); DownloadConsent.Revoke(key); }

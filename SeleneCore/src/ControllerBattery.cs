@@ -16,6 +16,8 @@ namespace Selene
     public static class ControllerBattery
     {
         private const string AddonType = "DualSenseBatteryLevel.DualSenseBatteryLevelPlugin";
+        // (its settings row shows only with the add-on: without it the switch did nothing)
+        public static bool Installed() { try { return HomeNav.Api != null && HomeNav.Api.Addons.Plugins.Any(p => p.GetType().FullName == AddonType); } catch { return false; } }
         private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
 
         private static Grid slot;

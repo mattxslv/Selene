@@ -71,15 +71,18 @@ namespace Selene
             arm.Tick += (s, e) => { arm.Stop(); Play(); };
             list.SelectionChanged += (s, e) =>
             {
+                InfoSelectionChanged();
                 Rearm(true);
                 AttachGlide();   // (the list's parts aren't made yet when this is set up, and it may never load again)
                 KeepNearLeft();
                 QueueRelatedWork();
             };
             list.SizeChanged += (s, e) => measuredPitch = 0;
+            ((System.Collections.Specialized.INotifyCollectionChanged)list.Items).CollectionChanged += (s, e) => EmptyCover(!library.IsVisible);
             library.IsVisibleChanged += (s, e) =>
             {
-                if (!(bool)e.NewValue) { Stop(); if (relatedWork != null) relatedWork.Stop(); return; }
+                if (!(bool)e.NewValue) { Stop(); ReleaseInfo(); if (relatedWork != null) relatedWork.Stop(); return; }
+                EmptyCover(true);
                 Rearm(false);
                 QueueRelatedWork();
                 // the row's edges as soon as it shows (not from the first move)
@@ -314,7 +317,7 @@ namespace Selene
             {
                 if (Math.Abs(e.HorizontalChange) < 0.001 || !library.IsVisible) return;
                 ShowFades(sv);
-                if (!Features.On("collectionglide")) return;
+                if (!Features.On("collectionglide") || paging) return;   // (a page glides on its own: Page)
                 if (!list.IsKeyboardFocusWithin) { if (told++ < 3) HomeNav.Log("collection glide: scrolled " + e.HorizontalChange + " without the focus in the row"); return; }
                 var presenter = rowPresenter;
                 double pitch = Pitch();
@@ -330,6 +333,88 @@ namespace Selene
                 lastStep = DateTime.Now;
                 HomeNav.Glide(shift, delta, since < 260);   // (a held stick glides on at one speed)
             };
+        }
+
+        // ---- LT / RT: a page of covers ----
+        // The row moves on by as many covers as it shows, the ring stays on its place among them (at the ends it goes to the
+        // first or last cover), and the covers glide there like a move. False when there's nowhere to go.
+        private static bool paging;
+
+        public static bool Page(int dir)
+        {
+            if (list == null || library == null || !library.IsVisible || list.Items.Count == 0) return false;
+            int last = list.Items.Count - 1;
+            int sel = Math.Max(0, Math.Min(last, list.SelectedIndex));
+            var sv = RowScroller();
+            if (sv != null) HookScroll(sv);
+            double pitch = Pitch();
+            bool itemUnits = sv != null && Math.Abs(sv.ExtentWidth - list.Items.Count) < 2;   // (item scrolling counts in covers)
+            double unit = itemUnits ? 1 : pitch;
+            int to;
+            double want = -1;
+            if (sv != null && unit > 0)
+            {
+                int visible = Math.Max(3, (int)Math.Floor(sv.ViewportWidth / unit + 0.01));
+                int first = (int)Math.Round(sv.HorizontalOffset / unit);
+                int maxFirst = Math.Max(0, (int)Math.Round(sv.ScrollableWidth / unit));
+                int newFirst = Math.Max(0, Math.Min(maxFirst, first + dir * visible));
+                to = newFirst != first ? Math.Max(0, Math.Min(last, sel + (newFirst - first))) : (dir > 0 ? last : 0);
+                if (newFirst != first) want = Math.Min(newFirst * unit, sv.ScrollableWidth);
+            }
+            else to = Math.Max(0, Math.Min(last, sel + dir * 5));
+            if (to == sel) return false;
+            double before = sv != null ? sv.HorizontalOffset : 0;
+            paging = true;
+            try
+            {
+                list.SelectedIndex = to;
+                if (sv != null && want >= 0) sv.ScrollToHorizontalOffset(want);
+                list.UpdateLayout();
+                var c = list.ItemContainerGenerator.ContainerFromIndex(to) as UIElement;
+                if (c == null) { list.ScrollIntoView(list.Items[to]); list.UpdateLayout(); c = list.ItemContainerGenerator.ContainerFromIndex(to) as UIElement; }
+                if (c != null) c.Focus();
+            }
+            finally { paging = false; }
+            double moved = sv != null ? (sv.HorizontalOffset - before) * (itemUnits ? pitch : 1) : 0;
+            var presenter = rowPresenter;
+            if (Math.Abs(moved) > 0.5 && presenter != null && Features.On("collectionglide") && !HomeNav.Lite)
+            {
+                var shift = presenter.RenderTransform as TranslateTransform;
+                if (shift == null || shift.IsFrozen) { shift = new TranslateTransform(); presenter.RenderTransform = shift; }
+                lastStep = DateTime.Now;
+                HomeNav.Glide(shift, moved, false);
+            }
+            return true;   // (the row's ends and edge fades follow from the selection change: KeepNearLeft)
+        }
+
+        // ---- a tab with no games: the art goes ----
+        // Playnite keeps the last game's art up when the list empties: the theme's own background (as with no game at all)
+        // fades over it while the tab is empty, behind Playnite's "no games" message
+        private static Grid emptyCover;
+
+        private static void EmptyCover(bool instant)
+        {
+            var grid = library as Panel;
+            if (grid == null || list == null) return;
+            bool empty = list.Items.Count == 0;
+            if (emptyCover == null)
+            {
+                if (!empty) return;
+                emptyCover = new Grid { IsHitTestVisible = false, Opacity = 0 };
+                var fill = new Border();
+                fill.SetResourceReference(Border.BackgroundProperty, "SeleneBaseBrush");
+                var paper = new Image { Stretch = Stretch.UniformToFill, Opacity = 0.6 };
+                paper.SetResourceReference(Image.SourceProperty, "SeleneWallpaper");
+                RenderOptions.SetBitmapScalingMode(paper, BitmapScalingMode.Fant);
+                emptyCover.Children.Add(fill);
+                emptyCover.Children.Add(paper);
+                Grid.SetRowSpan(emptyCover, 5);
+                Panel.SetZIndex(emptyCover, -3);
+                grid.Children.Add(emptyCover);   // over the art (and its crossfade), under the shades
+            }
+            double to = empty ? 1 : 0;
+            if (instant) { emptyCover.BeginAnimation(UIElement.OpacityProperty, null); emptyCover.Opacity = to; return; }
+            emptyCover.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(to, TimeSpan.FromMilliseconds(empty ? 250 : 300)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
         }
 
         // one cover of lookahead: the ring walks along the row, and once only one cover is left beyond it (either side) the row
@@ -449,6 +534,7 @@ namespace Selene
                 DependencyPropertyDescriptor.FromProperty(Image.SourceProperty, typeof(Image)).AddValueChanged(img, (s, e) =>
                 {
                     if (snapCovering && img.Source != null) fe.Dispatcher.BeginInvoke(new Action(MeltSnapshot), DispatcherPriority.Loaded);
+                    if (infoHeld && infoMoved && img.Source != null && !ReferenceEquals(img.Source, heldPicture)) fe.Dispatcher.BeginInvoke(new Action(() => { if (Ui.DevFrames && infoHeld) HomeNav.Log("collection info: picture in"); ReleaseInfo(120); }), DispatcherPriority.Loaded);
                 });
             }
         }
@@ -483,6 +569,64 @@ namespace Selene
             snapCovering = true;
             snapFallback.Stop();
             snapFallback.Start();
+        }
+
+        // ---- LB / RB: another tab's first game's name and logo come with its picture ----
+        // Collection's info follows the selection at once while its art loads a moment later: switching tabs, the new game's name
+        // sat over the last game's art. The info goes as the tab switches and comes back as the picture comes in (or at
+        // most a moment later: a game without art, the same game, an empty tab).
+        private static bool infoHeld;
+        private static DispatcherTimer infoCap;
+        private static object heldFrom;
+        private static ImageSource heldPicture;   // the art up as the tab switched (Playnite's image moves it between its layers too)
+
+        private static UIElement InfoGate() { return library != null ? HomeNav.FindByName(library, "SeleneLibraryInfoGate") as UIElement : null; }
+
+        public static void HoldInfo()
+        {
+            var gate = InfoGate();
+            if (gate == null || list == null || !library.IsVisible) return;
+            infoHeld = true;
+            heldFrom = list.SelectedItem;
+            var fe = art as FrameworkElement;
+            var showing = fe != null ? Inner(fe).FirstOrDefault(i => i.Source != null && i.Opacity > 0.5 && i.IsVisible) : null;
+            heldPicture = showing != null ? showing.Source : null;
+            gate.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(HomeNav.Lite ? 0 : 100)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+            if (infoCap == null)
+            {
+                infoCap = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(900) };
+                infoCap.Tick += (s, e) => { if (Ui.DevFrames) HomeNav.Log("collection info: cap " + (infoMoved ? "(no picture)" : "(same game)")); ReleaseInfo(); };
+            }
+            // no other game selected by then (the same game, or none): nothing new to wait for
+            infoMoved = false;
+            infoCap.Stop();
+            infoCap.Interval = TimeSpan.FromMilliseconds(350);
+            infoCap.Start();
+        }
+
+        // the tab's game is selected: its name waits for its picture now (at most a moment: a game without art)
+        private static bool infoMoved;
+        private static void InfoSelectionChanged()
+        {
+            if (!infoHeld || infoMoved || ReferenceEquals(list.SelectedItem, heldFrom)) return;
+            infoMoved = true;
+            if (Ui.DevFrames) HomeNav.Log("collection info: waits for " + HomeNav.DevName(list.SelectedItem));
+            infoCap.Stop();
+            infoCap.Interval = TimeSpan.FromMilliseconds(1200);
+            infoCap.Start();
+        }
+
+        // delay: the picture just came in under the last one's still (it melts away): the info follows a beat behind it
+        private static void ReleaseInfo() { ReleaseInfo(0); }
+        private static void ReleaseInfo(int delay)
+        {
+            if (!infoHeld) return;
+            infoHeld = false;
+            heldFrom = null;
+            heldPicture = null;
+            if (infoCap != null) infoCap.Stop();
+            var gate = InfoGate();
+            if (gate != null) gate.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(HomeNav.Lite ? 0 : 240)) { BeginTime = TimeSpan.FromMilliseconds(HomeNav.Lite ? 0 : delay), EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
         }
 
         private static void MeltSnapshot()

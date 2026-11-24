@@ -14,6 +14,49 @@ namespace Selene
 {
     public static class LocalGames
     {
+        // Install on a game nothing can install (one added by hand or found here, whose file is gone: no library add-on
+        // behind it) showed Playnite's raw "GameError: Installation implementation is not available". Such a game says
+        // plainly what's wrong instead. (Quick check for labels; Install() also asks the add-ons, like Playnite does.)
+        public static bool CanInstall(Game g)
+        {
+            if (g == null || g.IsInstalled) return true;
+            var api = HomeNav.Api;
+            if (g.PluginId == Guid.Empty || api == null) return false;
+            try { return api.Addons.Plugins.Any(p => p.Id == g.PluginId); } catch { return true; }
+        }
+
+        public static void Install(Guid id)
+        {
+            var api = HomeNav.Api;
+            if (api == null) return;
+            var g = api.Database.Games.Get(id);
+            if (g == null) return;
+            if (CanInstall(g) || AnyInstallAction(g)) { api.InstallGame(id); return; }
+            HomeNav.Log("install: " + g.Name + " has nothing to install it (no library add-on), said so");
+            api.Dialogs.ShowMessage("Its files weren't found, and nothing can install it again. If you moved it, add it again from its new folder.", "Can't install " + g.Name);
+        }
+
+        private static bool AnyInstallAction(Game g)
+        {
+            var found = false;
+            try
+            {
+                foreach (var p in HomeNav.Api.Addons.Plugins)
+                {
+                    try
+                    {
+                        var acts = p.GetInstallActions(new Playnite.SDK.Plugins.GetInstallActionsArgs { Game = g });
+                        if (acts == null) continue;
+                        foreach (var a in acts) { if (a != null) { found = true; try { a.Dispose(); } catch { } } }
+                    }
+                    catch { }
+                    if (found) break;
+                }
+            }
+            catch { }
+            return found;
+        }
+
         // the folders set on the add-on page; none set: a Games folder at the root of each drive (like D:\Games), where
         // people tend to keep what no store installed
         private static string[] Roots
@@ -83,6 +126,7 @@ namespace Selene
                                 new GameAction { Name = "Play", Type = GameActionType.File, Path = exe, WorkingDir = Path.GetDirectoryName(exe), IsPlayAction = true }
                             }
                         };
+                        TrackByFolder(game);
                         db.Games.Add(game);
                         names.Add(Norm(name));
                         HomeNav.Log("local game added: " + name + " -> " + exe);
@@ -93,9 +137,8 @@ namespace Selene
                 HideWrapperDuplicates(db, db.Games.ToList());
                 MarkGoneFolders(db, games);
                 SyncInstalledState(db, games);
-                UseFolderTracking(db, games);
                 AttachArt(db, games);
-                UseSteamShortcuts(db, db.Games.ToList());
+                if (Features.On("steamshortcuts")) UseSteamShortcuts(db, db.Games.ToList());
             }
             catch (Exception ex) { HomeNav.Log("local games scan failed: " + ex.Message); }
         }
@@ -177,13 +220,15 @@ namespace Selene
                         HomeNav.Log("launcher games: " + name + " already in the library");
                         continue;
                     }
-                    db.Games.Add(new Game(name)
+                    var added = new Game(name)
                     {
                         InstallDirectory = dir,
                         IsInstalled = true,
                         PlatformIds = PcPlatform(db),
                         GameActions = new System.Collections.ObjectModel.ObservableCollection<GameAction> { play }
-                    });
+                    };
+                    TrackByFolder(added);
+                    db.Games.Add(added);
                     dirs.Add(full);
                     names.Add(Norm(name));
                     HomeNav.Log("launcher game added: " + name + " -> " + exe + (string.IsNullOrEmpty(f.Args) ? "" : " " + f.Args));
@@ -224,6 +269,7 @@ namespace Selene
             if (cur != null && !string.IsNullOrEmpty(play.Arguments) && gameExe != null && string.Equals(Full(cur.Path), Full(gameExe)) && g.GameActions.Count == 1)
             {
                 cur.Path = play.Path; cur.Arguments = play.Arguments; cur.WorkingDir = play.WorkingDir;
+                if (cur.TrackingMode == TrackingMode.Directory) cur.TrackingPath = GameFolder(g);
                 HomeNav.Log("launcher games: " + name + " starts through " + Path.GetFileName(play.Path));
                 changed = true;
             }
@@ -332,7 +378,8 @@ namespace Selene
 
         // ---- local games that are also added to Steam as non-Steam games: launch them through Steam ----
         // (Steam Input then handles the controller, e.g. God of War Ragnarok only reads the pad through it.) Playtime keeps
-        // being tracked by watching the install folder for the game's process.
+        // being tracked by watching the install folder for the game's process. It rewrites the game's Play action, so only
+        // when turned on (#200).
         private static string SteamUserData { get { return SelenePaths.SteamUserdata; } }
 
         private static void UseSteamShortcuts(Playnite.SDK.IGameDatabaseAPI db, List<Game> games)
@@ -562,6 +609,17 @@ namespace Selene
         [System.Runtime.InteropServices.DllImport("advapi32.dll")] private static extern bool OpenProcessToken(IntPtr process, uint access, out IntPtr token);
         [System.Runtime.InteropServices.DllImport("advapi32.dll")] private static extern bool GetTokenInformation(IntPtr token, int cls, out int value, int size, out int returned);
 
+        // Playnite itself runs as administrator (started that way on purpose): an administrator game is then on the same
+        // level, so Selene may pause, close and switch to it like any other game
+        private static bool? selfElevated;
+        public static bool SelfElevated
+        {
+            get { if (selfElevated == null) selfElevated = IsElevated(System.Diagnostics.Process.GetCurrentProcess().Id); return selfElevated.Value; }
+        }
+
+        // a game Selene must leave alone: run as administrator while Playnite isn't
+        public static bool OutOfReach(int pid) { return !SelfElevated && IsElevated(pid); }
+
         public static bool IsElevated(int pid)
         {
             var h = OpenProcess(0x1000 /* QUERY_LIMITED_INFORMATION */, false, pid);
@@ -630,21 +688,17 @@ namespace Selene
             return g.InstallDirectory;
         }
 
-        // Track local games by their folder: Star Rail's first process exits at once and hands over to an elevated one, so
-        // Playnite thought it "stopped after 6 seconds" (no Now Playing, no playtime). Any process from the folder counts.
-        private static void UseFolderTracking(Playnite.SDK.IGameDatabaseAPI db, List<Game> games)
+        // Games Selene adds itself are tracked by their folder: Star Rail's first process exits at once and hands over to an
+        // elevated one, so Playnite thought it "stopped after 6 seconds" (no Now Playing, no playtime). Any process from the
+        // folder counts. Set only when Selene makes the game: the Play actions of games people set up themselves are theirs
+        // (every library scan used to switch them to folder tracking, #200).
+        private static void TrackByFolder(Game g)
         {
-            foreach (var g in games.Where(x => x.PluginId == Guid.Empty && !string.IsNullOrWhiteSpace(x.InstallDirectory) && x.GameActions != null))
-            {
-                var play = g.GameActions.FirstOrDefault(a => a.IsPlayAction);
-                if (play == null || play.Type != GameActionType.File) continue;
-                if (play.TrackingMode == TrackingMode.Directory && string.Equals(play.TrackingPath, GameFolder(g), StringComparison.OrdinalIgnoreCase)) continue;
-                if ((play.Arguments ?? "").IndexOf("shell:AppsFolder", StringComparison.OrdinalIgnoreCase) >= 0) continue;
-                play.TrackingMode = TrackingMode.Directory;
-                play.TrackingPath = GameFolder(g);
-                db.Games.Update(g);
-                HomeNav.Log("local game tracked by folder: " + g.Name + " (" + play.TrackingPath + ")");
-            }
+            var play = g.GameActions != null ? g.GameActions.FirstOrDefault(a => a.IsPlayAction) : null;
+            if (play == null || play.Type != GameActionType.File || string.IsNullOrWhiteSpace(g.InstallDirectory)) return;
+            if ((play.Arguments ?? "").IndexOf("shell:AppsFolder", StringComparison.OrdinalIgnoreCase) >= 0) return;
+            play.TrackingMode = TrackingMode.Directory;
+            play.TrackingPath = GameFolder(g);
         }
 
         // ---- already running when Playnite started (or not started by Playnite): show it as playing ----
@@ -705,7 +759,20 @@ namespace Selene
             finally { CloseHandle(h); }
         }
 
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")] private static extern bool GetExitCodeProcess(IntPtr h, out uint code);
+        [System.Runtime.InteropServices.DllImport("kernel32.dll", EntryPoint = "OpenProcess", SetLastError = true)] private static extern IntPtr OpenProcessChecked(uint access, bool inherit, int pid);
+        // still running (elevated ones too: the limited query right is granted across elevation); not readable counts as running
+        public static bool StillRunning(int pid)
+        {
+            if (pid <= 0) return false;
+            var h = OpenProcessChecked(0x1000, false, pid);
+            if (h == IntPtr.Zero) return System.Runtime.InteropServices.Marshal.GetLastWin32Error() == 5;   // access denied: it exists
+            try { uint code; return !GetExitCodeProcess(h, out code) || code == 259 /* STILL_ACTIVE */; }
+            finally { CloseHandle(h); }
+        }
+
         public static bool IsMarkedRunning(Guid id) { return markedRunning.Contains(id); }
+        private static readonly Dictionary<Guid, DateTime> runningSince = new Dictionary<Guid, DateTime>();
 
         // pids of processes running from a game's folder (elevated ones too)
         public static List<int> ProcessesInGameFolder(Game g)
@@ -748,7 +815,8 @@ namespace Selene
             List<Watched> watched;
             try
             {
-                watched = api.Database.Games.Where(x => x.PluginId == Guid.Empty && x.IsInstalled && !string.IsNullOrWhiteSpace(x.InstallDirectory)
+                var handedOff = HomeNav.HandedOffGame;
+                watched = api.Database.Games.Where(x => (x.PluginId == Guid.Empty || x.Id == handedOff) && x.IsInstalled && !string.IsNullOrWhiteSpace(x.InstallDirectory)
                                                         && x.InstallDirectory.IndexOf(@"\WindowsApps\", StringComparison.OrdinalIgnoreCase) < 0)
                     .Select(WatchOf).ToList();
             }
@@ -790,7 +858,7 @@ namespace Selene
                 {
                     var g = db.Games.Get(hit.Key);
                     if (g == null || g.IsRunning || g.IsLaunching) continue;
-                    g.IsRunning = true; db.Games.Update(g); markedRunning.Add(g.Id);
+                    g.IsRunning = true; db.Games.Update(g); markedRunning.Add(g.Id); runningSince[g.Id] = DateTime.Now;
                     HomeNav.Log("running game found (not started by Playnite): " + g.Name + " <- " + hit.Value + " [install dir: " + g.InstallDirectory + ", watching " + GameFolder(g) + "]");
                 }
                 var watchedIds = new HashSet<Guid>(watched.Select(w => w.Id));
@@ -798,9 +866,21 @@ namespace Selene
                 {
                     var g = db.Games.Get(id);
                     markedRunning.Remove(id);
-                    if (g == null || !g.IsRunning) continue;
-                    g.IsRunning = false; db.Games.Update(g);
-                    HomeNav.Log("running game closed: " + g.Name);
+                    if (g == null) continue;
+                    if (!g.IsRunning && !runningSince.ContainsKey(id)) continue;   // (Close game already cleared it: its play time still counts)
+                    g.IsRunning = false;
+                    // a game handed over to another launcher: Playnite counted only the seconds before the hand-off
+                    DateTime since;
+                    if (id == HomeNav.HandedOffGame && runningSince.TryGetValue(id, out since))
+                    {
+                        var secs = (ulong)Math.Max(0, (DateTime.Now - since).TotalSeconds);
+                        g.Playtime += secs;
+                        HomeNav.HandedOffGame = Guid.Empty;
+                        HomeNav.Log("running game closed: " + g.Name + " (+" + secs + " s play time, handed over by its launcher)");
+                    }
+                    else HomeNav.Log("running game closed: " + g.Name);
+                    runningSince.Remove(id);
+                    db.Games.Update(g);
                 }
             }
             catch (Exception ex) { HomeNav.Log("running check failed: " + ex.Message); }

@@ -25,6 +25,7 @@ namespace Selene
         private static readonly List<UIElement> backdrop = new List<UIElement>();
         // opened from the home (menu, store...): closing goes back to the home exactly as it was (no intro, same focus)
         private static bool keepHome;
+        public static bool OverHome { get { return keepHome; } }   // opened over the home (not the sign-in at start)
         private static IInputElement returnFocus;
 
         public static bool KeepHome { get { return keepHome; } }
@@ -244,8 +245,11 @@ namespace Selene
                 else if (step[1] == "front?") HomeNav.DevFront();
                 else if (step[1].StartsWith("pos?")) HomeNav.DevPos(step[1].Substring(4));
                 else if (step[1] == "guide") HomeNav.DevGuide();
+                else if (step[1] == "snaptest") HomeNav.DevSnapTest();
+                else if (step[1] == "installed?") foreach (var x in HomeNav.Api.Database.Games.Where(x => x.IsInstalled).OrderBy(x => x.Name)) HomeNav.Log("dev installed: " + x.Name + " | source=" + (x.Source != null ? x.Source.Name : "-") + " | dir=" + x.InstallDirectory);
                 else if (step[1] == "collection") SeleneShell.ShowLibrary();
                 else if (step[1].StartsWith("testgame:")) HomeNav.DevTestGame(step[1].Substring(9));
+                else if (step[1].StartsWith("launch:") || step[1].StartsWith("closegame:")) HomeNav.DevRealGame(step[1].Substring(0, step[1].IndexOf(':')), step[1].Substring(step[1].IndexOf(':') + 1).Replace('_', ' '));   // a real game of the library, by name: started as Play does / closed as Close game does
                 else if (step[1] == "refresh") HomeNav.ScreenRefresh("dev key");
                 else if (step[1].StartsWith("addgame:") || step[1].StartsWith("playgame:") || step[1].StartsWith("favgame:") || step[1].StartsWith("dropgame:") || step[1].StartsWith("uninstallgame:") || step[1].StartsWith("platformgame:") || step[1].StartsWith("covergame:") || step[1].StartsWith("presetgame:") || step[1].StartsWith("varpathgame:") || step[1].StartsWith("showgame:") || step[1].StartsWith("choicegame:") || step[1].StartsWith("installedgame:"))
                 { int c = step[1].IndexOf(':'); HomeNav.DevGameChange(step[1].Substring(0, c - 4), step[1].Substring(c + 1).Replace('_', ' ')); }
@@ -345,10 +349,15 @@ namespace Selene
         {
             if (scene == null) return;
             RefreshBackdrop();
-            FadeInBackdrop();
             var next = pending;
             pending = null;
-            if (next != null) { if (!musicHeldAtStart) HomeNav.HoldMusicForLaunch(false); Show(next(), 0); }
+            // a screen asked for from the home (the menu, settings, the Store...): an overlay shows the home under its shade, so no
+            // dark cover (it hid the first menu after start for seconds); a full screen gets a short fade, not the start-up's
+            var first = next != null ? next() : null;
+            if (first == null) FadeInBackdrop(false);
+            else if (!first.Overlay) FadeInBackdrop(true);
+            else if (backdropHost != null) backdropHost.Opacity = 1;
+            if (first != null) { if (!musicHeldAtStart) HomeNav.HoldMusicForLaunch(false); Show(first, 0); }
             else if (!introPlayed) { introPlayed = true; AllowBackdropVideo(); WhenCalm(scene, () => { Show(Features.On("intro") ? (Screen)new IntroScreen() : Start(), 0); }); }
             else { if (!musicHeldAtStart) HomeNav.HoldMusicForLaunch(false); Show(Start(), 0); }
         }
@@ -445,6 +454,7 @@ namespace Selene
             ApplyOverlay(next.Overlay, next.OverlayShade);
             if (next is WhoScreen) ReleaseStartMusic();   // the music comes in with "Who's playing?"
             if (!next.Overlay) HomeNav.ClearSelectedGame();
+            else if (keepHome && old != null && !old.Overlay) HomeNav.RestoreSelected();   // (an overlay after a full screen: the home shows under it)
             // the new screen is set up first (its grids, pictures, preview), then both slide: set up inside the slide's first frame,
             // the work made it stutter (Selene settings -> Change theme)
             next.Root.Opacity = 0;
@@ -486,6 +496,7 @@ namespace Selene
                 if (DetailsStage.InBand) DetailsStage.FocusBand();   // back on a band of the details page: not its pills
                 else if (el != null && el.IsVisible) el.Focus();
                 keepHome = false;
+                HomeNav.RestoreSelected();
             };
             t.Start();
         }
@@ -544,7 +555,7 @@ namespace Selene
 
         // the backdrop fades in from the layer's dark color: a cover over it melts away on its own thread (ThreadedFade), so
         // Playnite's busy start-up can't make it freeze and jump. It starts once the backdrop has been drawn underneath.
-        private static void FadeInBackdrop()
+        private static void FadeInBackdrop(bool quick)
         {
             var host = backdropHost;
             var scenePanel = host != null ? host.Parent as Panel : null;
@@ -559,11 +570,14 @@ namespace Selene
             var cover = new Border { Background = dark, IsHitTestVisible = false };
             scenePanel.Children.Insert(scenePanel.Children.IndexOf(host) + 1, cover);   // over the backdrop, under the logo
             host.Opacity = 1;
-            WhenCalm(scene, () =>
+            Action<Action> when = act => { if (quick) scene.Dispatcher.BeginInvoke(act, System.Windows.Threading.DispatcherPriority.Loaded); else WhenCalm(scene, act); };
+            when(() =>
             {
-                HomeNav.Log("backdrop fade-in: fading over 2200 ms");
-                // slow and even: a gentle sine curve over two seconds, at the screen's own frame rate
-                var fade = Ui.Fast(new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(2200)) { EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut } });
+                int ms = quick ? 300 : 2200;
+                HomeNav.Log("backdrop fade-in: fading over " + ms + " ms");
+                // slow and even: a gentle sine curve over two seconds, at the screen's own frame rate (a screen opened from the home:
+                // a short ease-out)
+                var fade = Ui.Fast(new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(ms)) { EasingFunction = quick ? (IEasingFunction)new QuadraticEase { EasingMode = EasingMode.EaseOut } : new SineEase { EasingMode = EasingMode.EaseInOut } });
                 fade.Completed += (s, e) => scenePanel.Children.Remove(cover);
                 cover.BeginAnimation(UIElement.OpacityProperty, fade);
             });
@@ -606,6 +620,12 @@ namespace Selene
             guard.Tick += (s, e) => { guard.Stop(); if (done) return; done = true; el.SizeChanged -= sized; act(); };
             guard.Start();
         }
+        private static SolidColorBrush veilBrush;
+        private static double VeilFor(ImageSource wallpaper)
+        {
+            double need = wallpaper != null ? Contrast.Need(wallpaper) : 0;
+            return Math.Max(0.45, Math.Min(0.72, 0.45 + (need - 0.35) * 0.8));
+        }
         private static Grid BuildScene()
         {
             var g = new Grid { ClipToBounds = true };
@@ -624,9 +644,18 @@ namespace Selene
             RenderOptions.SetBitmapScalingMode(wallpaper, BitmapScalingMode.HighQuality);
             backdropHost.Children.Add(wallpaper);
             backdrop.Add(wallpaper);
-            var veil = new Border { Background = Ink.Brush("SeleneScrimColor", 0.45) };
+            // the veil over the wallpaper deepens as much as the picture needs for the light words on it (a pale pastel
+            // wallpaper, Catppuccin Latte's own, left white titles unreadable at the old fixed 45%); dark ones keep 45%
+            veilBrush = Ink.Brush("SeleneScrimColor");
+            veilBrush.Opacity = VeilFor(Contrast.WallpaperImage);
+            var veil = new Border { Background = veilBrush };
             backdropHost.Children.Add(veil);
             backdrop.Add(veil);
+            Contrast.Changed += () =>
+            {
+                double to = VeilFor(Contrast.WallpaperImage);
+                if (Math.Abs(to - veilBrush.Opacity) > 0.01) veilBrush.BeginAnimation(Brush.OpacityProperty, new DoubleAnimation(to, TimeSpan.FromMilliseconds(300)) { EasingFunction = Ui.Out() });
+            };
             // the spotlight, floor glow and particles dress up the theme's plain gradient; over a wallpaper they stay off
             glow = BuildGlow();
             backdropHost.Children.Add(glow);
@@ -1019,6 +1048,7 @@ namespace Selene
             new[] { "\uE777", "Restart", "power-restart", "shutdown.exe|/r /t 0" },
             new[] { "\uE7E8", "Shut down", "power-off", "shutdown.exe|/s /t 0" } };
 
+        public Func<Screen> Back;
         public WhoScreen(Guid? focus)
         {
             profiles = Profiles.All.ToList();
@@ -1064,7 +1094,7 @@ namespace Selene
             menu.Child = menuStack;
             Root.Children.Add(menu);
 
-            Root.Children.Add(Ui.Prompts(true, Ui.Prompt("A", "Select")));
+            Root.Children.Add(LoginScene.OverHome ? Ui.Prompts(true, Ui.Prompt("B", "Back"), Ui.Prompt("A", "Select")) : Ui.Prompts(true, Ui.Prompt("A", "Select")));
             if (profiles.Count > 0) Root.Children.Add(Ui.Prompts(false, Ui.Prompt("Y", "Edit profile"), Ui.Prompt("X", "Remove")));
 
             var active = Profiles.Active;
@@ -1141,6 +1171,9 @@ namespace Selene
                 else confirm.Handle(b);
                 return;
             }
+            // opened from the menu over the home (Switch profile): B goes back to it (there was no way out but signing in)
+            if (b == "B" && Back != null) { leaving = true; Ui.Back(); LoginScene.Show(Back(), -1); return; }   // (from the menu: back to it)
+            if (b == "B" && LoginScene.OverHome) { leaving = true; Ui.Back(); LoginScene.Finish(); return; }
             if (b == "DPadDown" && !onPower) { onPower = true; Ui.Tick(); ShowFocus(); return; }
             if (b == "DPadUp" && onPower) { onPower = false; Ui.Tick(); ShowFocus(); return; }
             if (!onPower && (b == "DPadLeft" || b == "DPadRight"))

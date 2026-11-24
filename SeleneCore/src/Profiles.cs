@@ -106,6 +106,7 @@ namespace Selene
         {
             var profile = new Profile { Id = Guid.NewGuid(), Name = name, Avatar = avatar, Theme = theme, Wallpaper = wallpaper, Created = DateTime.Now };
             store.Profiles.Add(profile);
+            shuffled.Add(profile.Id);   // the wallpaper just picked stays until the next start
             store.ActiveId = profile.Id;
             Save();
             return profile;
@@ -279,10 +280,28 @@ namespace Selene
             Save();
         }
 
+        // profiles whose wallpaper was shuffled this session: once each per start (an edit or a settings change keeps it)
+        private static readonly HashSet<Guid> shuffled = new HashSet<Guid>();
+
+        private static void ShuffleWallpaper(Profile p)
+        {
+            if (p == null || !shuffled.Add(p.Id)) return;
+            try
+            {
+                var next = Wallpapers.Shuffled(p.Wallpaper);
+                if (next == null) return;
+                p.Wallpaper = next;   // kept, so the next start picks another one and the background screen shows this one
+                Save();
+                HomeNav.Log("wallpaper shuffle: " + p.Name + " starts with " + Path.GetFileName(next));
+            }
+            catch (Exception ex) { logger.Warn("Selene Core: wallpaper shuffle failed: " + ex.Message); }
+        }
+
         // colors and wallpaper of the signed-in profile (Selene's own look before anyone signs in)
         public static void ApplyLook()
         {
             var p = Active;
+            ShuffleWallpaper(p);
             var theme = p != null && !string.IsNullOrEmpty(p.Theme) ? p.Theme : ThemePalettes.DefaultId;
             // developer switch: %TEMP%\selene-dev-theme holding a theme id overrides it (to check every screen in each theme)
             var dev = Path.Combine(Path.GetTempPath(), "selene-dev-theme");

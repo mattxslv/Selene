@@ -1,6 +1,8 @@
 # Builds Selene Core with the C# compiler that ships with Windows (.NET Framework 4.x), no Visual Studio needed.
 # Output: SeleneCore\bin\ (SeleneCore.dll + extension.yaml + icon + localization) - Playnite loads it from there in dev
 # (Settings > For developers > custom extensions), or `Toolbox.exe pack` turns it into an installable .pext.
+# -NoInstall: build into SeleneCore\obj\stage only (a candidate for the test copies; the real Playnite keeps loading bin\)
+param([switch]$NoInstall)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $core = Join-Path $root 'SeleneCore'
@@ -35,6 +37,7 @@ if ($LASTEXITCODE -ne 0) { throw "build failed" }
 if ($LASTEXITCODE -ne 0) { throw "helper build failed" }
 Copy-Item (Join-Path $core 'extension.yaml'), (Join-Path $core 'icon.png') $stage -Force
 Copy-Item (Join-Path $core 'Localization') $stage -Recurse -Force
+if ($NoInstall) { "built $stage\SeleneCore.dll (not installed)"; return }
 # Playnite keeps the loaded DLL open, but a file in use can still be renamed: move it aside and put the new one in its
 # place, so the next Playnite start loads this build however Playnite is restarted
 $dll = Join-Path $out 'SeleneCore.dll'

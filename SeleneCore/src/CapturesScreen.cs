@@ -198,7 +198,10 @@ namespace Selene
             {
                 var found = Scan(MaxItems);
                 if (System.IO.File.Exists(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "selene-dev-slow-captures"))) System.Threading.Thread.Sleep(2000);   // dev: a big capture folder's wait
-                dispatcher.BeginInvoke(new Action(() => { if (closed) return; all.Clear(); all.AddRange(found); Apply(); }), DispatcherPriority.Background);
+                // the grid (up to 150 tiles) is made after the screen's slide-in: made in the middle of it, it held one frame
+                // 130 ms (#194). Opened on one capture (a game's page), the viewer opens at once as before
+                Action fill = () => { if (closed) return; all.Clear(); all.AddRange(found); Apply(); };
+                dispatcher.BeginInvoke(new Action(() => { if (openPath != null) fill(); else Ui.AfterHold(fill); }), DispatcherPriority.Background);
             });
         }
 
@@ -581,7 +584,7 @@ namespace Selene
             page.Children.Clear();
             tiles.Clear();
             int shots = items.Count(c => !c.IsVideo), clips = items.Count - shots;
-            caption.Text = items.Count == 0 ? "Screenshots and clips from your games" : Count(shots, "screenshot") + (clips > 0 ? " · " + Count(clips, "clip") : "") + ", newest first";
+            caption.Text = items.Count == 0 ? "Screenshots and clips from your games" : (shots > 0 || clips == 0 ? Count(shots, "screenshot") + (clips > 0 ? " · " : "") : "") + (clips > 0 ? Count(clips, "clip") : "") + ", newest first";
             if (items.Count == 0)
             {
                 note.Text = all.Count > 0 ? (filter == 1 ? "No screenshots here. LB / RB show the clips, or everything." : "No clips here. LB / RB show the screenshots, or everything.")

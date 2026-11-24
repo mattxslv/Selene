@@ -54,7 +54,7 @@ namespace Selene
         private TextBlock shotLabel;
 
         public override bool Overlay { get { return true; } }
-        public override Brush OverlayShade { get { return Ink.Brush("SeleneScrimColor", 0.94); } }
+        public override Brush OverlayShade { get { return Ink.Brush("SeleneScrimColor", 0.98); } }
         public override bool WantsText { get { return step == 2 && !sending; } }
 
         // both sticks anywhere: a picture of the screen first, then the report over it

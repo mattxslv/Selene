@@ -104,7 +104,10 @@ namespace Selene
         {
             count = 0; longest = average = 0;
             List<Session> list;
-            if (!All().TryGetValue(id, out list) || list.Count == 0) return false;
+            // asked on every focus rest in Activity: what was read when the screen opened (All() reads every game's file again
+            // once a minute, which froze the screen in the middle of browsing)
+            var known = all != null && Features.On("activitysessions") ? all : All();
+            if (!known.TryGetValue(id, out list) || list.Count == 0) return false;
             count = list.Count;
             longest = list.Max(s => s.ElapsedSeconds);
             average = (ulong)list.Average(s => (double)s.ElapsedSeconds);

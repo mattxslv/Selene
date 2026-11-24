@@ -23,6 +23,7 @@ namespace Selene
             {
                 try
                 {
+                    if (HomeNav.Isolated) { HomeNav.Log("dev isolated: volume not changed"); return; }   // (a test copy beside a PC in use)
                     var v = Endpoint(); if (v == null) return;
                     var ctx = Guid.Empty;
                     v.SetMasterVolumeLevelScalar((float)Math.Max(0, Math.Min(1, value)), ref ctx);
@@ -86,6 +87,7 @@ namespace Selene
         // the device made the default for sound and media (not for calls: Windows keeps that one apart)
         public static bool SetDefault(string id)
         {
+            if (HomeNav.Isolated) { HomeNav.Log("dev isolated: output device not changed"); return false; }
             try
             {
                 var pc = (IPolicyConfig)Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("870af99c-171d-4f9e-af0d-e63df40c2bc9")));

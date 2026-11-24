@@ -56,7 +56,15 @@ namespace Selene
             {
                 // minimized = into the tray too: no taskbar button, only the hidden-icons area
                 if (w.WindowState == WindowState.Minimized)
-                    w.Dispatcher.BeginInvoke(new Action(() => { if (w.WindowState == WindowState.Minimized && w.IsVisible) HideToTray(); }));
+                    w.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        if (w.WindowState != WindowState.Minimized || !w.IsVisible) return;
+                        // Playnite minimizes itself as the game's window appears (Minimize after game startup): hiding right then
+                        // (panels closed, sessions muted, on the UI thread) froze the loading screen's fade to black, which then
+                        // jumped. It waits until the game has the screen.
+                        if (HomeNav.LaunchCoverUp) { if (!hideAfterLaunch) HomeNav.Log("tray: hiding waits until the game is shown"); hideAfterLaunch = true; return; }
+                        HideToTray();
+                    }));
                 else if (w.IsVisible) Shown();
             };
             Application.Current.SessionEnding += (s, e) => { reallyQuit = true; HomeNav.BeginQuit(); };
@@ -90,7 +98,7 @@ namespace Selene
             }
             // only when it was muted (going through every audio device on each activation took ~100 ms: a hitch whenever a
             // notification or a dialog handed the focus back)
-            w.Activated += (s, e) => { if (ownMuted && w.IsVisible && w.WindowState != WindowState.Minimized) SetOwnAudioMute(false); };
+            w.Activated += (s, e) => { if (ownMuted && !unmuting && w.IsVisible && w.WindowState != WindowState.Minimized) SetOwnAudioMute(false); };
             Application.Current.Exit += (s, e) => { if (tray != null) { tray.Visible = false; tray.Dispose(); } };
 
             // The theme builds its power panel only when it opens, so catch "Exit Playnite" at the moment it is pressed:
@@ -184,6 +192,16 @@ namespace Selene
 
         public static bool IsHidden { get { var w = Application.Current.MainWindow; return w != null && !w.IsVisible; } }
 
+        private static bool hideAfterLaunch;
+        // the launch is over: the game has the screen (hide now, unseen) or the launch ended without it (stay)
+        public static void LaunchEnded(bool gameShown)
+        {
+            if (!hideAfterLaunch) return;
+            hideAfterLaunch = false;
+            var w = Application.Current.MainWindow;
+            if (gameShown && w != null && w.IsVisible && w.WindowState == WindowState.Minimized) HideToTray();
+        }
+
         public static void HideToTray()
         {
             var w = Application.Current.MainWindow;
@@ -240,9 +258,58 @@ namespace Selene
                 var w = Application.Current.MainWindow;
                 if (w != null) HomeNav.FadeInRoot(w.Content as UIElement);
             }
-            SetOwnAudioMute(false);
-            if (Features.On("startrefresh")) HomeNav.RefreshLibrary("shown");
+            // quick return: back from a game, the home's fade-in isn't held up: the unmute (~100 ms going through every audio
+            // device) runs off the UI thread and only when muted, and the library update (a scan of the game folders) waits 5 s
+            bool fromGame = Features.On("quickreturn") && HomeNav.ReturningFromGame;
+            if (fromGame) UnmuteSoon(); else SetOwnAudioMute(false);
+            if (Features.On("startrefresh"))
+            {
+                if (fromGame) RefreshLater();
+                else HomeNav.RefreshLibrary("shown");
+            }
             if (tray != null) tray.Visible = false;
+        }
+
+        private static bool refreshWaiting;
+        private static void RefreshLater()
+        {
+            if (refreshWaiting) return;
+            refreshWaiting = true;
+            var t = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+            t.Tick += (s, e) =>
+            {
+                t.Stop();
+                refreshWaiting = false;
+                var w = Application.Current.MainWindow;
+                if (w == null || !w.IsVisible || w.WindowState == WindowState.Minimized || HomeNav.LaunchCoverUp) return;   // (done the next time Playnite shows)
+                HomeNav.RefreshLibrary("shown, after a game");
+            };
+            t.Start();
+        }
+
+        // Unmuted on a worker. A mute asked for meanwhile (hidden to the tray again) wins: the worker leaves it alone if any
+        // mute or unmute came after it was started, and the two never run at the same time.
+        private static readonly object muteLock = new object();
+        private static int muteSeq;
+        private static volatile bool unmuting;
+        private static void UnmuteSoon()
+        {
+            if (!ownMuted || HomeNav.Isolated) return;
+            int seq;
+            lock (muteLock) seq = muteSeq;
+            unmuting = true;
+            System.Threading.Tasks.Task.Factory.StartNew(() =>
+            {
+                try
+                {
+                    lock (muteLock)
+                    {
+                        if (muteSeq == seq) SetOwnAudioMuteLocked(false);
+                        else HomeNav.Log("tray: unmute left out (muted again meanwhile)");
+                    }
+                }
+                finally { unmuting = false; }
+            });
         }
 
         private static void OnThreadMessage(ref System.Windows.Interop.MSG msg, ref bool handled)
@@ -418,6 +485,11 @@ namespace Selene
         public static void UnmuteOnExit() { if (ownMuted && !HomeNav.Isolated) SetOwnAudioMute(false); }
 
         public static void SetOwnAudioMute(bool mute)
+        {
+            lock (muteLock) { muteSeq++; SetOwnAudioMuteLocked(mute); }
+        }
+
+        private static void SetOwnAudioMuteLocked(bool mute)
         {
             if (HomeNav.Isolated) mute = true;
             ownMuted = mute;

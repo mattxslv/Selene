@@ -494,17 +494,19 @@ namespace Selene
                 if (notice != null) { host.Children.Remove(notice); notice = null; }
                 var pill = Lifted(new Border
                 {
-                    CornerRadius = new CornerRadius(22), Padding = new Thickness(26, 11, 26, 13), MaxWidth = 900,
-                    Background = Ink.Brush("SeleneGlassColor", 0.94), BorderBrush = Ink.Brush("SeleneInkColor", 0.18), BorderThickness = new Thickness(1),
-                    HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, LegacyTasks.BannerUp ? 112 : 26, 0, 0),   // (under the old-tasks banner)
-                    Child = new TextBlock { Text = text, FontSize = 19, FontFamily = Body, Foreground = Ink.Brush("SeleneInkColor"), TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center },
+                    CornerRadius = new CornerRadius(22), Padding = new Thickness(26, 11, 26, 13), MaxWidth = 560,
+                    Background = Ink.Brush("SeleneGlassColor", 0.97), BorderBrush = Ink.Brush("SeleneInkColor", 0.18), BorderThickness = new Thickness(1),
+                    // where the progress cards show, under the top bar at the right (top centre it covered the filter tabs), below a card
+                    HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top,
+                    Margin = new Thickness(0, ProgressToast.NoticeTop + ProgressToast.CardRoom, ProgressToast.NoticeEdge, 0),
+                    Child = new TextBlock { Text = text, FontSize = 19, FontFamily = Body, Foreground = Ink.Brush("SeleneInkColor"), TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Left },
                     IsHitTestVisible = false
                 }, 30, 0.45);
                 Grid.SetRowSpan(pill, 99); Grid.SetColumnSpan(pill, 99);
                 Panel.SetZIndex(pill, 9999);
                 host.Children.Add(pill);
                 notice = pill;
-                Rise(pill, 0, 12, 260);
+                Slide(pill, 26, 0, 0, 1, 260);   // (in from the edge, as the cards come)
                 NotifySound();
                 var gone = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(ms) };
                 gone.Tick += (s2, e2) =>
@@ -689,6 +691,8 @@ namespace Selene
         // a controller press (or release) exactly as Playnite's controller manager sends it: a GameControllerInputEventArgs through the
         // InputManager, so Selene's pad handling and the lists treat it as a real press (held-direction steps, automated runs)
         private static Type padArgs, padInput, padState;
+        public static bool SendingPad;
+        private static readonly bool DevPadLog = System.IO.File.Exists(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "selene-dev-isolated"));   // a press Selene sends itself is going through the input now (no hand on a controller)
         public static bool SendPad(string button, bool down)
         {
             try
@@ -705,18 +709,32 @@ namespace Selene
                     }
                 if (padArgs == null || padInput == null || padState == null) { HomeNav.Log("pad: Playnite's controller types not found"); return false; }
                 var key = button == "DPadLeft" ? System.Windows.Input.Key.Left : button == "DPadRight" ? System.Windows.Input.Key.Right : button == "DPadUp" ? System.Windows.Input.Key.Up
-                    : button == "DPadDown" ? System.Windows.Input.Key.Down : button == "A" ? System.Windows.Input.Key.Enter : System.Windows.Input.Key.Escape;
+                    : button == "DPadDown" ? System.Windows.Input.Key.Down : System.Windows.Input.Key.None;
                 var names = Enum.GetNames(padState);
                 var state = Enum.Parse(padState, down ? (names.FirstOrDefault(n => n.IndexOf("Press", StringComparison.OrdinalIgnoreCase) >= 0) ?? names[0])
                                                       : (names.FirstOrDefault(n => n.IndexOf("Releas", StringComparison.OrdinalIgnoreCase) >= 0) ?? names[names.Length - 1]));
-                // both stages, each its own event, as Playnite sends them: Selene's row moves on the Preview, its pad handling
-                // (repeats, holds) reads the KeyDown
-                foreach (var stage in down ? new[] { System.Windows.Input.Keyboard.PreviewKeyDownEvent, System.Windows.Input.Keyboard.KeyDownEvent }
-                                           : new[] { System.Windows.Input.Keyboard.PreviewKeyUpEvent, System.Windows.Input.Keyboard.KeyUpEvent })
+                // What Playnite does for a real press (its GameControllerManager, read from Playnite.dll): ONE controller event,
+                // a KeyDown (or KeyUp) with no key at all, then, for a direction, the arrow key as a keyboard message, the copy
+                // Selene drops when it handled the press (KeyIsPadCopy). This sent a Preview and a KeyDown, both carrying the
+                // arrow key: WPF turns an unhandled Preview into a KeyDown of its own, so a press was handled twice (held-direction
+                // steps and hint clicks moved two places, B closed a page and the screen under it).
+                var e = (System.Windows.Input.KeyEventArgs)Activator.CreateInstance(padArgs, System.Windows.Input.Key.None, state, Enum.Parse(padInput, button));
+                e.RoutedEvent = down ? System.Windows.Input.Keyboard.KeyDownEvent : System.Windows.Input.Keyboard.KeyUpEvent;
+                SendingPad = true;
+                bool took;
+                try { took = System.Windows.Input.InputManager.Current.ProcessInput(e); }
+                finally { SendingPad = false; }
+                if (DevPadLog) HomeNav.Log("pad sent: " + button + (down ? " down" : " up") + " handled=" + took + " copy=" + (key != System.Windows.Input.Key.None && !KeyIsPadCopy()) + " focus=" + (System.Windows.Input.Keyboard.FocusedElement != null ? System.Windows.Input.Keyboard.FocusedElement.GetType().Name : "none") + " source=" + (System.Windows.Input.Keyboard.PrimaryDevice.ActiveSource != null));
+                if (key != System.Windows.Input.Key.None)
                 {
-                    var e = (System.Windows.Input.KeyEventArgs)Activator.CreateInstance(padArgs, key, state, Enum.Parse(padInput, button));
-                    e.RoutedEvent = stage;
-                    System.Windows.Input.InputManager.Current.ProcessInput(e);
+                    var keyboard = System.Windows.Input.Keyboard.PrimaryDevice;
+                    var source = keyboard.ActiveSource ?? (Application.Current.MainWindow != null ? PresentationSource.FromVisual(Application.Current.MainWindow) : null);
+                    if (source != null)
+                    {
+                        var copy = new System.Windows.Input.KeyEventArgs(keyboard, source, Environment.TickCount, key) { RoutedEvent = down ? System.Windows.Input.Keyboard.PreviewKeyDownEvent : System.Windows.Input.Keyboard.PreviewKeyUpEvent };
+                        var copied = System.Windows.Input.InputManager.Current.ProcessInput(copy);   // (WPF raises its KeyDown / KeyUp after the Preview)
+                        if (DevPadLog) HomeNav.Log("pad sent: keyboard copy " + key + " handled=" + copied);
+                    }
                 }
                 return true;
             }
@@ -1075,6 +1093,9 @@ namespace Selene
         private readonly TranslateTransform slide = new TranslateTransform();
         private int selected = -1;
 
+        // rows stacked on one screen line their choices up: each title gets the same width
+        public void TitleWidth(double w) { var t = Root.Children[0] as TextBlock; if (t != null) t.MinWidth = w; }
+
         public Segmented(string title, string[] options, string button)
         {
             Root.Children.Add(new TextBlock { Text = title.ToUpperInvariant(), FontSize = 13, FontWeight = FontWeights.SemiBold, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.55), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 16, 0) });
@@ -1179,20 +1200,25 @@ namespace Selene
         // actions: pairs of button + label, e.g. "A", "Install"; the first is drawn as the main one
         public void Show(string icon, Tone tone, string name, string status, string text, string noteText, params string[] buttons)
         {
-            var key = tone == Tone.Success ? "SeleneSuccessColor" : tone == Tone.Muted ? "SeleneInkColor" : "GlyphColor";
+            var key = tone == Tone.Success ? "SeleneSuccessColor" : tone == Tone.Muted ? "SeleneInkColor" : "SeleneAccentInkColor";   // (the accent made readable on the glass)
             if (tone == Tone.Warning)
             {
                 circle.Fill = new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0x6B, 0x6B));
                 glyph.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
                 chipText.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
                 chip.Background = new SolidColorBrush(Color.FromArgb(0x2E, 0xFF, 0x6B, 0x6B));
+                chip.BorderThickness = new Thickness(0);
             }
             else
             {
                 circle.Fill = Ink.Brush(key, 0.16);
                 glyph.Foreground = Ink.Brush(key);
                 chipText.Foreground = Ink.Brush(key);
-                chip.Background = Ink.Brush(key, 0.16);
+                // on the glass the accent ink is made for (here it sits straight on the wallpaper: a light theme's was faint), a
+                // thin ring of the accent around it
+                chip.Background = Ink.Brush("SeleneGlassColor", 0.9);
+                chip.BorderBrush = Ink.Brush(key, 0.45);
+                chip.BorderThickness = new Thickness(1);
             }
             glyph.Text = icon;
             title.Text = name;
@@ -1229,7 +1255,7 @@ namespace Selene
             var badge = new Grid { Width = 84, Height = 84, HorizontalAlignment = HorizontalAlignment.Center };
             badge.Children.Add(new Ellipse { Fill = warning ? (Brush)new SolidColorBrush(Color.FromArgb(0x30, 0xFF, 0x6B, 0x6B)) : Ink.Brush("GlyphColor", 0.19) });
             // the icon centred by its ink (material: a Material Icons code, else Segoe MDL2)
-            var glyph = Ui.Glyph(icon, material ? Ui.Icons : Ui.Glyphs, 36, Ink.Brush("GlyphColor"));
+            var glyph = Ui.Glyph(icon, material ? Ui.Icons : Ui.Glyphs, 36, Ink.Brush("SeleneAccentInkColor"));
             if (warning) glyph.SetResourceReference(glyph is System.Windows.Shapes.Shape ? System.Windows.Shapes.Shape.FillProperty : TextBlock.ForegroundProperty, "WarningBrush");
             badge.Children.Add(glyph);
             col.Children.Add(badge);
@@ -1259,8 +1285,12 @@ namespace Selene
             ShowFocus();
         }
 
+        private DateTime openedAt = DateTime.MinValue;
+        private bool unasked;
+        public Dialog Unasked() { unasked = true; return this; }   // it comes up on its own (not from a press): A ignored for a moment
         public void Open(Panel host)
         {
+            openedAt = DateTime.Now;
             host.Children.Add(Root);
             Root.Opacity = 0;
             Ui.Fade(Root, 1, 200);
@@ -1287,6 +1317,9 @@ namespace Selene
             if (done) return;
             if (bodyScroll != null && (b == "DPadDown" || b == "DPadUp")) { bodyScroll.ScrollToVerticalOffset(bodyScroll.VerticalOffset + (b == "DPadDown" ? 60 : -60)); return; }
             if ((b == "DPadLeft" && onYesButton) || (b == "DPadRight" && !onYesButton)) { onYesButton = !onYesButton; Ui.Tick(); ShowFocus(); return; }
+            // (a question that came up on its own while you were playing around: an A already on its way meant the game under it,
+            // not this answer, e.g. "Download game media?" started its downloads)
+            if (b == "A" && unasked && (DateTime.Now - openedAt).TotalMilliseconds < 600) return;
             if (b == "A") Answer(onYesButton);
             else if (b == "B") Answer(false);
         }
@@ -1318,7 +1351,7 @@ namespace Selene
             // glass, deep enough to read over a busy wallpaper (the near-clear face lost its words in the art)
             Face = new Border
             {
-                CornerRadius = new CornerRadius(radius), Background = Ink.Brush("SeleneGlassColor", 0.72),
+                CornerRadius = new CornerRadius(radius), Background = Ink.Brush("SeleneGlassColor", 0.86),
                 BorderBrush = Ink.Brush("SeleneInkColor", 0.16), BorderThickness = new Thickness(1)
             };
             ring = new Border

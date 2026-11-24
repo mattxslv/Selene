@@ -16,6 +16,10 @@
                             <!-- (a Loaded trigger: Selene Core then loads the cover off the UI thread) -->
                             <Image.Triggers><EventTrigger RoutedEvent="FrameworkElement.Loaded"><BeginStoryboard><Storyboard><DoubleAnimation Storyboard.TargetProperty="Opacity" To="1" Duration="0" FillBehavior="Stop"/></Storyboard></BeginStoryboard></EventTrigger></Image.Triggers>
                         </Image>
+                        <!-- a game with no cover at all: its name over Selene's own cover (shown by Selene Core, TileCovers) -->
+                        <TextBlock x:Name="SeleneCoverName" Text="{Binding DisplayName}" Visibility="Collapsed" IsHitTestVisible="False" Foreground="{DynamicResource SeleneInkBrush}"
+                                   FontFamily="{DynamicResource FontMain}" FontSize="17" FontWeight="SemiBold" TextAlignment="Center" TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
+                                   MaxHeight="66" VerticalAlignment="Bottom" Margin="12,0,12,16"/>
                         <Border Background="{DynamicResource SeleneScrim65Brush}" x:Name="BorderDarken" Visibility="Collapsed" />
                         <TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis"
                                    Visibility="{Settings Fullscreen.ShowGameTitles}"

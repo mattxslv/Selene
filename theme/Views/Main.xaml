@@ -74,7 +74,9 @@
                                 </Border>
 
                                 <!-- logo, chips and genres come in together each time the game changes (the logo's binding signals it) -->
-                                <StackPanel Grid.Row="1" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="100,0,0,0" Width="840">
+                                <!-- (Selene Core fades this out while another tab's first game's picture loads: its name came in over the last game's art) -->
+                                <Grid x:Name="SeleneLibraryInfoGate" Grid.Row="1">
+                                <StackPanel HorizontalAlignment="Left" VerticalAlignment="Center" Margin="100,0,0,0" Width="840">
                                     <StackPanel.RenderTransform><TranslateTransform x:Name="LibraryInfoShift" X="0"/></StackPanel.RenderTransform>
                                     <StackPanel.Triggers>
                                         <EventTrigger RoutedEvent="Binding.TargetUpdated">
@@ -185,6 +187,7 @@
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
                                 </StackPanel>
+                                </Grid>
 
                                 <!-- achievements of the selected game (Playnite Achievements), bottom right above the covers (clear of the chosen one, which grows): a trophy badge
                                      (gold once every one is earned), the count large with the share beside it, a glowing bar -->
@@ -384,7 +387,9 @@
                                             </Style.Triggers>
                                         </Style>
                                     </StackPanel.Style>
-                                    <TextBlock FontSize="34" Text="{DynamicResource LOCNoGamesFound}" TextAlignment="Center" Margin="48,26,48,28" Style="{StaticResource TextBlockBaseStyle}" Foreground="{DynamicResource SeleneInkBrush}" FontFamily="{StaticResource FontMain}"/>
+                                    <!-- an empty tab: Selene's words, as Spotlight's (Playnite's was "No games found for specified search/filter criteria") -->
+                                    <TextBlock FontSize="34" Text="Nothing in this tab yet" TextAlignment="Center" Margin="48,26,48,6" Style="{StaticResource TextBlockBaseStyle}" Foreground="{DynamicResource SeleneInkBrush}" FontFamily="{StaticResource FontMain}"/>
+                                    <TextBlock FontSize="20" Text="LB / RB show the other tabs." TextAlignment="Center" Margin="48,0,48,28" Style="{StaticResource TextBlockBaseStyle}" Foreground="{DynamicResource SeleneInk60Brush}" FontFamily="{StaticResource FontMain}"/>
                                 </StackPanel>
 
                                 <!-- Playnite's filter panels open over the left side -->
@@ -550,6 +555,10 @@
                                                                                     <ImageBrush Stretch="UniformToFill" AlignmentY="Top"/>
                                                                                 </Border.Background>
                                                                             </Border>
+                                                                            <!-- a game with no cover at all: its name over Selene's own cover (shown by Selene Core, TileCovers) -->
+                                                                            <TextBlock x:Name="SeleneCoverName" Text="{Binding DisplayName}" Visibility="Collapsed" IsHitTestVisible="False" Foreground="{DynamicResource SeleneInkBrush}"
+                                                                                       FontFamily="{DynamicResource FontMain}" FontSize="17" FontWeight="SemiBold" TextAlignment="Center" TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
+                                                                                       MaxHeight="66" VerticalAlignment="Bottom" Margin="12,0,12,16"/>
                                                                             <!-- square tile art from Selene's media folder; the cover stays underneath as the fallback -->
                                                                             <TextBlock x:Name="SquarePath" Tag="{DynamicResource SeleneSquareRoot}" Visibility="Collapsed">
                                                                                 <TextBlock.Style>
@@ -1226,10 +1235,10 @@
                                                                     <Storyboard>
                                                                         <DoubleAnimationUsingKeyFrames Storyboard.TargetProperty="Opacity">
                                                                             <LinearDoubleKeyFrame KeyTime="0:0:0" Value="0"/>
-                                                                            <LinearDoubleKeyFrame KeyTime="0:0:0.3" Value="0"/>
-                                                                            <LinearDoubleKeyFrame KeyTime="0:0:0.7" Value="1"/>
+                                                                            <LinearDoubleKeyFrame KeyTime="0:0:0.1" Value="0"/>
+                                                                            <LinearDoubleKeyFrame KeyTime="0:0:0.4" Value="1"/>
                                                                         </DoubleAnimationUsingKeyFrames>
-                                                                        <DoubleAnimation Storyboard.TargetName="LogoShift" Storyboard.TargetProperty="X" From="-30" To="0" BeginTime="0:0:0.3" Duration="0:0:0.4">
+                                                                        <DoubleAnimation Storyboard.TargetName="LogoShift" Storyboard.TargetProperty="X" From="-30" To="0" BeginTime="0:0:0.1" Duration="0:0:0.3">
                                                                             <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
                                                                         </DoubleAnimation>
                                                                     </Storyboard>
@@ -1296,6 +1305,7 @@
                                                                     <Setter Property="Text" Value="Play"/>
                                                                     <Style.Triggers>
                                                                         <DataTrigger Binding="{Binding SelectedGame.IsInstalled}" Value="False"><Setter Property="Text" Value="Install"/></DataTrigger>
+                                                                        <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource AncestorType=Button}}" Value="noinstall"><Setter Property="Text" Value="Not installed"/></DataTrigger>
                                                                         <DataTrigger Binding="{Binding SelectedGame.IsRunning}" Value="True"><Setter Property="Text" Value="Resume"/></DataTrigger>
                                                                     </Style.Triggers>
                                                                 </Style>
@@ -1457,7 +1467,7 @@
                                             </Style>
                                         </Grid.Resources>
                                         <StackPanel>
-                                            <TextBlock Text="No screenshots for this game" FontSize="18" FontFamily="Segoe UI" Foreground="{DynamicResource SeleneInk60Brush}" Visibility="{DynamicResource SeleneShotsNone}"/>
+                                            <TextBlock x:Name="SeleneShotsNoneText" Text="No screenshots for this game" FontSize="18" FontFamily="{DynamicResource FontMain}" Foreground="{DynamicResource SeleneInk60Brush}" Visibility="{DynamicResource SeleneShotsNone}"/>
                                             <!-- (the room for the focused tile's ring and growth is inside the strip's content: a padding on the scroller
                                                  sat outside its clip, so the first tile's ring was cut) -->
                                             <ScrollViewer x:Name="SeleneShotStrip" Width="{DynamicResource SeleneShotStripWidth}" Margin="-14,-14,0,0" Padding="0" Focusable="False" CanContentScroll="False"

@@ -42,7 +42,7 @@ namespace Selene
         private Dialog ask;
 
         public override bool Overlay { get { return true; } }
-        public override Brush OverlayShade { get { return Ink.Brush("SeleneScrimColor", 0.92); } }
+        public override Brush OverlayShade { get { return Ink.Brush("SeleneScrimColor", 0.97); } }
 
         // Selene's game options for a game, or false (switched off, or no game) so Playnite's own menu opens instead
         public static bool Open(Guid id) { return Open(id, null); }
@@ -95,7 +95,7 @@ namespace Selene
             var api = HomeNav.Api;
             var l = new Level { Title = "Game options" };
             if (game.IsInstalled) l.Entries.Add(new Entry { Label = "Play", Icon = 0xe037, Run = () => { var id = game.Id; LoginScene.FinishThen(() => HomeNav.StartGameNow(id)); } });
-            else l.Entries.Add(new Entry { Label = "Install", Icon = 0xe2c4, Run = () => { var id = game.Id; LoginScene.FinishThen(() => api.InstallGame(id)); } });
+            else l.Entries.Add(new Entry { Label = "Install", Icon = 0xe2c4, Run = () => { var id = game.Id; LoginScene.FinishThen(() => LocalGames.Install(id)); } });
             if (Features.On("achievements") && AchievementsData.Available())
                 l.Entries.Add(new Entry { Label = "Achievements", Sub = "What you've unlocked in this game.", Icon = 0xea65, Opens = true, Run = OpenAchievements });
             if (move != null) { var m = move; l.Entries.Add(new Entry { Label = "Move", Sub = "Change its place on Spotlight.", Icon = 0xe8d4, Run = () => LoginScene.FinishThen(m) }); }

@@ -20,6 +20,7 @@
     <Color x:Key="SeleneInkColor">#FFDDF7FF</Color>
     <Color x:Key="SeleneScrimColor">#FF06060C</Color>
     <Color x:Key="SeleneGlassColor">#FF080910</Color>
+    <Color x:Key="SeleneAccentInkColor">#FF82FB9C</Color>
     <Color x:Key="SeleneSuccessColor">#FF4FE88F</Color>
 
     <SolidColorBrush x:Key="TextBrush" Color="#FFDDF7FF" />
@@ -41,7 +42,7 @@
     <SolidColorBrush x:Key="SeleneScrimBrush" Color="#FF06060C" />
     <SolidColorBrush x:Key="SeleneScrim65Brush" Color="#FF06060C" Opacity="0.65" />
     <SolidColorBrush x:Key="SeleneScrim45Brush" Color="#FF06060C" Opacity="0.45" />
-    <SolidColorBrush x:Key="SeleneGlassBrush" Color="#FF080910" Opacity="0.75" />
+    <SolidColorBrush x:Key="SeleneGlassBrush" Color="#FF080910" Opacity="0.86" />
     <SolidColorBrush x:Key="SeleneGlassSolidBrush" Color="#FF080910" Opacity="0.88" />
     <SolidColorBrush x:Key="SeleneGlassLightBrush" Color="#FF080910" Opacity="0.45" />
     <SolidColorBrush x:Key="SeleneSuccessBrush" Color="#FF4FE88F" />

@@ -286,11 +286,52 @@ namespace Selene
             { "NOK", "kr " }, { "UAH", "₴" }, { "KZT", "₸" }, { "NZD", "NZ$" }, { "HKD", "HK$" }, { "TWD", "NT$" }, { "CNY", "¥" }, { "CLP", "CLP$ " },
             { "COP", "COL$ " }, { "PEN", "S/ " }
         };
+        // every price in one shape, whichever store it's from (a row read "57.25 SR", "SAR 21.41" and "$0.49"): the symbol, then
+        // the amount; dollars say US$ when another currency is chosen (a store without the region's prices)
         public static string Money(double amount, string currency)
         {
             string sym;
-            if (!Symbols.TryGetValue(currency ?? "", out sym)) sym = (currency ?? "") + " ";
-            return sym + amount.ToString(amount == Math.Floor(amount) && amount >= 1000 ? "N0" : "N2", CultureInfo.InvariantCulture);
+            if (currency == "USD" && CurrencyCode != "USD") sym = "US$";
+            else if (!Symbols.TryGetValue(currency ?? "", out sym)) sym = (currency ?? "") + " ";
+            bool whole = amount == Math.Floor(amount) && (amount >= 1000 || Array.IndexOf(Whole, currency) >= 0);
+            return sym + amount.ToString(whole ? "N0" : "N2", CultureInfo.InvariantCulture);
+        }
+        private static readonly string[] Whole = { "JPY", "KRW", "IDR", "VND", "CLP", "COP", "TWD", "KZT" };   // (no cents shown: "¥1,980")
+
+        // a price as a store's page writes it ("57,25 SR", "Rp 123 000", "CDN$ 9.99"), in Money's shape; left as it is when its
+        // amount can't be read
+        private static readonly Dictionary<string, string> SteamMarks = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "$", "USD" }, { "US$", "USD" }, { "€", "EUR" }, { "£", "GBP" }, { "₱", "PHP" }, { "¥", "JPY" }, { "CDN$", "CAD" }, { "C$", "CAD" },
+            { "A$", "AUD" }, { "R$", "BRL" }, { "₹", "INR" }, { "₩", "KRW" }, { "S$", "SGD" }, { "Rp", "IDR" }, { "RM", "MYR" }, { "฿", "THB" },
+            { "Mex$", "MXN" }, { "SR", "SAR" }, { "SAR", "SAR" }, { "AED", "AED" }, { "QR", "QAR" }, { "KD", "KWD" }, { "₪", "ILS" }, { "R", "ZAR" },
+            { "zł", "PLN" }, { "CHF", "CHF" }, { "kr", "NOK" }, { "₴", "UAH" }, { "₸", "KZT" }, { "NZ$", "NZD" }, { "HK$", "HKD" }, { "NT$", "TWD" },
+            { "₫", "VND" }, { "CLP$", "CLP" }, { "COL$", "COP" }, { "S/.", "PEN" }, { "S/", "PEN" }
+        };
+
+        internal static string Tidy(string shown)
+        {
+            if (string.IsNullOrEmpty(shown)) return shown;
+            var m = System.Text.RegularExpressions.Regex.Match(shown, "\\d[\\d\\s.,'\u00A0\u202F]*");
+            if (!m.Success) return shown;
+            var mark = (shown.Substring(0, m.Index) + shown.Substring(m.Index + m.Length)).Trim(' ', '\u00A0', '\u202F', '.', ',');
+            if (mark.EndsWith("$") && mark.Length > 1 && !SteamMarks.ContainsKey(mark)) mark = mark.TrimEnd('$');
+            string code;
+            if (!SteamMarks.TryGetValue(mark, out code))
+            {
+                foreach (var c in Currencies) if (string.Equals(c.Code, mark, StringComparison.OrdinalIgnoreCase)) { code = c.Code; break; }
+                if (code == null) return shown;
+            }
+            if (mark == "¥" && CurrencyCode == "CNY") code = "CNY";
+            // the decimal mark: the last . or , with one or two digits after it (else they're thousands)
+            var digits = System.Text.RegularExpressions.Regex.Replace(m.Value, "[\\s'\u00A0\u202F]", "").TrimEnd('.', ',');
+            int last = Math.Max(digits.LastIndexOf('.'), digits.LastIndexOf(','));
+            string whole = digits, part = "";
+            if (last >= 0 && digits.Length - last - 1 <= 2 && digits.Length - last - 1 > 0) { whole = digits.Substring(0, last); part = digits.Substring(last + 1); }
+            whole = whole.Replace(".", "").Replace(",", "");
+            double amount;
+            if (!double.TryParse(whole + (part.Length > 0 ? "." + part : ""), NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out amount)) return shown;
+            return Money(amount, code);
         }
 
         private static string Open(string protocol, string appLink, string web)
@@ -315,8 +356,8 @@ namespace Selene
                 if (int.TryParse(Match(block, "data-discount=\"(\\d+)\"") ?? "", out pct)) item.Discount = pct;
                 var final = Match(block, "discount_final_price[^\"]*\">([^<]*)<");
                 var original = Match(block, "discount_original_price\">([^<]*)<");
-                if (!string.IsNullOrEmpty(final)) item.Price = WebUtility.HtmlDecode(final.Trim());
-                if (item.Discount > 0 && !string.IsNullOrEmpty(original)) item.OldPrice = WebUtility.HtmlDecode(original.Trim());
+                if (!string.IsNullOrEmpty(final)) item.Price = Tidy(WebUtility.HtmlDecode(final.Trim()));
+                if (item.Discount > 0 && !string.IsNullOrEmpty(original)) item.OldPrice = Tidy(WebUtility.HtmlDecode(original.Trim()));
                 if (item.Price != null && item.Price.IndexOf("free", StringComparison.OrdinalIgnoreCase) >= 0) item.Price = "Free";
                 if (item.Price == null)
                 {
@@ -364,6 +405,17 @@ namespace Selene
                     if (S(At(k, "type")) == "OfferImageWide" || (item.Image == null && S(At(k, "type")) == "Thumbnail")) item.Image = S(At(k, "url"));
                 var pct = (int)Num(At(offer, "discountSetting", "discountPercentage"));   // 0 = free
                 string orig = S(At(e, "price", "totalPrice", "fmtPrice", "originalPrice")), disc = S(At(e, "price", "totalPrice", "fmtPrice", "discountPrice"));
+                // in the same shape as the other stores' prices (Epic writes "SAR 21.41"): its amounts in the currency's smallest unit
+                var total = At(e, "price", "totalPrice");
+                var cur = S(At(total, "currencyCode"));
+                if (!string.IsNullOrEmpty(cur) && At(total, "originalPrice") != null)
+                {
+                    var places = At(total, "currencyInfo", "decimals");
+                    double unit = Math.Pow(10, places != null ? (int)Num(places) : 2);
+                    orig = Money(Num(At(total, "originalPrice")) / unit, cur);
+                    if (At(total, "discountPrice") != null) disc = Money(Num(At(total, "discountPrice")) / unit, cur);
+                }
+                else { orig = Tidy(orig); disc = Tidy(disc); }
                 DateTime end, start;
                 bool hasEnd = DateTime.TryParse(S(At(offer, "endDate")), CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal, out end);
                 bool hasStart = DateTime.TryParse(S(At(offer, "startDate")), CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal, out start);
@@ -403,7 +455,7 @@ namespace Selene
         // GOG's catalog (prices in dollars outside its own regions)
         private static List<StoreItem> Gog(string query, int page)
         {
-            var data = Get("https://catalog.gog.com/v1/catalog?limit=30&productType=in:game,pack&locale=en-US&countryCode=" + Country + "&page=" + (page + 1) + "&" + query);
+            var data = Get("https://catalog.gog.com/v1/catalog?limit=30&productType=in:game,pack&locale=en-US&countryCode=" + Country + "&currencyCode=" + CurrencyCode + "&page=" + (page + 1) + "&" + query);
             var items = new List<StoreItem>();
             foreach (var p in A(At(data, "products")))
             {
@@ -412,11 +464,19 @@ namespace Selene
                 var item = new StoreItem { Store = "gog", StoreName = "GOG", Id = S(At(p, "id")), Title = S(At(p, "title")), Image = S(At(p, "coverHorizontal")) };
                 var shot = A(At(p, "screenshots")).Select(S).FirstOrDefault(x => x != null);
                 if (shot != null) item.Backdrop = shot.Replace("{formatter}", "1600");   // 1600 px wide
-                item.Price = S(At(p, "price", "final"));
+                // its amounts with their currency (the region's when GOG has it, else dollars), in the same shape as the other stores'
+                var final = At(p, "price", "finalMoney");
+                var cur = S(At(final, "currency"));
+                item.Price = final != null && cur != null ? Money(Num(At(final, "amount")), cur) : Tidy(S(At(p, "price", "final")));
                 var disc = S(At(p, "price", "discount"));
                 int pct;
-                if (!string.IsNullOrEmpty(disc) && int.TryParse(disc.Trim('-', '%'), out pct) && pct > 0) { item.Discount = pct; item.OldPrice = S(At(p, "price", "base")); }
-                if (item.Price == "$0.00") { item.Price = "Free"; }
+                if (!string.IsNullOrEmpty(disc) && int.TryParse(disc.Trim('-', '%'), out pct) && pct > 0)
+                {
+                    item.Discount = pct;
+                    var based = At(p, "price", "baseMoney");
+                    item.OldPrice = based != null && S(At(based, "currency")) != null ? Money(Num(At(based, "amount")), S(At(based, "currency"))) : Tidy(S(At(p, "price", "base")));
+                }
+                if (final != null ? Num(At(final, "amount")) == 0 && S(At(final, "amount")) != null : item.Price == "$0.00") { item.Price = "Free"; }
                 item.Link = Open("goggalaxy", "goggalaxy://openStoreUrl/" + link.Replace("https://", ""), link);
                 item.WebLink = link;
                 items.Add(item);
@@ -748,6 +808,8 @@ namespace Selene
                 var saved = new JavaScriptSerializer { MaxJsonLength = int.MaxValue }.Deserialize<Saved>(File.ReadAllText(DiskFile));
                 if (saved == null || saved.Lists == null) return;
                 foreach (var pair in saved.Lists) lists[pair.Key] = pair.Value;
+                // (saved by an older version: its prices in the stores' own shapes)
+                foreach (var item in saved.Lists.Values.Where(l => l != null).SelectMany(l => l).Where(i => i != null)) { item.Price = Tidy(item.Price); item.OldPrice = Tidy(item.OldPrice); }
                 loadedAt = saved.At.ToLocalTime();
                 FromDisk = true;
             }

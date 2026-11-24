@@ -28,10 +28,12 @@ namespace Selene
         private readonly List<Tile> moreTiles = new List<Tile>();
         private readonly List<StoreItem> more;
         private readonly TranslateTransform pageShift = new TranslateTransform();
+        private StackPanel headerCol;   // the name, price and buttons: faded while the page is lifted for "More from" (cut by the screen's top edge)
         private readonly DispatcherTimer slides = new DispatcherTimer { Interval = TimeSpan.FromSeconds(6) };
         private StoreData.Elsewhere elsewhere;
         private WebTrailer trailer;
         private Grid trailerHost;
+        private Border trailerShade;
         private int shot, moreIndex, zone;   // zone 0: the screenshots, 1: more from the store
         // the buttons (Buy / Play, Web page) are where the focus starts; Down goes to the screenshots, Down again to "More from"
         private readonly List<Border> pills = new List<Border>();
@@ -58,6 +60,8 @@ namespace Selene
             GradientStops = { new GradientStop(Colors.Black, 0), new GradientStop(Colors.Black, 0.4), new GradientStop(Color.FromArgb(0x60, 0, 0, 0), 0.55), new GradientStop(Color.FromArgb(0, 0, 0, 0), 0.72) }
         };
         private bool peeking;
+        // the foot under the hints: while the row only peeks, it fades out above "Back" / "Select" instead of sitting behind them
+        private Border foot;
 
         private void Peek(bool on, bool animate)
         {
@@ -70,6 +74,7 @@ namespace Selene
             if (!on) fade.Completed += (s, e) => { if (!peeking && ReferenceEquals(moreSection.OpacityMask, peekFade)) moreSection.OpacityMask = null; };
             peeking = on;
             peekFade.BeginAnimation(LinearGradientBrush.EndPointProperty, fade);
+            if (foot != null) foot.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(on ? 1 : 0, ms) { EasingFunction = Ui.Out() });
             Ui.BlurTo(moreRow, on ? 5 : 0, (int)ms.TotalMilliseconds);
         }
 
@@ -102,6 +107,15 @@ namespace Selene
                 IsHitTestVisible = false,
                 Background = new LinearGradientBrush(new GradientStopCollection { Ink.Stop("SeleneScrimColor", 0, 0.55), Ink.Stop("SeleneScrimColor", 0.9, 1) }, 90)
             });
+            // while the trailer plays, the words' side darkens further: a moving, bright picture showed through the name and
+            // the description (fixed in pixels: the words sit at the left whatever the screen's width)
+            var words = new LinearGradientBrush { MappingMode = BrushMappingMode.Absolute, StartPoint = new Point(0, 0), EndPoint = new Point(1500, 0) };
+            words.GradientStops.Add(Ink.Stop("SeleneScrimColor", 0.75, 0));
+            words.GradientStops.Add(Ink.Stop("SeleneScrimColor", 0.7, 0.55));
+            words.GradientStops.Add(Ink.Stop("SeleneScrimColor", 0.35, 0.72));
+            words.GradientStops.Add(Ink.Stop("SeleneScrimColor", 0, 1));
+            trailerShade = new Border { IsHitTestVisible = false, Opacity = 0, Background = words };
+            Root.Children.Add(trailerShade);
 
             // on a canvas, as wide as the screen and taller: a page laid out in the screen's own grid got clipped to the screen,
             // and the clip moved up with it (the "More from" row stayed cut off even after gliding up)
@@ -113,6 +127,7 @@ namespace Selene
 
             // left: the store, the name, the facts, the price, the description, the buttons
             var col = new StackPanel { HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(Side, 120, 0, 0), MaxWidth = 860 };
+            headerCol = col;
             var storeLine = new StackPanel { Orientation = Orientation.Horizontal };
             var logo = PlatformIcons.For(item.StoreName);
             if (logo != null) storeLine.Children.Add(new System.Windows.Shapes.Path { Data = logo, Width = 20, Height = 20, Stretch = Stretch.Uniform, Fill = Ink.Brush("GlyphColor"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) });
@@ -134,7 +149,7 @@ namespace Selene
                 col.Children.Add(new TextBlock { Text = item.DisplayNote, FontSize = 18, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.7), Margin = new Thickness(0, 10, 0, 0) });
             // the cheapest price in another store (filled in when found)
             elsewhereText = new TextBlock { FontSize = 18, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.85), VerticalAlignment = VerticalAlignment.Center };
-            var elsewhereRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0), Visibility = Visibility.Collapsed, Opacity = 0 };
+            var elsewhereRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0), Visibility = Visibility.Hidden, Opacity = 0 };   // (its room kept: the buttons jumped down when it came)
             elsewhereRow.Children.Add(Ui.Prompt("Y", ""));
             ((StackPanel)elsewhereRow.Children[0]).Margin = new Thickness(0);
             elsewhereRow.Children.Add(elsewhereText);
@@ -181,6 +196,12 @@ namespace Selene
             }
             page.Children.Add(bottom);
 
+            foot = new Border
+            {
+                Height = 150, VerticalAlignment = VerticalAlignment.Bottom, IsHitTestVisible = false, Opacity = peeking ? 1 : 0,
+                Background = new LinearGradientBrush(new GradientStopCollection { Ink.Stop("SeleneScrimColor", 0, 0), Ink.Stop("SeleneScrimColor", 0.6, 0.35), Ink.Stop("SeleneScrimColor", 0.92, 0.6), Ink.Stop("SeleneScrimColor", 0.97, 1) }, 90)
+            };
+            Root.Children.Add(foot);
             var left = Ui.Prompts(false, Ui.Prompt("B", "Back"));
             var right = Ui.Prompts(true, Ui.Prompt("A", "Select"));
             left.Margin = new Thickness(46, 0, 0, 30);
@@ -194,7 +215,7 @@ namespace Selene
                 zone = 1;
                 onActions = false;
                 moreIndex = Math.Max(0, Math.Min(startMore, moreTiles.Count - 1));
-                pageShift.Y = -MoreLift;
+                pageShift.Y = -MoreLift; headerCol.Opacity = 0.12;
                 moreShift.X = -Math.Max(0, moreIndex - 1) * MorePitch;
                 Peek(false, false);
             }
@@ -260,6 +281,7 @@ namespace Selene
                 {
                     slides.Stop();
                     foreach (var img in new[] { shotA, shotB }) img.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(700)));
+                    Ui.Fade(trailerShade, 1, 600);   // (with the trailer's own fade in)
                 });
                 if (trailer != null) trailerHost.Children.Add(trailer.View);
             };
@@ -388,7 +410,7 @@ namespace Selene
                 bool installed = owned.IsInstalled;
                 LoginScene.Finish();
                 if (installed) HomeNav.StartGameNow(id);
-                else if (HomeNav.Api != null) HomeNav.Api.InstallGame(id);
+                else LocalGames.Install(id);
                 HomeNav.Log("store: " + (installed ? "play " : "install ") + item.Title);
                 return;
             }
@@ -432,6 +454,7 @@ namespace Selene
             Peek(z == 0, true);
             // more from the store: the page glides up to show its row
             pageShift.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(z == 1 ? -MoreLift : 0, TimeSpan.FromMilliseconds(320)) { EasingFunction = Ui.Out() });
+            if (headerCol != null) headerCol.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(z == 1 ? 0.12 : 1, TimeSpan.FromMilliseconds(260)) { EasingFunction = Ui.Out() });
             Ui.Tick();
             ShowFocus();
         }

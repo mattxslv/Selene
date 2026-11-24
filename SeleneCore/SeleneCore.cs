@@ -137,13 +137,13 @@ namespace Selene
             Profiles.RecordSession(args.Game.Id, args.ElapsedSeconds);
             HomeNav.QueueRowSync("game stopped");   // Recently played (and its order) follows without a filter switch (#101)
             // back from a game: a card says how long it was played (once Selene is in front again) (any session over 10 s: a short one showed nothing)
-            if (Features.On("sessioncard") && args.ElapsedSeconds >= 10)
+            if (Features.On("sessioncard") && args.ElapsedSeconds >= 10 && !HomeNav.NeverShown(args.Game.Id))
             {
                 var game = args.Game; var secs = args.ElapsedSeconds;
                 System.Windows.Application.Current.Dispatcher.BeginInvoke(new Action(() =>
                 {
                     var t = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1800) };
-                    t.Tick += (s, e) => { t.Stop(); ProgressToast.ShowSession(game, secs); };
+                    t.Tick += (s, e) => { t.Stop(); if (!HomeNav.NeverShown(game.Id)) ProgressToast.ShowSession(game, secs); };   // (the start may have turned out a failure meanwhile)
                     t.Start();
                 }));
             }
@@ -370,6 +370,7 @@ namespace Selene
             new Option { Group = "Spotlight", Key = "cardnews", Label = "News card", About = "Show headlines from the news feeds you follow." },
             new Option { Group = "Spotlight", Key = "cardpictures", Label = "Pictures under cards", About = "Show recent captures, recently played games and suggestions under the cards." },
             new Option { Group = "Spotlight", Key = "steadyhold", Label = "Steady hold scrolling", About = "Holding left or right moves through games at a steady pace the row can keep up with." },
+            new Option { Group = "Spotlight", Key = "triggerpage", Label = "Page with LT / RT", About = "LT or RT jumps about ten games along the row; hold it to go to the start or end." },
             new Option { Group = "Spotlight", Key = "pickscroll", Label = "Scroll to a picked game", About = "Scroll along the row to a game you picked from search or another screen." },
             new Option { Group = "Spotlight", Key = "rowedges", Label = "Full-width row", About = "Let the game row reach the edges of the screen." },
             new Option { Group = "Spotlight", Key = "youtubetrailers", Label = "Trailers from YouTube", About = "For games with no Steam trailer, download the official trailer from YouTube. Uses the game song tools." },
@@ -402,7 +403,6 @@ namespace Selene
             new Option { Group = "Notifications", Key = "taskcards", Label = "Progress cards", About = "Show cards while downloads, achievement checks and library updates run, and when they finish.", DefaultOn = false },
             new Option { Group = "Notifications", Key = "progresstoast", Label = "Download notifications", About = "Show downloads in a small notification instead of a window." },
             new Option { Group = "Notifications", Key = "updatecheck", Label = "Update notifications", About = "Check for a new version of Selene once a day." },
-            new Option { Group = "Notifications", Key = "setuphint", Label = "Add-on tips", About = "Let you know when logos and trailers need the Extra Metadata add-on." },
             // ---- Sound & music ----
             new Option { Group = "Sound & music", Key = "sounds", Note = () => MusicLevel.Installed() ? null : "For background music, install the UniPlaySong add-on.", Label = "Interface sounds", About = "Sounds as you move, select and go back. Off silences all of Selene's own sounds." },
             new Option { Group = "Sound & music", Key = "quietdetails", Label = "Quiet details transitions", About = "Avoid extra navigation ticks when opening game details." },
@@ -413,7 +413,7 @@ namespace Selene
             new Option { Group = "Sound & music", Key = "clipvolume", Slider = true, Label = "Clip volume", About = "Set the volume of video clips in Captures.", Available = () => false /* set with Up / Down in Captures only */, Choices = new[] { "0", "10", "20", "30", "40", "50", "60", "70", "80", "90", "100" }, Names = new[] { "Off", "10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%", "100%" }, Default = "90" },
             new Option { Group = "Sound & music", Key = "musicvolume", Note = MusicLevel.NowPlaying, Slider = true, Label = "Music volume", About = "How loud all music is, UniPlaySong's included. Off or muted silences it.", Choices = new[] { "0", "25", "50", "75", "100" }, Names = new[] { "Off", "25%", "50%", "75%", "100%" }, Default = "50", GetValue = MusicLevel.Volume, PutValue = MusicLevel.SetVolume, Available = MusicLevel.Installed },
             new Option { Group = "Sound & music", Key = "musicmuted", Label = "Mute music", About = "No music at all, whatever the volume.", DefaultOn = false, Available = MusicLevel.Installed },
-            new Option { Group = "Sound & music", Key = "nowplaying", Label = "Show what is playing", About = "Show the song playing in the top bar.", Available = MusicLevel.Installed },
+            new Option { Group = "Sound & music", Key = "nowplaying", Label = "Show what is playing", About = "Show the Spotify song playing in the top bar. Game songs and the default music aren't shown.", Available = MusicLevel.Installed },
             new Option { Group = "Sound & music", Key = "musiccard", Label = "Music in the menu", About = "Play / pause, Next song and Restart song in the menu (Start).", Available = MusicLevel.Installed },
             new Option { Group = "Sound & music", Key = "mediacontrols", Label = "Control any music player", About = "Play / pause and skip Spotify, Deezer or any player from Music in the menu (Start), when Selene's own music isn't playing." },
             new Option { Group = "Sound & music", Key = "upsgame", Label = "Songs for each game", About = "Play a game's own song when you rest on it. This is UniPlaySong's own switch.", Get = () => MusicLevel.UpsSwitch("EnableMusic"), Put = on => MusicLevel.SetUpsSwitch("EnableMusic", on), Available = MusicLevel.Installed },
@@ -427,10 +427,12 @@ namespace Selene
             new Option { Group = "Sound & music", Key = "independentmusic", Label = "Game music without trailers", About = "Play game songs without waiting for a trailer. Requires UniPlaySong.", DefaultOn = false },
             new Option { Group = "Sound & music", Key = "launchquiet", Label = "Quiet loading screen", About = "Keep the loading screen silent until the game appears." },
             new Option { Group = "Games", Key = "launchseamless", Label = "Smooth loading screen", About = "Keep the picture on screen as the loading screen starts." },
+            new Option { Group = "Games", Key = "launcherfront", Label = "Show launchers that wait for you", About = "A launcher left waiting for you (sign-in, Play) shows over the loading screen after 20 s, or at once with Guide. Off: after 12 s." },
             new Option { Group = "Games", Key = "launchhandoff", Label = "Make sure the game comes to the front", About = "After the loading screen, check the game really is in front and hand it back if a launcher pulls Playnite forward." },
             new Option { Group = "Games", Key = "launchchoice", Label = "Keep launch choices above loading", About = "Show launch choices before the loading screen." },
             // ---- Look ----
             new Option { Group = "Games", Key = "metasource", Label = "Metadata source per game", About = "Choose where a game's screenshots come from, in Game options." },
+            new Option { Group = "Look", Key = "shufflewallpapers", Label = "Shuffle my wallpapers", About = "When your background is one of your own wallpapers, start with a different one of them each time.", DefaultOn = false },
             new Option { Group = "Look", Key = "ownbackground", Label = "Own backgrounds first", About = "Show the background set in Playnite instead of the art Selene downloaded.", DefaultOn = false },
             new Option { Group = "Look", Key = "trimlogos", Label = "Fit game logos", About = "Remove empty space around game logos so they appear the same size." },
             new Option { Group = "Look", Key = "smartcrop", Label = "Smart cover crop", About = "Crop covers around their most detailed area." },
@@ -443,6 +445,7 @@ namespace Selene
             new Option { Group = "Look", Key = "backgroundfit", Label = "Background sizing", About = "Choose how background images fill the screen.", Choices = new[] { "fill", "fit", "stretch" }, Names = new[] { "Fill", "Fit", "Stretch" }, Default = "fill" },
             new Option { Group = "Look", Key = "language", Label = "Language", About = "Choose the language for Selene.", Choices = new[] { "auto", "en", "de", "es", "fr", "pt_BR", "zh_CN", "ja", "fil" }, Names = new[] { "Follow Playnite", "English", "Deutsch", "Español", "Français", "Português (Brasil)", "简体中文", "日本語", "Filipino" }, Default = "auto" },
             new Option { Group = "Look", Key = "languagerestart", Label = "Ask to restart only when the language changes", About = "Selene asks to restart Playnite after you pick a language only if it would show different words. Off: it asks after every change." },
+            new Option { Group = "Games", Key = "takefront", Label = "Controller always reaches Selene", About = "Selene takes the focus from a window behind it, and at start-up, so the controller works without a mouse." },
             new Option { Group = "Games", Key = "guidefocus", Label = "Focus on Guide", About = "Bring Selene to the front when you press the Guide button. Turn this off if another overlay uses the Guide button." },
             new Option { Group = "Look", Key = "homebackground", Label = "Spotlight background", About = "Choose what appears behind the selected game.", Choices = new[] { "art", "wallpaper" }, Names = new[] { "Game art", "Wallpaper only" }, Default = "art" },
             new Option { Group = "Look", Key = "glow", Label = "Animated background", About = "Show a moving background behind the profile screen and cards." },
@@ -456,7 +459,7 @@ namespace Selene
             new Option { Group = "Games", Key = "hltbauto", Label = "HowLongToBeat for new games", About = "Get HowLongToBeat times when games are added to your library.", Get = HltbFetch.AutoImport, Put = HltbFetch.SetAutoImport, Available = HltbFetch.Installed },
             new Option { Group = "Look", Key = "wakeprofiles", Label = "Profiles after sleep", About = "Go back to choosing a profile when the PC wakes.", DefaultOn = false },
             new Option { Group = "Look", Key = "topbattery", Label = "Battery in the top bar", About = "Show this device's battery at the top left. Only on devices with a battery." },
-            new Option { Group = "Look", Key = "controllerbattery", Label = "Controller battery in the top bar", About = "Show your DualSense controller's battery at the top right. Needs the DualSense Battery Level add-on." },
+            new Option { Group = "Look", Key = "controllerbattery", Label = "Controller battery in the top bar", About = "Show your DualSense controller's battery at the top right. Needs the DualSense Battery Level add-on.", Available = ControllerBattery.Installed },
             new Option { Group = "Look", Key = "backgroundchanger", Label = "Background Changer backgrounds", About = "Use Background Changer on Spotlight, Collection and game pages. Requires the Background Changer add-on.", DefaultOn = false, Available = BackgroundChangerBridge.Available },
             new Option { Group = "Look", Key = "imagerotater", Label = "ImageRotater backgrounds", About = "Show ImageRotater's backgrounds on Spotlight and game pages too. Requires the ImageRotater add-on.", Available = BackgroundChangerBridge.RotaterAvailable },
             new Option { Group = "Look", Key = "topachievements", Label = "Achievements in the top bar", About = "Open all your games' achievements from the trophy next to your profile.", Available = AchievementsData.Available },
@@ -477,7 +480,9 @@ namespace Selene
             new Option { Group = "Look", Key = "previewartfit", Label = "Keep trailer-card artwork proportional", About = "Prevent stretched artwork in trailer cards. Restart Playnite to apply." },
             new Option { Group = "Games", Key = "gamesask", Label = "Offer to get art for a new library", About = "Offer media downloads when setting up a new library." },
             new Option { Group = "Games", Key = "gameresolution", Label = "Match the screen's resolution", About = "Start fullscreen Unity and Unreal games at the resolution of the screen Selene is on, like 4K on a TV." },
+            new Option { Group = "Games", Key = "steamshortcuts", Label = "Start through Steam shortcuts", About = "Start games you also added to Steam through Steam, so Steam Input handles the controller. This changes their Play action.", DefaultOn = false },
             new Option { Group = "Games", Key = "loadingscreen", Label = "Loading screen", About = "Show the game's artwork and logo while it starts." },
+            new Option { Group = "Games", Key = "quickreturn", Label = "Quick return after a game", About = "Come back as soon as a game has closed. Launchers that hand over to a game are still waited for." },
             new Option { Group = "Games", Key = "aftergame", Label = "After a game", About = "Choose where you return to after you close a game.", Choices = new[] { "spotlight", "where" }, Names = new[] { "Spotlight, on that game", "Where you were" }, Default = "spotlight" },
             new Option { Group = "Games", Key = "freeze", Label = "Pause games on Guide", About = "Pause offline games when you press the Guide button. When this is off, games are only muted." },
             new Option { Group = "Games", Key = "powerconfirm", Label = "Ask before power actions", About = "Ask before Sleep, Restart and Shut down." },
@@ -510,6 +515,7 @@ namespace Selene
             new Option { Group = "Advanced", Key = "asynccovers", Label = "Load covers in the background", About = "Covers load without holding up scrolling and fade in. Applies after restarting Playnite." },
             new Option { Group = "Advanced", Key = "lightweight", Label = "Reduce memory use", About = "Cache fewer images and preload fewer games.", DefaultOn = false },
             new Option { Group = "Advanced", Key = "holdrumble", Label = "Rumble on hold", About = "Give the controller a short buzz when holding a button opens Find a game or Selene settings." },
+            new Option { Group = "Advanced", Key = "fastrepeat", Label = "Faster hold to scroll", About = "Holding a direction starts repeating after a quarter second instead of Playnite's longer wait." },
             new Option { Group = "Advanced", Key = "viewswitch", Label = "View button", About = "Press to switch between Spotlight and Collection. Hold to search." },
             new Option { Group = "Advanced", Key = "playnitesettings", Label = "Selene Playnite settings", About = "Show Playnite's settings in Selene's style." },
             new Option { Group = "Advanced", Key = "translatecollect", Label = "Collect words to translate", About = "Save every phrase Selene shows to a file on your Desktop, ready to translate.", DefaultOn = false },

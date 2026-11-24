@@ -44,6 +44,7 @@ namespace Selene
         private Game callShown;
         private readonly StackPanel callMore = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 14, 0, 0) };   // sessions, trophies
         private string heroShown;
+        private bool firstCall;
 
         public ActivityScreen()
         {
@@ -51,6 +52,9 @@ namespace Selene
             dark.SetResourceReference(Border.BackgroundProperty, "SeleneScrimBrush");
             Panel.SetZIndex(dark, -10);
             Root.Children.Add(dark);
+            var tint = GameFacts.Tint();   // (the theme's glow, not plain black, behind a game without art)
+            Panel.SetZIndex(tint, -7);
+            Root.Children.Add(tint);
             RenderOptions.SetBitmapScalingMode(hero, BitmapScalingMode.HighQuality);
             RenderOptions.SetBitmapScalingMode(heroBack, BitmapScalingMode.HighQuality);
             Panel.SetZIndex(heroBack, -6);
@@ -103,6 +107,7 @@ namespace Selene
             call.Children.Add(callMore);
             Root.Children.Add(call);
             if (most.Count > 0 && total > 0) { FillCall(most[0], 0); Ui.Rise(call, 120, 14, 320); }
+            else firstCall = true;   // (nothing played yet: the panel shows the first game the focus is on, from the start)
             // the trophies read once in the background: the game showing gets its line when they're in
             if (Features.On("achievements") && AchievementsData.Available() && !AchievementsData.HasCache)
                 AchievementsData.All(sets => { if (closed || callShown == null) return; var shownNow = callShown; callShown = null; FillCall(shownNow, zone); });
@@ -144,10 +149,16 @@ namespace Selene
                         AddRow("Most played", most, g => GameFacts.Hours(GameFacts.Seconds(g)), null);
             AddRow("Played last", recent, g => GameFacts.Ago(GameFacts.LastPlayed(g)), null);
             AddRow("Pick up again", again, g => GameFacts.Ago(GameFacts.LastPlayed(g)), null);   // (its hours: in the panel)
-            AddRow("Still waiting", waiting, g => g.IsInstalled ? "Installed, never played" : "Never played", null);
+            AddRow("Still waiting", waiting, g => g.IsInstalled ? "Installed" : "Not installed", null);   // (the row says never played)
             if (rows.Count == 0)
                 Root.Children.Add(new TextBlock { Text = "Nothing played yet. Your most played and last played games show here.", FontSize = 21, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.6), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(Side, RowTop + 20, 0, 0) });
 
+            // the rows below the screen fade out above the hints instead of sitting right on them
+            Root.Children.Add(new Border
+            {
+                Height = 130, VerticalAlignment = VerticalAlignment.Bottom, IsHitTestVisible = false,
+                Background = new LinearGradientBrush(new GradientStopCollection { Ink.Stop("SeleneScrimColor", 0, 0), Ink.Stop("SeleneScrimColor", 0.75, 0.55), Ink.Stop("SeleneScrimColor", 0.95, 1) }, 90)
+            });
             Root.Children.Add(Ui.Prompts(false, Ui.Prompt("B", "Back")));
             if (rows.Count > 0) Root.Children.Add(Ui.Prompts(true, Ui.Prompt("X", "Play"), Ui.Prompt("A", "Show on Spotlight")));
             heroLater.Tick += (s, e) => { heroLater.Stop(); ShowHero(); };
@@ -192,6 +203,17 @@ namespace Selene
                 else callNums.Children.Add(Stat(g.IsInstalled ? "Installed" : "Not installed", "NEVER PLAYED", true));
                 callMore.Children.Clear();
                 if (last.HasValue) callMore.Children.Add(Line(null, "Last played " + GameFacts.Ago(last).ToLowerInvariant()));
+                else if (g.Added.HasValue) callMore.Children.Add(Line(null, "Added " + GameFacts.Ago(g.Added).ToLowerInvariant()));
+                // where it's from and what it is (the panel stood nearly empty for a game not played yet)
+                var about = new List<string>();
+                try
+                {
+                    if (g.Source != null && !string.IsNullOrEmpty(g.Source.Name)) about.Add(g.Source.Name);
+                    if (g.Genres != null) about.AddRange(g.Genres.Where(x => x != null && !string.IsNullOrEmpty(x.Name)).Take(2).Select(x => x.Name));
+                    if (g.ReleaseYear.HasValue) about.Add(g.ReleaseYear.Value.ToString());
+                }
+                catch (Exception ex) { HomeNav.Log("activity: game facts: " + ex.Message); }
+                if (about.Count > 0) callMore.Children.Add(Line(null, string.Join("  ·  ", about)));
                 int count; ulong longest, average;
                 if (Sessions.Facts(g.Id, out count, out longest, out average))
                     callMore.Children.Add(Line(null, (count == 1 ? "1 session" : count + " sessions") + "  \u00B7  longest " + GameFacts.Hours(longest) + "  \u00B7  about " + GameFacts.Hours(average) + " each"));
@@ -281,7 +303,8 @@ namespace Selene
                 var item = new StackPanel { Width = TileW, Margin = new Thickness(0, 0, Pitch - TileW, 0) };
                 item.Children.Add(t.Root);
                 // under it: just the line (the cover shows the name), low enough that the focus ring stays clear; the bar under that
-                item.Children.Add(new TextBlock { Text = caption(g), FontSize = 15, FontWeight = FontWeights.SemiBold, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.8), TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(2, 18, 0, 0) });
+                // (up to two lines: one line cut most captions short, "Installed, never p…")
+                item.Children.Add(new TextBlock { Text = caption(g), FontSize = 15, FontWeight = FontWeights.SemiBold, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.8), TextWrapping = TextWrapping.Wrap, TextTrimming = TextTrimming.CharacterEllipsis, MaxHeight = 42, LineHeight = 20, LineStackingStrategy = LineStackingStrategy.BlockLineHeight, Margin = new Thickness(2, 16, 0, 0) });
                 if (bar != null)
                 {
                     var track = new Border { Height = 3, CornerRadius = new CornerRadius(1.5), Background = Ink.Brush("SeleneInkColor", 0.15), Margin = new Thickness(2, 8, 2, 0) };
@@ -352,12 +375,14 @@ namespace Selene
         private void ShowHero()
         {
             var g = Focused;
-            FillCall(g, zone);
-            var path = g != null ? GameFacts.BackgroundPath(g) : null;
+            if (firstCall && g != null) { firstCall = false; FillCall(g, zone); Ui.Rise(call, 0, 14, 300); }
+            else FillCall(g, zone);
+            bool small = false;
+            var path = g != null ? GameFacts.BackdropPath(g, out small) : null;   // (no background: its cover, softly blurred)
             if (path == heroShown) return;
             heroShown = path;
-            if (path == null) { Ui.Fade(hero, 0, 400); return; }
-            Ui.LoadInOrder(new List<string> { path }, 1920, (i, pic) =>
+            if (path == null) { Ui.Fade(hero, 0, 400); Ui.Fade(heroBack, 0, 400); return; }
+            Ui.LoadInOrder(new List<string> { path }, small ? 48 : 1920, (i, pic) =>
             {
                 if (closed || path != heroShown) return;
                 // a crossfade: the art showing goes under, the new one fades in over it, then the old one melts away
@@ -367,7 +392,7 @@ namespace Selene
                 hero.BeginAnimation(UIElement.OpacityProperty, null);
                 hero.Source = pic;
                 hero.Opacity = 0;
-                Ui.Fade(hero, 0.6, 600);
+                Ui.Fade(hero, small ? 0.45 : 0.6, 600);
                 Ui.Fade(heroBack, 0, 900, 300);
             });
         }
@@ -440,7 +465,7 @@ namespace Selene
             var recent = games.Where(g => GameFacts.LastPlayed(g).HasValue).OrderByDescending(g => GameFacts.LastPlayed(g).Value).Take(Ui.CardTiles).ToList();
             var most = games.Where(g => GameFacts.Seconds(g) > 0).OrderByDescending(GameFacts.Seconds).FirstOrDefault();
             string headline = week == 0 ? "Nothing played this week" : week == 1 ? "1 game this week" : week + " games this week";
-            string about = total < 3600 ? "Your play time, most played and last played games show here." : (int)TimeSpan.FromSeconds(total).TotalHours + " hours in all";
+            string about = total < 3600 ? "Your play time, most played and last played games show here." : ((int)TimeSpan.FromSeconds(total).TotalHours == 1 ? "1 hour in all" : (int)TimeSpan.FromSeconds(total).TotalHours + " hours in all");
             if (most != null && total >= 3600) about += ", most of them in " + most.Name + " (" + GameFacts.Hours(GameFacts.Seconds(most)) + ").";
             if (recent.Count > 0) about += " Down for the games you played last.";
             var entries = recent.Select(g =>

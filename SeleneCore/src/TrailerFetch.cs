@@ -27,6 +27,19 @@ namespace Selene
         private static System.Threading.Thread worker;
         private static bool libraryQueued;
         private static readonly HashSet<Guid> libraryMedia = new HashSet<Guid>();
+        // games just added to the library (a store's import, a folder scan, one added by hand): their art and screenshots come
+        // at once, like a Steam game's, not only once each is selected (their trailer still waits for that, as set)
+        private static readonly HashSet<Guid> fresh = new HashSet<Guid>();
+        public static void Added(IEnumerable<Guid> ids)
+        {
+            if (HomeNav.Api == null || !WantArt) return;
+            var list = ids.ToList();
+            // a few games added (by hand, a folder scan, a new purchase): straight away. A whole store connected at once (hundreds)
+            // is left to browsing and the whole-library download, not hundreds of requests at once.
+            if (list.Count == 0 || list.Count > 50) return;
+            lock (gate) { var queued = new HashSet<Guid>(queue); foreach (var id in list) { fresh.Add(id); tried.Remove(id); if (queued.Add(id)) queue.AddLast(id); } }
+            Start();
+        }
         private static int libraryTotal, libraryChecked;
         public static void LibraryCounts(out int done, out int total) { lock (gate) { done = libraryChecked; total = libraryTotal; } }
         public static double LibraryProgress { get { lock (gate) return libraryTotal > 0 ? (double)libraryChecked / libraryTotal : -1; } }
@@ -168,11 +181,11 @@ namespace Selene
                 }
                 return appId;
             };
-            bool selected, bulk; lock (gate) { selected = browsed.Contains(id); bulk = libraryMedia.Contains(id) && MediaDownloads.Enabled; }
+            bool selected, bulk, isNew; lock (gate) { selected = browsed.Contains(id); bulk = libraryMedia.Contains(id) && MediaDownloads.Enabled; isNew = fresh.Remove(id); }
             permission = "artdownload";
-            if (WantArt && (selected || bulk)) { try { FetchArt(g, steamId); } catch (Exception ex) { HomeNav.Log("art download: " + g.Name + " failed: " + ex.Message); } }
-            if (WantArt && (selected || bulk)) { try { SquareFetch.Fetch(g, steamId); } catch (Exception ex) { HomeNav.Log("square art: " + g.Name + " failed: " + ex.Message); } }
-            if (bulk) { try { GameMedia.DownloadPictures(g); } catch (Exception ex) { HomeNav.Log("library pictures: " + g.Name + ": " + ex.Message); } }
+            if (WantArt && (selected || bulk || isNew)) { try { FetchArt(g, steamId); } catch (Exception ex) { HomeNav.Log("art download: " + g.Name + " failed: " + ex.Message); } }
+            if (WantArt && (selected || bulk || isNew)) { try { SquareFetch.Fetch(g, steamId); } catch (Exception ex) { HomeNav.Log("square art: " + g.Name + " failed: " + ex.Message); } }
+            if (bulk || isNew) { try { GameMedia.DownloadPictures(g); } catch (Exception ex) { HomeNav.Log("library pictures: " + g.Name + ": " + ex.Message); } }
             permission = "trailerdownload";
 
             // the trailer: a game looked at, or every game with "Whole library"

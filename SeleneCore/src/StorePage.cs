@@ -76,6 +76,12 @@ namespace Selene
                 IsHitTestVisible = false,
                 Background = new LinearGradientBrush(new GradientStopCollection { Ink.Stop("SeleneScrimColor", 0.85, 0), Ink.Stop("SeleneScrimColor", 0.35, 0.45), Ink.Stop("SeleneScrimColor", 0, 0.7) }, 0)
             });
+            // and one from the top under the store tabs (bright art made them hard to read)
+            Root.Children.Add(new Border
+            {
+                IsHitTestVisible = false, Height = 170, VerticalAlignment = VerticalAlignment.Top,
+                Background = new LinearGradientBrush(new GradientStopCollection { Ink.Stop("SeleneScrimColor", 0.6, 0), Ink.Stop("SeleneScrimColor", 0.3, 0.55), Ink.Stop("SeleneScrimColor", 0, 1) }, 90)
+            });
 
             // store tabs (LB / RB), drawn like the home's filter tabs
             tabBar.Children.Add(HomeNav.FilterBadge("LB"));
@@ -504,7 +510,7 @@ namespace Selene
         public override void Handle(string b)
         {
             if (b == "B") { Remember(); Ui.Back(); LoginScene.Finish(); return; }
-            if (b == "Y") { Remember(); Ui.Confirm(); LoginScene.Show(new StoreScreen(), 1); return; }
+            if (b == "Y") { Remember(); Ui.Confirm(); LoginScene.Show(new StoreScreen { Back = () => new StorePage() }, 1); return; }
             if (b == "X") { Remember(); Ui.Confirm(); LoginScene.Show(new StoreCurrencyScreen(false), 1); return; }
             if (b == "LeftShoulder" || b == "RightShoulder")
             {

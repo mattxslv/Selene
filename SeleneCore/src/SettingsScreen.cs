@@ -42,9 +42,9 @@ namespace Selene
         private static readonly Dictionary<string, string[][]> Sections = new Dictionary<string, string[][]>
         {
             { "Spotlight", new[] {
-                new[] { "Row", "steadyhold", "pickscroll", "rowedges", "filtertabs", "visibletabs", "tabmemory", "outsideplays", "tabsort", "fullscreenpresets", "presetorder", "consistentfavorites", "shade", "idle" },
+                new[] { "Row", "startfirstgame", "steadyhold", "triggerpage", "pickscroll", "rowedges", "filtertabs", "visibletabs", "tabmemory", "outsideplays", "tabsort", "fullscreenpresets", "presetorder", "consistentfavorites", "shade", "idle" },
                 new[] { "Cards", "cardactivity", "actualplatform", "activitysessions", "cardcaptures", "capturesfolders", "spotlightshots", "hubachievements", "cardachievements", "cardsurprise", "cardnews", "newsfeeds", "cardstore", "cardpictures" },
-                new[] { "Trailers and downloads", "trailerdelay", "trailerdownload", "artdownload", "screenshotsdownload" } } },
+                new[] { "Trailers and downloads", "trailerdelay", "trailerdownload", "youtubetrailers", "artdownload", "screenshotsdownload" } } },
             { "Sound & music", new[] {
                 new[] { "Music", "musicvolume", "musicmuted", "upsgame", "independentmusic", "upsdefault", "selenemusic", "upsspotify", "upsnight", "nowplaying", "musiccard", "mediacontrols" },
                 new[] { "Sounds", "sounds", "soundvolume", "startsound", "notifysound", "quietdetails", "soundmenu", "livevolume" },
@@ -52,19 +52,19 @@ namespace Selene
                 new[] { "Music setup", "music", "songsetup", "songsettle" } } },
             { "Games", new[] {
                 new[] { "Your library", "gamesget", "gamesask" },
-                new[] { "Launching", "launchstyle", "launchmotion", "launchshade", "loadingscreen", "launchseamless", "launchchoice", "aftergame", "guidefocus" },
-                new[] { "While playing", "freeze", "powerconfirm", "tray", "quietbackups" },
+                new[] { "Launching", "launchstyle", "launchmotion", "launchshade", "loadingscreen", "launchseamless", "launcherfront", "launchchoice", "steamshortcuts", "aftergame", "quickreturn", "guidefocus", "takefront", "launchhandoff", "gameresolution" },
+                new[] { "While playing", "freeze", "powerconfirm", "menuclosegame", "tray", "quietbackups" },
                 new[] { "Game pages", "gameoptions", "achievements", "achcelebrate", "achsetup", "hltb", "hltbauto", "metadatacomplete", "metasource" },
                 new[] { "Store", "storepage", "storetrailers", "storetab", "storeregion" },
                 new[] { "Surprise me", "surprisepool", "surprisenorepeat" } } },
             { "Look", new[] {
-                new[] { "Background", "homebackground", "ownbackground", "backgroundchanger", "imagerotater", "glow", "backgroundfit", "guidefade", "smoothswitch", "perfmode" },
+                new[] { "Background", "homebackground", "shufflewallpapers", "ownbackground", "backgroundchanger", "imagerotater", "glow", "backgroundfit", "guidefade", "smoothswitch", "defaultbackdrop", "perfmode" },
                 new[] { "Art", "trimlogos", "logosize", "squareart", "steamgridkey", "squareformat", "smartcrop", "previewartfit", "closinglogo", "morecoverfit", "activitycoverfit", "trailerlogogap", "screenshotskeleton" },
                 new[] { "Text and hints", "textshadow", "hints", "prompts", "detailsbadges", "captureplayerfit", "dialogs", "topprofile", "topbattery", "controllerbattery", "topachievements", "wakeprofiles", "language", "languagerestart" } } },
             { "Advanced", new[] {
-                new[] { "Help", "report", "setupcheck", "storelibraries", "xboxsignin", "gamesfolder", "shortaddonask", "reportchord", "perflog" },
-                new[] { "Performance", "fullrate", "calmmotion", "presence", "asynccovers", "lightweight" },
-                new[] { "Controls and Playnite", "holdrumble", "viewswitch", "playnitesettings", "legacytasks" },
+                new[] { "Help", "report", "setupcheck", "storelibraries", "xboxsignin", "gamesfolder", "launchergames", "downloadprogress", "shortaddonask", "reportchord", "perflog" },
+                new[] { "Performance", "fullrate", "calmmotion", "idlecalm", "presence", "asynccovers", "lightweight", "perfhint" },
+                new[] { "Controls and Playnite", "fastrepeat", "holdrumble", "viewswitch", "playnitesettings", "legacytasks" },
                 new[] { "Language", "translate", "translatecollect" },
                 new[] { "Reset", "reset" } } },
         };
@@ -98,7 +98,7 @@ namespace Selene
         public override bool Overlay { get { return true; } }
 
         // a deep, even shade: the settings read clearly over anything
-        public override Brush OverlayShade { get { return Ink.Brush("SeleneScrimColor", 0.94); } }
+        public override Brush OverlayShade { get { return Ink.Brush("SeleneScrimColor", 0.98); } }
 
         // opened from the menu: B goes back to it (on this item); held Start from the home: B goes back to the home
         private readonly bool fromMenu;
@@ -201,7 +201,7 @@ namespace Selene
             ask = new Dialog("\uE8D7", "SteamGridDB key", "Get a free key at steamgriddb.com > Preferences > API.\nCopy it, then choose Paste.", "Paste", "Not now", () =>
             {
                 ask = null;
-                SquareFetch.PasteKey(ok => { if (ok) try { ShowGroup(false); ShowFocus(); } catch (Exception ex) { HomeNav.Log("settings: refresh after the key: " + ex.Message); } });
+                SquareFetch.PasteKey(ok => { if (ok) try { RefreshGroup(); } catch (Exception ex) { HomeNav.Log("settings: refresh after the key: " + ex.Message); } });
             }, () => ask = null, false, false);
             ask.Open(Root);
         }
@@ -307,7 +307,7 @@ namespace Selene
         private void ConfirmStopDownloads()
         {
             ask = new Dialog("\uE896", "Stop downloads?", "Stops new requests. Active transfers and queued songs may finish. Downloaded files stay.",
-                "Stop", "Keep running", () => { ask = null; MediaDownloads.Stop(); ShowGroup(false); ShowFocus(); },
+                "Stop", "Keep running", () => { ask = null; MediaDownloads.Stop(); RefreshGroup(); },
                 () => { ask = null; ShowFocus(); }, false);
             ask.Open(Root);
         }
@@ -327,6 +327,15 @@ namespace Selene
             var slide = new DoubleAnimation(on ? 26 : 0, TimeSpan.FromMilliseconds(animate ? 200 : 0)) { EasingFunction = Ui.Out() };
             ((TranslateTransform)knobs[i].RenderTransform).BeginAnimation(TranslateTransform.XProperty, slide);
             tracks[i].Background = on ? Ink.Brush("GlyphColor") : Ink.Brush("SeleneInkColor", 0.2);
+        }
+
+        // the group drawn again (a row added or removed): the focused row brought into view once the new rows are laid out too
+        // (before it, the list jumped to the top with the focused row out of sight)
+        private void RefreshGroup()
+        {
+            ShowGroup(false);
+            ShowFocus();
+            Root.Dispatcher.BeginInvoke(new Action(() => { try { ShowFocus(); } catch { } }), System.Windows.Threading.DispatcherPriority.Loaded);
         }
 
         private void ShowFocus()
@@ -449,7 +458,7 @@ namespace Selene
                 else if (opt.Key == "setupcheck") { bool back = fromMenu; LoginScene.Show(new SetupScreen(false) { Back = () => new SettingsScreen(back, "Advanced", "setupcheck") }, 1); }
                 else if (opt.Key == "report") { bool back = fromMenu; LoginScene.Show(new ReportScreen(() => new SettingsScreen(back, "Advanced", "report")), 1); }
                 else if (opt.Key == "newsfeeds") LoginScene.Show(new NewsFeedsScreen(() => new SettingsScreen(fromMenu, "Spotlight", "newsfeeds")), 1);
-                else if (opt.Key == "storeregion") LoginScene.Show(new StoreCurrencyScreen(false, () => new SettingsScreen(true, "Games", "storeregion")), 1);
+                else if (opt.Key == "storeregion") { bool back = fromMenu; LoginScene.Show(new StoreCurrencyScreen(false, () => new SettingsScreen(back, "Games", "storeregion")), 1); }
                 else if (opt.Key == "steamgridkey") AskSteamGridKey();
                 else if (opt.Key == "capturesfolders")
                 {
@@ -460,7 +469,7 @@ namespace Selene
                         bool added = Features.ToggleCapturesFolder(folder);
                         CapturesScreen.Known = new List<CapturesScreen.Capture>();   // (looked through again next time)
                         Ui.Notice(added ? "Folder added" : "Folder removed", 3000);
-                        try { ShowGroup(false); ShowFocus(); } catch (Exception ex) { HomeNav.Log("settings: refresh after a captures folder: " + ex.Message); }
+                        try { RefreshGroup(); } catch (Exception ex) { HomeNav.Log("settings: refresh after a captures folder: " + ex.Message); }
                     }
                 }
                 else if (opt.Key == "gamesget")
@@ -469,7 +478,7 @@ namespace Selene
                     {
                         ConfirmStopDownloads(); return;
                     }
-                    ask = GamesSetup.Question(() => { ask = null; try { ShowGroup(false); ShowFocus(); } catch (Exception ex) { HomeNav.Log("settings: refresh after the games question: " + ex.Message); } });
+                    ask = GamesSetup.Question(() => { ask = null; try { RefreshGroup(); } catch (Exception ex) { HomeNav.Log("settings: refresh after the games question: " + ex.Message); } });
                     ask.Open(Root);
                 }
                 else if (opt.Key == "legacytasks")
@@ -482,7 +491,7 @@ namespace Selene
                             {
                                 if (left == 0) Ui.Play("Success.wav", 0.8);
                                 Ui.Notice(left == 0 ? "Old administrator tasks removed." : left + (left == 1 ? " task" : " tasks") + " couldn't be removed. Remove them in Task Scheduler.", 7000);
-                                try { ShowGroup(false); ShowFocus(); } catch (Exception ex) { HomeNav.Log("settings: refresh after removing old tasks: " + ex.Message); }
+                                try { RefreshGroup(); } catch (Exception ex) { HomeNav.Log("settings: refresh after removing old tasks: " + ex.Message); }
                             });
                         }, () => ask = null, true, true);
                     ask.Open(Root);
@@ -490,7 +499,7 @@ namespace Selene
                 else if (opt.Key == "reset")
                 {
                     ask = new Dialog("\uE5D5", "Reset Selene settings?", "Every switch and choice goes back to how Selene ships. Your profiles, theme and wallpaper stay.",
-                        "Reset", "Keep them", () => { ask = null; Features.ResetAll(); Ui.Play("Success.wav", 0.8); ApplyEverything(); ShowGroup(false); ShowFocus(); }, () => ask = null, true, true);
+                        "Reset", "Keep them", () => { ask = null; Features.ResetAll(); Ui.Play("Success.wav", 0.8); ApplyEverything(); RefreshGroup(); }, () => ask = null, true, true);
                     ask.Open(Root);
                 }
                 return;
@@ -507,7 +516,7 @@ namespace Selene
                 if (DownloadConsent.IsControlled(key) && !Features.On(key)) DownloadConsent.Revoke(key);
                 if (DownloadConsent.IsControlled(key)) DownloadConsent.Changed(key);
                 if (key == "brand") Brand.Apply();
-                if (key == "downloadprogress") { ShowGroup(false); ShowFocus(); }
+                if (key == "downloadprogress") { RefreshGroup(); }
                 if (key == "topprofile") TopProfile.Refresh();
                 if (key == "topbattery") DeviceBattery.Refresh();
                 if (key == "controllerbattery") ControllerBattery.Refresh();
@@ -528,6 +537,7 @@ namespace Selene
                 if (key == "lightweight") HomeNav.ApplyPerformanceMode();
                 if (key == "perflog") { PerformanceRecorder.SetRecording(Features.On(key)); Ui.Notice(Features.On(key) ? "Performance recording started. Use Selene normally, then turn this off." : "Performance recording stopped.", 6000); }
                 if (key == "collectionglide") LibraryStage.ApplyNavigationSettings();
+                if (key == "squareart") TileCovers.SquareArrived();   // the tiles drop or show their square art at once
                 if (key == "glow") LoginScene.RefreshBackdrop();
                 if (key == "songsettle") SongSetup.ApplySongSettle();
                 if (key == "selenemusic") { SongSetup.ApplyDefaultMusic(); Ui.Notice("Restart Playnite to hear it.", 5000); }
@@ -554,11 +564,11 @@ namespace Selene
             {
                 Title = "Find a setting", Placeholder = "Type a setting's name", EmptyNote = "Settings show here as you type.", NoneNote = "No setting matches that.",
                 Back = () => LoginScene.Show(new SettingsScreen(back, SearchGroup), -1),
-                Max = 4, Shade = Ink.Brush("SeleneScrimColor", 0.94),   // four cards fit the screen's width; as dark as the settings
+                Max = 60, Shade = Ink.Brush("SeleneScrimColor", 0.98),   // every match (the row glides to the focused card); as dark as the settings
                 Find = q => Features.All
                     .Where(o => MediaDownloads.ShowSetting(o.Key) && (o.Available == null || o.Available()) && Matches(o, q))
                     .OrderBy(o => o.Label.StartsWith(q, StringComparison.OrdinalIgnoreCase) ? 0 : o.Label.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0 ? 1 : 2)
-                    .Select(o => new SearchScreen.Hit { Build = () => SettingTile(o), Open = () => LoginScene.Show(new SettingsScreen(back, o.Group, o.Key), 1) })
+                    .Select(o => new SearchScreen.Hit { Key = o.Key, Build = () => SettingTile(o), Open = () => LoginScene.Show(new SettingsScreen(back, o.Group, o.Key), 1) })
                     .ToList()
             };
             LoginScene.Show(new SearchScreen(finder), 1);
@@ -602,6 +612,12 @@ namespace Selene
                 GameFacts.CardStats(); CapturesScreen.CountInBackground();
             }
             catch (Exception ex) { HomeNav.Log("settings reset: " + ex.Message); }
+            // what each switch sets going when it changes on its own row, all at once after a reset (the Store card stayed off)
+            foreach (var apply in new Action[] { HomeNav.RefreshCards, HomeNav.SyncMoveSound, NowPlayingBar.Refresh, DeviceBattery.Refresh, ControllerBattery.Refresh,
+                BackgroundChangerBridge.RefreshAll, HomeNav.RefreshMusicPolicy, HomeNav.ApplyHubAchievements, ScreenPresence.Evaluate })
+            {
+                try { apply(); } catch (Exception ex) { HomeNav.Log("settings reset: " + ex.Message); }
+            }
         }
 
         // what a changed choice sets going at once

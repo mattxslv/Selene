@@ -5,7 +5,7 @@ using System.Windows.Threading;
 
 namespace Selene
 {
-    // What UniPlaySong is playing, in the top bar left of the profile and the clock: a note and "title · artist", cut with dots
+    // What Spotify is playing through UniPlaySong (game songs and the default music aren't named), in the top bar left of the profile and the clock: a note and "title · artist", cut with dots
     // when it is long. It fades in and out, and a new song crossfades in. One switch: "nowplaying".
     // Idea and first version: amogh-w (Selene pull request #99).
     public static class NowPlayingBar
@@ -35,8 +35,8 @@ namespace Selene
             try
             {
                 string title = null, artist = null;
-                // only while a song really plays (MusicLevel.Playing): not the default music, not paused by a trailer or a game
-                bool on = Features.On("nowplaying") && MusicLevel.Playing();
+                // only while Spotify plays and is heard: not a game's own song, not the default music, not paused by a trailer or a game
+                bool on = Features.On("nowplaying") && MusicLevel.SpotifyHeard();
                 if (on) MusicLevel.Song(out title, out artist);
                 if (on && !Fit()) on = false;
                 if (!on || string.IsNullOrEmpty(title))

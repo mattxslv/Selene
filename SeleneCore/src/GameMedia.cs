@@ -584,6 +584,7 @@ namespace Selene
             var s = Regex.Replace(name ?? "", @"[\u2122\u00AE\u00A9]", "");
             s = Regex.Replace(s, @"\s*[\[(][^\])]*[\])]", " ");
             s = Regex.Replace(s, @"\s+(?:-\s+)?(?:GOG|Epic Games|Windows 10|Win10|PC)(?: Edition| Version)?$", "", RegexOptions.IgnoreCase);
+            s = Regex.Replace(s, @"^(\S+\s+\S+.*?)\s+game$", "$1", RegexOptions.IgnoreCase);   // a folder's name ("Genshin Impact game")
             return Regex.Replace(s, @"\s+", " ").Trim();
         }
 

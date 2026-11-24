@@ -409,6 +409,19 @@
                         </Canvas>
                         </Grid>
 
+                        <!-- the foot under the hints: the band peeking in from below fades out above them, so nothing sits behind
+                             "Back / Scroll" or "Select" at rest (an overlay, not a mask on the page: that redrew it on every glide) -->
+                        <Border Height="150" VerticalAlignment="Bottom" IsHitTestVisible="False" Background="{DynamicResource SeleneScrimBrush}">
+                            <Border.OpacityMask>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                    <GradientStop Color="#00000000" Offset="0"/>
+                                    <GradientStop Color="#99000000" Offset="0.35"/>
+                                    <GradientStop Color="#EB000000" Offset="0.6"/>
+                                    <GradientStop Color="#F7000000" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Border.OpacityMask>
+                        </Border>
+
                         <!-- the hints along the bottom -->
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="80,0,0,38">
                             <Grid MinWidth="{DynamicResource SeleneDetailsBadgeWidth}" Height="32">

@@ -357,6 +357,9 @@ namespace Selene
             double before = double.NaN;
             var target = row.ItemContainerGenerator.ContainerFromIndex(next) as FrameworkElement;
             if (target != null && panel != null) before = target.TranslatePoint(new Point(0, 0), row).X;
+            // a far move (LT / RT's page) to a tile not built yet: the tile it leaves shows how far the row went instead
+            var leaving = target == null && panel != null ? row.ItemContainerGenerator.ContainerFromIndex(cur) as FrameworkElement : null;
+            double fromBefore = leaving != null ? leaving.TranslatePoint(new Point(0, 0), row).X : double.NaN;
 
             // No SelectedIndex here: the tile style selects whatever has keyboard focus, and setting both
             // re-enters Selector and throws. Focus the tile after scrolling instead.
@@ -388,6 +391,8 @@ namespace Selene
             }
 
             // Slide the row from where the tile was to where it is now.
+            if (double.IsNaN(before) && !double.IsNaN(fromBefore) && leaving.IsVisible && row.ItemContainerGenerator.IndexFromContainer(leaving) == cur)
+                before = fromBefore - leaving.TranslatePoint(new Point(0, 0), row).X + target.TranslatePoint(new Point(0, 0), row).X;
             if (panel != null && !double.IsNaN(before) && scrolled)
             {
                 double delta = before - target.TranslatePoint(new Point(0, 0), row).X;
@@ -879,6 +884,9 @@ namespace Selene
         // until something forces a frame. Selene's own covers (loading veil, Guide's black shield) and a faded-out home are put
         // right here too. Run once back from a game, and whenever the display mode changes.
         private static DateTime gameEndedAt = DateTime.MinValue;
+        private static DateTime lastGameEndAt = DateTime.MinValue, backAfterGameAt = DateTime.MinValue;   // (never cleared: "just back from a game")
+        // Selene is coming back from a game that just ended (its screen appearing now: background work can wait a moment)
+        internal static bool ReturningFromGame { get { return !launching && ((DateTime.Now - lastGameEndAt).TotalSeconds < 30 || (DateTime.Now - backAfterGameAt).TotalSeconds < 30); } }
         private static bool refreshQueued;
         private static string pendingRefresh;
         private static DateTime pendingRefreshAt;
@@ -912,6 +920,7 @@ namespace Selene
         {
             GamePause.Unhush();   // never left turned down if the game ended before its sound faded back in (Windows keeps it)
             gameEndedAt = DateTime.Now;
+            lastGameEndAt = gameEndedAt;
             guideAtHome = false;
             lastGameSnap = null;
             var app = Application.Current;
@@ -943,7 +952,16 @@ namespace Selene
                 Action backFromGame = () =>
                 {
                     var w = app.MainWindow;
-                    if (w != null && w.IsActive) { gameEndedAt = DateTime.MinValue; QueueScreenRefresh("back from a game", 400); }
+                    if (w == null || !w.IsActive) return;
+                    gameEndedAt = DateTime.MinValue;
+                    // quick return: a home still blank fades in now (the renewal below is a safety net and waits as before)
+                    var r = w.Content as UIElement;
+                    if (Features.On("quickreturn") && r != null && r.Opacity < 0.01 && !guideSwitching && !launching)
+                    {
+                        Log("quick return: Playnite saw the game stop with the home still blank, home fades in now");
+                        PlayEnterAnimation(w);
+                    }
+                    QueueScreenRefresh("back from a game", 400);
                 };
                 var still = handoffTarget;
                 if (still != IntPtr.Zero && UsableGameWindow(still) && Features.On("launchhandoff"))
@@ -2388,7 +2406,9 @@ namespace Selene
             var vm = row.DataContext;
             var prop = vm != null ? vm.GetType().GetProperty("SelectedGame") : null;
             if (prop == null || !prop.CanWrite) return;
-            if (game is string) { if (prop.GetValue(vm, null) != null) prop.SetValue(vm, null, null); return; }  // card: default background
+            // card: default background. Nothing is selected for UniPlaySong then, and over a game's song it only fades that out (it
+            // waits for a game to pick the next track): the default track is asked for as soon as it is idle (EmptyLibraryMusic)
+            if (game is string) { if (prop.GetValue(vm, null) != null) { prop.SetValue(vm, null, null); cardPushedAt = DateTime.Now; } return; }
             if (!ReferenceEquals(prop.GetValue(vm, null), game)) prop.SetValue(vm, game, null);
         }
 
@@ -2784,7 +2804,10 @@ namespace Selene
                     var prop = live != null ? live.GetType().GetProperty("ForceDefaultMusicOverride") : null;
                     if (prop == null || !Features.On("music")) return;
                     if (!Equals(prop.GetValue(live, null), WantDefault)) { prop.SetValue(live, WantDefault, null); Log("UPS ForceDefaultMusicOverride put back to " + WantDefault); }
-                    if ((DateTime.Now - emptyMusicAt).TotalSeconds > 3) EmptyLibraryMusic();
+                    // just after a card took the selection the game's song is fading out: checked every tick then, so the default
+                    // track follows the fade at once instead of after up to 3 s of silence
+                    bool justLeft = (DateTime.Now - cardPushedAt).TotalSeconds < 6 && HomeWithoutGame();
+                    if (justLeft || (DateTime.Now - emptyMusicAt).TotalSeconds > 3) EmptyLibraryMusic();
                 };
                 musicGuard.Start();
             }
@@ -2835,7 +2858,7 @@ namespace Selene
             emptyMusicAt = DateTime.Now;
             try
             {
-                if (Api == null || !WantDefault || !Features.On("music") || musicHeldForLaunch || videoPause == true) return;
+                if (Api == null || !(WantDefault || HomeWithoutGame()) || !Features.On("music") || musicHeldForLaunch || videoPause == true) return;
                 if (quietUntilSelection || (quietWatch != null && quietWatch.IsEnabled)) return;   // (a hold of Selene's own is on)
                 var settings = LiveUps();
                 var plugin = Api.Addons.Plugins.FirstOrDefault(pl => pl.Id == UniPlaySongId);
@@ -2857,11 +2880,25 @@ namespace Selene
                 if (interim == null) return;
                 if (musicStandIn == null) musicStandIn = new Playnite.SDK.Models.Game("Selene") { IsInstalled = true };
                 interim.Invoke(service, new object[] { musicStandIn, settings });
-                if ((DateTime.Now - idleMusicLoggedAt).TotalSeconds > 60) { idleMusicLoggedAt = DateTime.Now; Log("UPS: idle, default track asked for"); }
+                if ((DateTime.Now - cardPushedAt).TotalSeconds < 6) Log("UPS: card on the home, idle after the game's song: default track asked for");
+                else if ((DateTime.Now - idleMusicLoggedAt).TotalSeconds > 60) { idleMusicLoggedAt = DateTime.Now; Log("UPS: idle, default track asked for"); }
             }
             catch (Exception ex) { Log("UPS empty-library music: " + ex.Message); }
         }
         private static bool WantDefault { get { return musicMode == "login" || (musicMode == "home" && !Features.On("independentmusic")); } }
+
+        // On the home with nothing selected for Playnite (a card has the focus) no game can bring a song, so an idle
+        // UniPlaySong gets the default track there too, also with "Game music without trailers" on. Before, leaving a game
+        // whose song played for the Activity/Store/News cards faded the song out and left silence (#206).
+        private static DateTime cardPushedAt = DateTime.MinValue;
+        private static bool HomeWithoutGame()
+        {
+            if (musicMode != "home" || LoginScene.CoversHome) return false;
+            var w = Application.Current != null ? Application.Current.MainWindow : null;
+            var vm = w != null ? w.DataContext : null;
+            var prop = vm != null ? vm.GetType().GetProperty("SelectedGame") : null;
+            return prop != null && prop.GetValue(vm, null) == null;
+        }
 
         public static void RefreshMusicPolicy() { if (musicMode != null) SetMusic(musicMode); }
 
@@ -4039,6 +4076,69 @@ namespace Selene
 
         private static void StopSteady() { if (steady != null) steady.Stop(); }
 
+        // Faster hold to scroll (Discussion #198): Playnite waits about 700 ms before it repeats a held direction (then every
+        // 80-85 ms). Selene starts the repeats itself after 250 ms, at Playnite's own pace, so everything that follows a held
+        // direction (Spotlight's steady steps, Collection, menus) just starts sooner. Once Playnite's repeats come they are only
+        // a sign the button is still down: the even beat stays Selene's (no doubled or uneven step at the handover). Switch:
+        // Advanced > Faster hold to scroll (off: Playnite's own timing).
+        private const int FastRepeatDelayMs = 250, FastRepeatMs = 85;
+        private static System.Windows.Threading.DispatcherTimer fastRepeat;
+        private static string fastButton;            // the held direction, as Playnite names it (DPadRight, LeftStickLeft...)
+        private static DateTime fastPressedAt, fastHeardAt;
+        private static bool fastHeard;               // one of Playnite's own repeats came (the button is surely down)
+        private static bool fastSynthetic;           // the hold is a sent press (automated runs): only its release ends it
+        private static bool fastSending;             // a repeat of Selene's own is going through the input now
+        private static int fastSteps;
+        private static DateTime devHoldAt = DateTime.MinValue;   // (developer) when the held direction went down, to time Playnite's first repeat
+        private static string devHoldButton;
+
+        private static void StartFastRepeat(string button)
+        {
+            StopFastRepeat();
+            if (!Features.On("fastrepeat")) return;
+            fastButton = button;
+            fastPressedAt = fastHeardAt = DateTime.Now;
+            fastHeard = false;
+            fastSynthetic = Ui.SendingPad;
+            fastSteps = 0;
+            if (fastRepeat == null)
+            {
+                fastRepeat = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.Input);
+                fastRepeat.Tick += (s, e) => FastRepeatTick();
+            }
+            fastRepeat.Interval = TimeSpan.FromMilliseconds(FastRepeatDelayMs);
+            fastRepeat.Start();
+        }
+
+        private static void StopFastRepeat()
+        {
+            if (fastRepeat != null) fastRepeat.Stop();
+            if (fastButton != null && fastSteps > 0 && Ui.DevFrames) Log("hold: own repeats of " + fastButton + " stopped after " + fastSteps + " (" + (int)(DateTime.Now - fastPressedAt).TotalMilliseconds + " ms held)");
+            fastButton = null;
+        }
+
+        private static void FastRepeatTick()
+        {
+            if (fastButton == null) { StopFastRepeat(); return; }
+            var now = DateTime.Now;
+            var mainW = Application.Current != null ? Application.Current.MainWindow : null;
+            bool stop = !Features.On("fastrepeat") || mainW == null || mainW.WindowState == WindowState.Minimized || !PlayniteInFront();
+            if (!stop && !fastSynthetic)
+            {
+                // the button let go without its release reaching Selene: Playnite's repeats stop (or never came), and an XInput
+                // controller that can be read says so at once
+                if (fastHeard ? (now - fastHeardAt).TotalMilliseconds > 300 : (now - fastPressedAt).TotalMilliseconds > 1000) stop = true;
+                else if (Pad.Holding(Ui.Normalize(fastButton)) == false) stop = true;
+            }
+            if (stop) { StopFastRepeat(); return; }
+            fastRepeat.Interval = TimeSpan.FromMilliseconds(FastRepeatMs);
+            fastSteps++;
+            if (Ui.DevFrames) Log("hold: own repeat " + fastSteps + " of " + fastButton + " at " + (int)(now - fastPressedAt).TotalMilliseconds + " ms");
+            fastSending = true;
+            try { Ui.SendPad(fastButton, true); }
+            finally { fastSending = false; }
+        }
+
         // one move along Spotlight's row from the focused tile (what Left / Right on the row does): false at its end or off the row
         private static bool StepRow(int dir)
         {
@@ -4151,7 +4251,7 @@ namespace Selene
                 {
                     var relProp = ke.GetType().GetProperty("Button");
                     var rel = relProp != null ? relProp.GetValue(ke, null) : null;
-                    if (rel != null) { Ui.Released(Ui.Normalize(rel.ToString())); padHeld.Remove(rel.ToString()); steadyReleased = true; padLetGo = true; }
+                    if (rel != null) { Ui.Released(Ui.Normalize(rel.ToString())); padHeld.Remove(rel.ToString()); steadyReleased = true; padLetGo = true; if (fastButton != null && Ui.Normalize(rel.ToString()) == Ui.Normalize(fastButton)) StopFastRepeat(); if (rel.ToString() == triggerHeld) triggerHeld = null; }
                 }
                 else Ui.PadPressAt = DateTime.Now;
                 // Start / View released: a short press does its usual thing (a hold already did its own)
@@ -4172,6 +4272,19 @@ namespace Selene
                 var same = Ui.Normalize(pressed);
                 padPressed = pressed;
                 var now = DateTime.Now;
+                if (Ui.DevFrames && !fastSending && !padLetGo && same == devHoldButton && devHoldAt != DateTime.MinValue)
+                {
+                    Log("pad: Playnite's first repeat of " + same + " after " + (int)(now - devHoldAt).TotalMilliseconds + " ms" + (Ui.SendingPad ? " (sent)" : ""));
+                    devHoldAt = DateTime.MinValue;
+                }
+                // Selene repeats the held direction itself (Faster hold to scroll): Playnite's own repeats only tell it the button
+                // is still down
+                if (fastButton != null && !fastSending)
+                {
+                    // (a copy right after the press, one pad seen as two devices, is dropped without counting as a repeat)
+                    if (!padLetGo && same == fastButton) { if ((now - fastPressedAt).TotalMilliseconds > 150) { fastHeard = true; fastHeardAt = now; } e.Cancel(); return; }
+                    StopFastRepeat();
+                }
                 if (!steadyStepping && same == lastPadButton && (now - lastPadAt).TotalMilliseconds < 60)
                 {
                     Log("pad: dropped double " + pressed + " (" + (int)(now - lastPadAt).TotalMilliseconds + " ms after " + lastPadRaw + ")");
@@ -4184,6 +4297,11 @@ namespace Selene
                 bool repeat = !steadyStepping && !padLetGo && same == lastPadButton && (now - lastPadAt).TotalMilliseconds < 400;
                 padLetGo = false;
                 if (!repeat) StopSteady();
+                if (!repeat && !fastSending)
+                {
+                    if (same.StartsWith("DPad")) { StartFastRepeat(same); devHoldButton = same; devHoldAt = now; }
+                    else { StopFastRepeat(); devHoldAt = DateTime.MinValue; }
+                }
                 lastPadButton = same; lastPadRaw = pressed; lastPadAt = now;
                 if (repeat && SteadyRepeat(same)) { e.Cancel(); return; }
                 // the controller driving the mouse (Steam Input's desktop layout and the like turn the stick into pointer moves, but
@@ -4287,6 +4405,14 @@ namespace Selene
                 {
                     // LT / RT: the start of the row, or its end (the filters are on LB / RB)
                     var tr = LiveRow();
+                    if (Features.On("triggerpage"))
+                    {
+                        // a tap: a page (about ten games) along the row; held 0.4 s: the start or the end, as before. A held
+                        // trigger's repeats are part of the same press.
+                        if (!repeat && tr != null && tr.Items.Count > 0) TriggerPage(tr, pressed);
+                        e.Cancel();
+                        return;
+                    }
                     if (tr != null && tr.Items.Count > 0)
                     {
                         int last = tr.Items.Count - 1;
@@ -4744,7 +4870,7 @@ namespace Selene
             if (Isolated && GetForegroundWindow() == IntPtr.Zero) { var mw = Application.Current.MainWindow; return mw != null && mw.IsActive; }
             uint pid;
             GetWindowThreadProcessId(GetForegroundWindow(), out pid);
-            return pid == (uint)System.Diagnostics.Process.GetCurrentProcess().Id;
+            return pid == OwnPid;
         }
 
 
@@ -5664,6 +5790,46 @@ namespace Selene
                 if (hit != null) return hit;
             }
             return null;
+        }
+
+        // ---- LT / RT on Spotlight's row: a tap moves a page, a hold goes to the row's start or end (switch: Spotlight > Page with LT / RT) ----
+        private const int TriggerPageSize = 10;
+        private static string triggerHeld;   // the trigger pressed and not let go yet
+        private static System.Windows.Threading.DispatcherTimer triggerTimer;
+
+        private static void TriggerPage(ListBox row, string trigger)
+        {
+            int dir = trigger == "TriggerLeft" ? -1 : 1;
+            int cur = row.SelectedIndex;
+            var item = Keyboard.FocusedElement as ListBoxItem;
+            if (item != null && IsInRow(item)) { int at = row.ItemContainerGenerator.IndexFromContainer(item); if (at >= 0) cur = at; }
+            if (cur < 0) cur = 0;
+            int next = cur, passed = 0;
+            for (int i = cur + dir; i >= 0 && i < row.Items.Count && passed < TriggerPageSize; i += dir)
+                if (IsShown(row.Items[i])) { next = i; passed++; }
+            if (next != cur) { HidePreview(); Ui.Tick(); MoveTo(row, cur, next); }
+            // still held a moment later: all the way, at once (the row's far end can be hundreds of games away)
+            triggerHeld = trigger;
+            if (triggerTimer == null)
+            {
+                triggerTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
+                triggerTimer.Tick += (s, e) =>
+                {
+                    triggerTimer.Stop();
+                    var held = triggerHeld;
+                    triggerHeld = null;
+                    if (held == null || movingCard != null || movingGame != null || !FocusOnHome()) return;
+                    var tr = LiveRow();
+                    if (tr == null || tr.Items.Count == 0) return;
+                    int last = tr.Items.Count - 1;
+                    while (last > 0 && tr.Items[last] is RowPad) last--;
+                    int to = held == "TriggerLeft" ? 0 : last;
+                    if (to != tr.SelectedIndex) { HidePreview(); Ui.Tick(); PlaceAtLeft(tr, to); }
+                    Log("pad: " + held + " held -> row " + (to == 0 ? "start" : "end"));
+                };
+            }
+            triggerTimer.Stop();
+            triggerTimer.Start();
         }
 
         private static bool TriggerHeld()
@@ -7554,7 +7720,7 @@ namespace Selene
             if (root == null) return;
             double from = root.Opacity;
             if (from >= 0.99 && !root.HasAnimatedProperties) return;
-            var a = new DoubleAnimation(Math.Min(from, 0.0), 1, TimeSpan.FromMilliseconds(380)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
+            var a = new DoubleAnimation(from, 1, TimeSpan.FromMilliseconds(380)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };   // (from what shows now: from 0, a home already on screen went black for a frame)
             a.Completed += (s, e) => root.BeginAnimation(UIElement.OpacityProperty, null);
             root.BeginAnimation(UIElement.OpacityProperty, a);
         }
@@ -8278,12 +8444,28 @@ namespace Selene
         // the game's window closed: Selene back on screen (Playnite may never hear that the game ended: its screen stayed black,
         // or Windows gave the front to another program). A moment later, unless another full-screen window took over (the
         // real game after its launcher), Home or a new launch happened, or Selene is already there.
-        private static void BackAfterGame(int guide)
+        // Quick return: instead of always waiting 1.2 s, Selene looks every 150 ms and comes back once the game is really gone
+        // (its process ended, no other window of it, nothing left running from its folder, and Playnite no longer sees it running,
+        // so the home has already turned "Now playing" back into Play). While any of that is still there (a launcher handing over
+        // to the game, a game restarting itself) it waits the full 1.2 s as before, then does exactly what it always did.
+        private static void BackAfterGame(int guide, uint gamePid)
         {
-            var later = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1200) };
+            bool quick = Features.On("quickreturn");
+            var closedAt = DateTime.Now;
+            backAfterGameAt = closedAt;
+            var gameId = lastLaunchedGame;
+            string waitedOn = null;
+            var later = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(quick ? 150 : 1200) };
             later.Tick += (s, e) =>
             {
+                int ms = (int)(DateTime.Now - closedAt).TotalMilliseconds;
+                if (quick && ms < 1150 && !launching && guideSeq == guide && !Quitting)
+                {
+                    var why = ms < 250 ? "settling" : GameStillThere(gamePid, gameId);
+                    if (why != null) { waitedOn = why; return; }
+                }
                 later.Stop();
+                string after = " (+" + ms + " ms after the window closed" + (!quick ? "" : ms < 1150 ? ", quick return" : ", full wait: " + waitedOn) + ")";
                 var w = Application.Current.MainWindow;
                 if (w == null || launching || guideSeq != guide || Quitting) return;
                 var me = new System.Windows.Interop.WindowInteropHelper(w).Handle;
@@ -8292,16 +8474,33 @@ namespace Selene
                 bool blank = root != null && root.Opacity < 0.01;
                 if (PlayniteInFront() && w.IsVisible && !IsIconic(me))
                 {
-                    if (blank) { Log("launch: the game's window closed, Selene back"); PlayEnterAnimation(w); }
+                    if (blank) { Log("launch: the game's window closed, Selene back" + after); PlayEnterAnimation(w); }
+                    else Log("launch: the game's window closed, Selene was already back" + after);
                     return;
                 }
-                if (fg != IntPtr.Zero && CoversScreen(fg, me)) { Log("launch: the game's window closed, " + WindowInfo(fg) + " covers the screen now: left in front"); return; }
-                Log("launch: the game's window closed, Selene back (front was " + WindowInfo(fg) + ")");
+                if (fg != IntPtr.Zero && CoversScreen(fg, me)) { Log("launch: the game's window closed, " + WindowInfo(fg) + " covers the screen now: left in front" + after); return; }
+                Log("launch: the game's window closed, Selene back (front was " + WindowInfo(fg) + ")" + after);
                 if (CloseToTray.IsHidden) CloseToTray.ShowFromTray();
                 else { if (IsIconic(me)) ShowWindow(me, 9 /* SW_RESTORE */); ForceForeground(me); w.Activate(); }
                 if (blank) PlayEnterAnimation(w);
             };
             later.Start();
+        }
+
+        // what still holds the game up after its window closed (null: it is really gone)
+        private static string GameStillThere(uint gamePid, Guid gameId)
+        {
+            try
+            {
+                if (gamePid != 0 && gamePid != OwnPid && LocalGames.StillRunning((int)gamePid)) return "its process is still closing";
+                // (Playnite only notices a process ending on its next check, up to ~2 s later: not waited for once the game's process,
+                // its windows and everything from its folder are gone; the home's "Now playing" turns back into Play a moment later)
+                if (RunningGame() != null && BestGameWindow() != IntPtr.Zero) return "another window of the game is up";
+                var g = gameId != Guid.Empty && Api != null ? Api.Database.Games.Get(gameId) : null;
+                if (g != null && LocalGames.ProcessesInGameFolder(g).Count > 0) return "a program in the game's folder still runs";
+                return null;
+            }
+            catch (Exception ex) { return "check failed: " + ex.Message; }
         }
 
         private static int handoffSeq;
@@ -8310,6 +8509,11 @@ namespace Selene
         {
             int seq = ++handoffSeq, guide = guideSeq;
             handoffTarget = target;
+            // quick return: the game's window is looked for every 250 ms for as long as it runs (was once a second after 15 s,
+            // every 2 s from the tray): Selene notices it closed within a quarter second. IsWindow is all a tick costs then.
+            bool quick = Features.On("quickreturn");
+            uint targetPid = 0;   // (known only while the window exists: kept to see when the game's process is gone)
+            GetWindowThreadProcessId(target, out targetPid);
             int tries = 0, backs = 0;
             bool confirmed = false, aside = false;
             DateTime confirmedAt = DateTime.MinValue;
@@ -8323,10 +8527,17 @@ namespace Selene
                 {
                     // Playnite in the tray: back once the game's window is gone (Playnite may not know the game ended)
                     if (w == null || !CloseToTray.IsHidden) { timer.Stop(); return; }   // brought back (Home, Playnite's own game end)
-                    if (IsWindow(target) || BestGameWindow() != IntPtr.Zero) return;
+                    if (IsWindow(target)) return;
+                    var next = BestGameWindow();
+                    if (next != IntPtr.Zero)
+                    {
+                        // (quick: watched from now on, so each tick stays a single IsWindow instead of a look over every process)
+                        if (quick) { Log("launch: game window " + WindowInfo(target) + " closed, now " + WindowInfo(next)); target = next; gameWindow = next; handoffTarget = next; GetWindowThreadProcessId(next, out targetPid); }
+                        return;
+                    }
                     timer.Stop();
                     handoffTarget = IntPtr.Zero;
-                    BackAfterGame(guide);
+                    BackAfterGame(guide, targetPid);
                     return;
                 }
                 if (guideSeq != guide || guideAtHome) { timer.Stop(); handoffTarget = IntPtr.Zero; return; }   // the player went Home on purpose
@@ -8338,11 +8549,12 @@ namespace Selene
                         timer.Stop();
                         handoffTarget = IntPtr.Zero;
                         if (!confirmed) { Log("launch: the game's window closed while handing over"); return; }
-                        BackAfterGame(guide);
+                        BackAfterGame(guide, targetPid);
                         return;
                     }
                     Log("launch: game window " + WindowInfo(target) + " closed, now " + WindowInfo(other));
                     target = other; gameWindow = other; handoffTarget = other;
+                    GetWindowThreadProcessId(other, out targetPid);
                 }
                 // any of Playnite's windows holding the front counts, a minimized one too (it kept the focus at -32000,-32000
                 // with nothing on screen while the game sat behind)
@@ -8372,7 +8584,7 @@ namespace Selene
                 }
                 else
                 {
-                    if ((DateTime.Now - confirmedAt).TotalSeconds > 15) { timer.Interval = TimeSpan.FromSeconds(1); return; }   // now only waiting for the game's window to close
+                    if ((DateTime.Now - confirmedAt).TotalSeconds > 15) { timer.Interval = quick ? TimeSpan.FromMilliseconds(250) : TimeSpan.FromSeconds(1); return; }   // now only waiting for the game's window to close
                     if (!playnite) return;
                     if (++backs <= 3)
                     {
@@ -8386,7 +8598,7 @@ namespace Selene
                 // Windows keeps refusing: step aside
                 Log("launch: " + WindowInfo(target) + " wouldn't come to the front, Playnite steps aside to the tray");
                 aside = true;
-                timer.Interval = TimeSpan.FromSeconds(2);
+                timer.Interval = quick ? TimeSpan.FromMilliseconds(250) : TimeSpan.FromSeconds(2);
                 CloseToTray.HideToTray();
             };
             timer.Start();

@@ -1009,6 +1009,7 @@ namespace Selene
             private readonly ScrollingGrid grid;
             private readonly TextBlock groupLabel;
             private readonly Segmented look = new Segmented("Show", new[] { "Game art", "Background only" }, "X");
+            private readonly Segmented shuffle = new Segmented("Shuffle my wallpapers", new[] { "Off", "On" }, "Y");   // Selene settings > Look, here too
             private readonly TextBlock lookNote = new TextBlock { FontSize = 15, FontFamily = Ui.Body, TextWrapping = TextWrapping.Wrap, MaxWidth = 820, Margin = new Thickness(4, 12, 0, 0) };
             private readonly List<string> groups = new List<string>();
             private readonly Later apply = new Later(450);   // once you rest on one: applied between quick moves, the swap landed in the next glide (it stuttered)
@@ -1031,6 +1032,10 @@ namespace Selene
                 right.Children.Add(Preview(820));
                 look.Root.Margin = new Thickness(4, 20, 0, 0);
                 right.Children.Add(look.Root);
+                // a different one of your own wallpapers at each start (#205)
+                shuffle.Root.Margin = new Thickness(4, 14, 0, 0);
+                look.TitleWidth(176); shuffle.TitleWidth(176);
+                right.Children.Add(shuffle.Root);
                 lookNote.Foreground = Ink.Brush("SeleneInkColor", 0.6);
                 lookNote.Visibility = Visibility.Collapsed;   // (no note under the choices: the preview shows what each does)
                 right.Children.Add(lookNote);
@@ -1096,6 +1101,7 @@ namespace Selene
                 Fill();
                 RefreshPreviewLater();
                 look.Select(previewLook == "wallpaper" ? 1 : 0, false);
+                shuffle.Select(Features.On("shufflewallpapers") ? 1 : 0, false);
                 ShowNote();
                 ShowFocus(false);
             }
@@ -1140,6 +1146,15 @@ namespace Selene
 
             public override void Extra(string button)
             {
+                if (button == "Y")
+                {
+                    // takes effect at the next start: the background picked here stays for now
+                    bool on = !Features.On("shufflewallpapers");
+                    Features.Set("shufflewallpapers", on);
+                    Ui.Key();
+                    shuffle.Select(on ? 1 : 0, true);
+                    return;
+                }
                 if (button != "X") return;
                 previewLook = previewLook == "wallpaper" ? "art" : "wallpaper";
                 Ui.Key();

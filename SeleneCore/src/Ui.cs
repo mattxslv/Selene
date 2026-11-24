@@ -689,6 +689,7 @@ namespace Selene
         // a controller press (or release) exactly as Playnite's controller manager sends it: a GameControllerInputEventArgs through the
         // InputManager, so Selene's pad handling and the lists treat it as a real press (held-direction steps, automated runs)
         private static Type padArgs, padInput, padState;
+        public static bool SendingPad;   // a press Selene sends itself is going through the input now (no hand on a controller)
         public static bool SendPad(string button, bool down)
         {
             try
@@ -716,7 +717,9 @@ namespace Selene
                 {
                     var e = (System.Windows.Input.KeyEventArgs)Activator.CreateInstance(padArgs, key, state, Enum.Parse(padInput, button));
                     e.RoutedEvent = stage;
-                    System.Windows.Input.InputManager.Current.ProcessInput(e);
+                    SendingPad = true;
+                    try { System.Windows.Input.InputManager.Current.ProcessInput(e); }
+                    finally { SendingPad = false; }
                 }
                 return true;
             }
@@ -1074,6 +1077,9 @@ namespace Selene
         private readonly Border highlight;
         private readonly TranslateTransform slide = new TranslateTransform();
         private int selected = -1;
+
+        // rows stacked on one screen line their choices up: each title gets the same width
+        public void TitleWidth(double w) { var t = Root.Children[0] as TextBlock; if (t != null) t.MinWidth = w; }
 
         public Segmented(string title, string[] options, string button)
         {

@@ -716,6 +716,18 @@ namespace Selene
             finally { CloseHandle(h); }
         }
 
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")] private static extern bool GetExitCodeProcess(IntPtr h, out uint code);
+        [System.Runtime.InteropServices.DllImport("kernel32.dll", EntryPoint = "OpenProcess", SetLastError = true)] private static extern IntPtr OpenProcessChecked(uint access, bool inherit, int pid);
+        // still running (elevated ones too: the limited query right is granted across elevation); not readable counts as running
+        public static bool StillRunning(int pid)
+        {
+            if (pid <= 0) return false;
+            var h = OpenProcessChecked(0x1000, false, pid);
+            if (h == IntPtr.Zero) return System.Runtime.InteropServices.Marshal.GetLastWin32Error() == 5;   // access denied: it exists
+            try { uint code; return !GetExitCodeProcess(h, out code) || code == 259 /* STILL_ACTIVE */; }
+            finally { CloseHandle(h); }
+        }
+
         public static bool IsMarkedRunning(Guid id) { return markedRunning.Contains(id); }
         private static readonly Dictionary<Guid, DateTime> runningSince = new Dictionary<Guid, DateTime>();
 

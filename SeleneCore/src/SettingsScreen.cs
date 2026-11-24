@@ -42,7 +42,7 @@ namespace Selene
         private static readonly Dictionary<string, string[][]> Sections = new Dictionary<string, string[][]>
         {
             { "Spotlight", new[] {
-                new[] { "Row", "steadyhold", "pickscroll", "rowedges", "filtertabs", "visibletabs", "tabmemory", "outsideplays", "tabsort", "fullscreenpresets", "presetorder", "consistentfavorites", "shade", "idle" },
+                new[] { "Row", "steadyhold", "triggerpage", "pickscroll", "rowedges", "filtertabs", "visibletabs", "tabmemory", "outsideplays", "tabsort", "fullscreenpresets", "presetorder", "consistentfavorites", "shade", "idle" },
                 new[] { "Cards", "cardactivity", "actualplatform", "activitysessions", "cardcaptures", "capturesfolders", "spotlightshots", "hubachievements", "cardachievements", "cardsurprise", "cardnews", "newsfeeds", "cardstore", "cardpictures" },
                 new[] { "Trailers and downloads", "trailerdelay", "trailerdownload", "artdownload", "screenshotsdownload" } } },
             { "Sound & music", new[] {
@@ -52,19 +52,19 @@ namespace Selene
                 new[] { "Music setup", "music", "songsetup", "songsettle" } } },
             { "Games", new[] {
                 new[] { "Your library", "gamesget", "gamesask" },
-                new[] { "Launching", "launchstyle", "launchmotion", "launchshade", "loadingscreen", "launchseamless", "launcherfront", "launchchoice", "steamshortcuts", "aftergame", "guidefocus", "takefront" },
+                new[] { "Launching", "launchstyle", "launchmotion", "launchshade", "loadingscreen", "launchseamless", "launcherfront", "launchchoice", "steamshortcuts", "aftergame", "quickreturn", "guidefocus", "takefront" },
                 new[] { "While playing", "freeze", "powerconfirm", "tray", "quietbackups" },
                 new[] { "Game pages", "gameoptions", "achievements", "achcelebrate", "achsetup", "hltb", "hltbauto", "metadatacomplete", "metasource" },
                 new[] { "Store", "storepage", "storetrailers", "storetab", "storeregion" },
                 new[] { "Surprise me", "surprisepool", "surprisenorepeat" } } },
             { "Look", new[] {
-                new[] { "Background", "homebackground", "ownbackground", "backgroundchanger", "imagerotater", "glow", "backgroundfit", "guidefade", "smoothswitch", "perfmode" },
+                new[] { "Background", "homebackground", "shufflewallpapers", "ownbackground", "backgroundchanger", "imagerotater", "glow", "backgroundfit", "guidefade", "smoothswitch", "perfmode" },
                 new[] { "Art", "trimlogos", "logosize", "squareart", "steamgridkey", "squareformat", "smartcrop", "previewartfit", "closinglogo", "morecoverfit", "activitycoverfit", "trailerlogogap", "screenshotskeleton" },
                 new[] { "Text and hints", "textshadow", "hints", "prompts", "detailsbadges", "captureplayerfit", "dialogs", "topprofile", "topbattery", "controllerbattery", "topachievements", "wakeprofiles", "language", "languagerestart" } } },
             { "Advanced", new[] {
                 new[] { "Help", "report", "setupcheck", "storelibraries", "xboxsignin", "gamesfolder", "shortaddonask", "reportchord", "perflog" },
                 new[] { "Performance", "fullrate", "calmmotion", "presence", "asynccovers", "lightweight" },
-                new[] { "Controls and Playnite", "holdrumble", "viewswitch", "playnitesettings", "legacytasks" },
+                new[] { "Controls and Playnite", "fastrepeat", "holdrumble", "viewswitch", "playnitesettings", "legacytasks" },
                 new[] { "Language", "translate", "translatecollect" },
                 new[] { "Reset", "reset" } } },
         };

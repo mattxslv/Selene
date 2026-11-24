@@ -139,12 +139,32 @@ namespace Selene
                     list.AddRange(PicturesIn(folder, SearchOption.TopDirectoryOnly).Select(f => new WallpaperChoice { File = f, Group = group }));
                 }
             }
+            list.AddRange(Yours().Select(f => new WallpaperChoice { File = f, Group = YourGroup }));
+            return list;
+        }
+
+        // the user's own pictures ("Your wallpapers"): Selene Core's Wallpapers folder, then the folder set in its settings
+        public static List<string> Yours()
+        {
             var mine = new List<string>();
             try { Directory.CreateDirectory(SelenePaths.OwnWallpapers); mine.AddRange(PicturesIn(SelenePaths.OwnWallpapers, SearchOption.AllDirectories)); } catch { }
             var own = SelenePaths.WallpapersFolder;
             if (own != "" && Directory.Exists(own)) mine.AddRange(PicturesIn(own, SearchOption.AllDirectories));
-            list.AddRange(mine.Distinct(StringComparer.OrdinalIgnoreCase).Select(f => new WallpaperChoice { File = f, Group = YourGroup }));
-            return list;
+            return mine.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        }
+
+        // "Shuffle my wallpapers" (#205): when the background is one of the user's own wallpapers and there are two or more,
+        // another of them at random (never the one showing now); null leaves the background as it is. A theme or built-in
+        // background is never replaced, and an empty folder does nothing.
+        private static readonly Random random = new Random();
+        public static string Shuffled(string current)
+        {
+            if (!Features.On("shufflewallpapers") || string.IsNullOrEmpty(current)) return null;
+            var mine = Yours();
+            if (!mine.Any(f => string.Equals(f, current, StringComparison.OrdinalIgnoreCase))) return null;
+            var others = mine.Where(f => !string.Equals(f, current, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (others.Count == 0) return null;
+            return others[random.Next(others.Count)];
         }
 
         private static IEnumerable<string> PicturesIn(string folder, SearchOption depth)

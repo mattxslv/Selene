@@ -6,6 +6,10 @@ Selene (theme) and Selene Core (add-on) share one version number and are release
 
 ## 1.5.8 - 2026-11-24
 
+- Quicker, smoother return when a game closes (Discussion #206): Selene notices the game's window closing within a quarter second (it could take 1-2 s), comes back as soon as the game has really ended instead of always waiting over a second, and no longer stutters as the home fades in (the sound and the library update wait until it is on screen). Launchers that hand over to the game (Rockstar, EA app) are still waited for. Games > Quick return after a game turns it off.
+- Spotlight: LT / RT (L2 / R2) jump about ten games along the row, gliding like any move; hold one to go to the start or end of the row as before (#181). Spotlight > Page with LT / RT turns it off.
+- New Look > Shuffle my wallpapers switch (off at first): when your background is one of your own wallpapers, Selene starts with a different one of them each time (#205).
+- Holding a direction on the controller starts scrolling after a quarter second instead of Playnite's wait of about 0.7 s, on Spotlight, in Collection and in menus, at the same smooth pace as before. Advanced > Faster hold to scroll turns it off.
 - Launchers that wait for you (a sign-in, a Play button, an update prompt) come up over the loading screen instead of staying hidden behind it. A launcher that is just at work (Rockstar signing you in and starting the game) stays under the loading screen; one left waiting with nothing happening comes up after 20 s, and after 10 s the loading screen says it's open so Guide can show it at once. This works the same for every launcher (Rockstar, EA app, Ubisoft Connect, Battle.net, Epic, HoYoPlay, Steam's dialogs...). The loading screen stays behind the launcher and comes back over it once the game starts, so you never land on the desktop or have to Alt+Tab. Games > Show launchers that wait for you turns it off.
 - Games whose exe hands the start to their launcher and quits (EA app, Ubisoft Connect and similar) keep the loading screen and get the screen when they open, instead of starting behind Playnite.
 - Selene takes the focus when it starts while another window (a browser, a launcher) is in front, so the controller works straight away without a mouse. Later, a controller press takes the focus back from a window hidden behind Selene. Games > Controller always reaches Selene turns it off.
@@ -31,6 +35,7 @@ Selene (theme) and Selene Core (add-on) share one version number and are release
 - Smoother Achievements and Activity: moving through the list no longer redraws every row on each step, the Activity panel no longer rereads every game's play sessions from disk in the middle of browsing, and Captures builds its grid after the screen has slid in (#194).
 - Long sessions stay light: colors that follow the theme no longer pile up a record of every brush made on each move.
 - Pressing Guide twice quickly no longer leaves the game muted and paused behind it.
+- Moving from a game whose song plays onto the Activity, Store or News cards brings the default music back right after the song fades, instead of silence (also with Game music without trailers on) (#206).
 
 ## 1.5.7 - 2026-11-09
 

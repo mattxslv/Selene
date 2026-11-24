@@ -17,7 +17,7 @@ namespace Selene
     public class SearchScreen : Screen
     {
         // one match: how its tile looks and what A on it does (games: a cover that opens the game; settings: a card)
-        public sealed class Hit { public Func<Tile> Build; public Action Open; }
+        public sealed class Hit { public Func<Tile> Build; public Action Open; public string Key; }   // Key: the same match across searches (kept in place)
 
         // what is searched: the words around the field and the matches for a query (the games by default)
         public sealed class Finder
@@ -25,20 +25,25 @@ namespace Selene
             public string Title, Placeholder, EmptyNote, NoneNote;
             public Func<string, List<Hit>> Find;
             public Action Back;   // B (null: back to where the search was opened from)
-            public int Max = MaxResults;   // how many matches show (they sit in one row: as many as fit the screen)
+            public int Max = MaxResults;   // how many matches show (one row that glides sideways to the focused one)
             public Brush Shade;   // the shade over what's behind (null: the usual one)
         }
 
         public override bool MenuOnStart { get { return false; } }   // (Start is its own here)
         private static readonly string[] Rows = { "1234567890", "qwertyuiop", "asdfghjkl'", "zxcvbnm-." };
-        private const int MaxLength = 30, MaxResults = 8;
+        private const int MaxLength = 30, MaxResults = 24;
         private readonly StackPanel letters = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         private readonly Border field;
         private readonly TextBlock placeholder;
         private readonly List<List<Tile>> keys = new List<List<Tile>>();
         private readonly List<List<string>> values = new List<List<string>>();
         private readonly List<List<double>> centers = new List<List<double>>();
-        private readonly StackPanel resultsPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Height = 196 };
+        private readonly StackPanel resultsPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center, Height = 196 };
+        private readonly TranslateTransform resultsShift = new TranslateTransform();
+        private readonly Grid resultsArea;
+        private double resultsX;
+        private bool rowFits = true;
+        private readonly List<string> resultKeys = new List<string>();
         private readonly TextBlock resultsNote;
         private readonly List<Tile> resultTiles = new List<Tile>();
         private readonly List<Hit> results = new List<Hit>();
@@ -79,7 +84,9 @@ namespace Selene
             layout.Children.Add(field);
 
             // the matching games
-            var resultsArea = new Grid { Height = 220, Margin = new Thickness(0, 26, 0, 0) };
+            // (one row as wide as the screen allows: more matches than fit glide in as the focus moves along)
+            resultsArea = new Grid { Height = 220, Width = Math.Max(800, Ui.ViewWidth - 160), Margin = new Thickness(0, 26, 0, 0), ClipToBounds = true };
+            resultsPanel.RenderTransform = resultsShift;
             resultsArea.Children.Add(resultsPanel);
             resultsNote = new TextBlock { FontSize = 19, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.55), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
             resultsArea.Children.Add(resultsNote);
@@ -157,6 +164,50 @@ namespace Selene
             for (int r = 0; r < keys.Count; r++)
                 for (int c = 0; c < keys[r].Count; c++) keys[r][c].Focus(result < 0 && r == row && c == col);
             for (int i = 0; i < resultTiles.Count; i++) resultTiles[i].Focus(i == result);
+            PlaceResults();
+        }
+
+        // the row centred while it fits; wider, it glides (ease out) so the focused match stays whole on screen, the cut-off
+        // edges fading to show there's more
+        private void PlaceResults()
+        {
+            double view = resultsArea.Width, total = 0, at = 0, width = 0;
+            for (int i = 0; i < resultTiles.Count; i++)
+            {
+                var el = resultTiles[i].Root;
+                el.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                double w = el.DesiredSize.Width;
+                if (i == result) { at = total; width = w; }
+                total += w;
+            }
+            double x;
+            bool fits = total <= view;
+            if (fits) x = (view - total) / 2;
+            else
+            {
+                x = rowFits ? 0 : resultsX;
+                if (result >= 0)
+                {
+                    const double room = 70;   // the next match peeks in beside the focused one
+                    if (at + x < room) x = room - at;
+                    if (at + width + x > view - room) x = view - room - at - width;
+                }
+                x = Math.Min(0, Math.Max(view - total, x));
+            }
+            if (fits || rowFits) { resultsShift.BeginAnimation(TranslateTransform.XProperty, null); resultsShift.X = x; }   // (a search re-centring the row: no glide)
+            else if (Math.Abs(x - resultsX) > 0.5) resultsShift.BeginAnimation(TranslateTransform.XProperty, Ui.Fast(new DoubleAnimation(x, TimeSpan.FromMilliseconds(220)) { EasingFunction = Ui.Out() }));
+            resultsX = x;
+            rowFits = fits;
+            bool left = x < -1, right = x + total > view + 1;
+            if (!left && !right) { resultsArea.OpacityMask = null; return; }
+            var mask = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(1, 0) };
+            double edge = Math.Min(0.2, 70 / view);
+            mask.GradientStops.Add(new GradientStop(left ? Colors.Transparent : Colors.Black, 0));
+            mask.GradientStops.Add(new GradientStop(Colors.Black, edge));
+            mask.GradientStops.Add(new GradientStop(Colors.Black, 1 - edge));
+            mask.GradientStops.Add(new GradientStop(right ? Colors.Transparent : Colors.Black, 1));
+            mask.Freeze();
+            resultsArea.OpacityMask = mask;
         }
 
         // ---- typing ----
@@ -191,22 +242,43 @@ namespace Selene
             later.Start();
         }
 
+        // matches that still match stay where they are (no blink on every key); only new ones rise in
         private void Search()
         {
-            results.Clear();
-            resultTiles.Clear();
-            resultsPanel.Children.Clear();
-            if (result >= 0) result = -1;
             var q = query.Trim();
-            if (q.Length > 0) results.AddRange(finder.Find(q).Take(finder.Max));
-            for (int i = 0; i < results.Count; i++)
+            var found = q.Length > 0 ? finder.Find(q).Take(finder.Max).ToList() : new List<Hit>();
+            string focusedKey = result >= 0 && result < resultKeys.Count ? resultKeys[result] : null;
+            var kept = new Dictionary<string, Tile>();
+            for (int i = 0; i < resultTiles.Count; i++)
+                if (resultKeys[i] != null && !kept.ContainsKey(resultKeys[i])) kept[resultKeys[i]] = resultTiles[i];
+            var tiles = new List<Tile>();
+            var keysNow = new List<string>();
+            int fresh = 0;
+            foreach (var hit in found)
             {
-                var t = results[i].Build();
-                t.Root.Margin = new Thickness(8, 0, 8, 0);
-                resultsPanel.Children.Add(t.Root);
-                resultTiles.Add(t);
-                Ui.Rise(t.Root, i * 30, 10, 220);
+                Tile t;
+                if (hit.Key != null && kept.TryGetValue(hit.Key, out t)) kept.Remove(hit.Key);
+                else
+                {
+                    t = hit.Build();
+                    t.Root.Margin = new Thickness(8, 0, 8, 0);
+                    Ui.Rise(t.Root, Math.Min(fresh, 6) * 30, 10, 220);   // (a short stagger: the last starts within 180 ms)
+                    fresh++;
+                }
+                tiles.Add(t);
+                keysNow.Add(hit.Key);
             }
+            resultsPanel.Children.Clear();
+            foreach (var t in tiles) resultsPanel.Children.Add(t.Root);
+            results.Clear(); results.AddRange(found);
+            resultTiles.Clear(); resultTiles.AddRange(tiles);
+            resultKeys.Clear(); resultKeys.AddRange(keysNow);
+            if (result >= 0)
+            {
+                int same = focusedKey != null ? resultKeys.IndexOf(focusedKey) : -1;
+                result = same >= 0 ? same : resultTiles.Count == 0 ? -1 : Math.Min(result, resultTiles.Count - 1);
+            }
+            else resultsX = 0;   // (typing from the keyboard: the row starts from its first match)
             resultsNote.Text = q.Length == 0 ? finder.EmptyNote : results.Count == 0 ? finder.NoneNote : "";
             ShowFocus();
         }
@@ -227,7 +299,7 @@ namespace Selene
                         .ThenBy(g => g.IsInstalled ? 0 : 1)
                         .ThenBy(g => g.Name)
                         .Take(MaxResults)
-                        .Select(g => new Hit { Build = () => GameTile(g), Open = () => OpenGame(g) })
+                        .Select(g => new Hit { Build = () => GameTile(g), Open = () => OpenGame(g), Key = g.Id.ToString() })
                         .ToList();
                 }
             };
@@ -236,9 +308,27 @@ namespace Selene
         private static Tile GameTile(Playnite.SDK.Models.Game g)
         {
             var t = new Tile(140, 186, 12, 4) { FocusScale = 1.06 };
-            var cover = Cover(g);
-            if (cover != null) t.Face.Background = new ImageBrush(cover) { Stretch = Stretch.UniformToFill };
-            else t.Face.Child = new TextBlock { Text = g.Name, FontSize = 15, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor"), TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, Margin = new Thickness(10), VerticalAlignment = VerticalAlignment.Center };
+            // the name until the cover is decoded (off the UI thread, then kept for the next search)
+            t.Face.Child = new TextBlock { Text = g.Name, FontSize = 15, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor"), TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, Margin = new Thickness(10), VerticalAlignment = VerticalAlignment.Center };
+            string path = CoverPath(g);
+            if (path == null) return t;
+            ImageSource cached;
+            if (covers.TryGetValue(path, out cached)) { t.Face.Background = new ImageBrush(cached) { Stretch = Stretch.UniformToFill }; t.Face.Child = null; return t; }
+            var face = t.Face;
+            var ui = Application.Current.Dispatcher;
+            System.Threading.Tasks.Task.Factory.StartNew(() =>
+            {
+                var pic = Decode(path);
+                if (pic == null) return;
+                ui.BeginInvoke(new Action(() =>
+                {
+                    Remember(path, pic);
+                    var brush = new ImageBrush(pic) { Stretch = Stretch.UniformToFill, Opacity = 0 };
+                    face.Background = brush;
+                    face.Child = null;
+                    brush.BeginAnimation(Brush.OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(160)) { EasingFunction = Ui.Out() });
+                }));
+            });
             return t;
         }
 
@@ -249,13 +339,35 @@ namespace Selene
             LoginScene.FinishThen(() => HomeNav.ShowGame(id));
         }
 
-        private static ImageSource Cover(Playnite.SDK.Models.Game g)
+        // the covers decoded so far (a few dozen small ones): typing on brings the same games back without a disk read
+        private static readonly Dictionary<string, ImageSource> covers = new Dictionary<string, ImageSource>(StringComparer.OrdinalIgnoreCase);
+        private static readonly LinkedList<string> coverOrder = new LinkedList<string>();
+        private const int CoverCache = 64;
+
+        private static void Remember(string path, ImageSource pic)
+        {
+            if (covers.ContainsKey(path)) return;
+            covers[path] = pic;
+            coverOrder.AddFirst(path);
+            while (coverOrder.Count > CoverCache) { covers.Remove(coverOrder.Last.Value); coverOrder.RemoveLast(); }
+        }
+
+        private static string CoverPath(Playnite.SDK.Models.Game g)
         {
             try
             {
                 if (string.IsNullOrEmpty(g.CoverImage)) return null;
                 var path = HomeNav.Api.Database.GetFullFilePath(g.CoverImage);
-                if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path)) return null;
+                return string.IsNullOrEmpty(path) ? null : path;
+            }
+            catch { return null; }
+        }
+
+        private static ImageSource Decode(string path)
+        {
+            try
+            {
+                if (!System.IO.File.Exists(path)) return null;
                 var bmp = new BitmapImage();
                 bmp.BeginInit();
                 bmp.CacheOption = BitmapCacheOption.OnLoad;

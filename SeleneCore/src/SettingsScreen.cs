@@ -564,11 +564,11 @@ namespace Selene
             {
                 Title = "Find a setting", Placeholder = "Type a setting's name", EmptyNote = "Settings show here as you type.", NoneNote = "No setting matches that.",
                 Back = () => LoginScene.Show(new SettingsScreen(back, SearchGroup), -1),
-                Max = 4, Shade = Ink.Brush("SeleneScrimColor", 0.94),   // four cards fit the screen's width; as dark as the settings
+                Max = 60, Shade = Ink.Brush("SeleneScrimColor", 0.94),   // every match (the row glides to the focused card); as dark as the settings
                 Find = q => Features.All
                     .Where(o => MediaDownloads.ShowSetting(o.Key) && (o.Available == null || o.Available()) && Matches(o, q))
                     .OrderBy(o => o.Label.StartsWith(q, StringComparison.OrdinalIgnoreCase) ? 0 : o.Label.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0 ? 1 : 2)
-                    .Select(o => new SearchScreen.Hit { Build = () => SettingTile(o), Open = () => LoginScene.Show(new SettingsScreen(back, o.Group, o.Key), 1) })
+                    .Select(o => new SearchScreen.Hit { Key = o.Key, Build = () => SettingTile(o), Open = () => LoginScene.Show(new SettingsScreen(back, o.Group, o.Key), 1) })
                     .ToList()
             };
             LoginScene.Show(new SearchScreen(finder), 1);

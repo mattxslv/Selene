@@ -689,7 +689,8 @@ namespace Selene
         // a controller press (or release) exactly as Playnite's controller manager sends it: a GameControllerInputEventArgs through the
         // InputManager, so Selene's pad handling and the lists treat it as a real press (held-direction steps, automated runs)
         private static Type padArgs, padInput, padState;
-        public static bool SendingPad;   // a press Selene sends itself is going through the input now (no hand on a controller)
+        public static bool SendingPad;
+        private static readonly bool DevPadLog = System.IO.File.Exists(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "selene-dev-isolated"));   // a press Selene sends itself is going through the input now (no hand on a controller)
         public static bool SendPad(string button, bool down)
         {
             try
@@ -718,8 +719,10 @@ namespace Selene
                 var e = (System.Windows.Input.KeyEventArgs)Activator.CreateInstance(padArgs, System.Windows.Input.Key.None, state, Enum.Parse(padInput, button));
                 e.RoutedEvent = down ? System.Windows.Input.Keyboard.KeyDownEvent : System.Windows.Input.Keyboard.KeyUpEvent;
                 SendingPad = true;
-                try { System.Windows.Input.InputManager.Current.ProcessInput(e); }
+                bool took;
+                try { took = System.Windows.Input.InputManager.Current.ProcessInput(e); }
                 finally { SendingPad = false; }
+                if (DevPadLog) HomeNav.Log("pad sent: " + button + (down ? " down" : " up") + " handled=" + took + " copy=" + (key != System.Windows.Input.Key.None && !KeyIsPadCopy()) + " focus=" + (System.Windows.Input.Keyboard.FocusedElement != null ? System.Windows.Input.Keyboard.FocusedElement.GetType().Name : "none") + " source=" + (System.Windows.Input.Keyboard.PrimaryDevice.ActiveSource != null));
                 if (key != System.Windows.Input.Key.None)
                 {
                     var keyboard = System.Windows.Input.Keyboard.PrimaryDevice;
@@ -727,7 +730,8 @@ namespace Selene
                     if (source != null)
                     {
                         var copy = new System.Windows.Input.KeyEventArgs(keyboard, source, Environment.TickCount, key) { RoutedEvent = down ? System.Windows.Input.Keyboard.PreviewKeyDownEvent : System.Windows.Input.Keyboard.PreviewKeyUpEvent };
-                        System.Windows.Input.InputManager.Current.ProcessInput(copy);   // (WPF raises its KeyDown / KeyUp after the Preview)
+                        var copied = System.Windows.Input.InputManager.Current.ProcessInput(copy);   // (WPF raises its KeyDown / KeyUp after the Preview)
+                        if (DevPadLog) HomeNav.Log("pad sent: keyboard copy " + key + " handled=" + copied);
                     }
                 }
                 return true;

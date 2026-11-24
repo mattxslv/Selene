@@ -4,6 +4,8 @@ Selene (theme) and Selene Core (add-on) share one version number and are release
 
 ## Unreleased
 
+## 1.5.8 - 2026-11-24
+
 - Launchers that wait for you (a sign-in, a Play button, an update prompt) come up over the loading screen instead of staying hidden behind it. A launcher that is just at work (Rockstar signing you in and starting the game) stays under the loading screen; one left waiting with nothing happening comes up after 20 s, and after 10 s the loading screen says it's open so Guide can show it at once. This works the same for every launcher (Rockstar, EA app, Ubisoft Connect, Battle.net, Epic, HoYoPlay, Steam's dialogs...). The loading screen stays behind the launcher and comes back over it once the game starts, so you never land on the desktop or have to Alt+Tab. Games > Show launchers that wait for you turns it off.
 - Games whose exe hands the start to their launcher and quits (EA app, Ubisoft Connect and similar) keep the loading screen and get the screen when they open, instead of starting behind Playnite.
 - Selene takes the focus when it starts while another window (a browser, a launcher) is in front, so the controller works straight away without a mouse. Later, a controller press takes the focus back from a window hidden behind Selene. Games > Controller always reaches Selene turns it off.

@@ -494,17 +494,19 @@ namespace Selene
                 if (notice != null) { host.Children.Remove(notice); notice = null; }
                 var pill = Lifted(new Border
                 {
-                    CornerRadius = new CornerRadius(22), Padding = new Thickness(26, 11, 26, 13), MaxWidth = 900,
-                    Background = Ink.Brush("SeleneGlassColor", 0.94), BorderBrush = Ink.Brush("SeleneInkColor", 0.18), BorderThickness = new Thickness(1),
-                    HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, LegacyTasks.BannerUp ? 112 : 26, 0, 0),   // (under the old-tasks banner)
-                    Child = new TextBlock { Text = text, FontSize = 19, FontFamily = Body, Foreground = Ink.Brush("SeleneInkColor"), TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center },
+                    CornerRadius = new CornerRadius(22), Padding = new Thickness(26, 11, 26, 13), MaxWidth = 560,
+                    Background = Ink.Brush("SeleneGlassColor", 0.97), BorderBrush = Ink.Brush("SeleneInkColor", 0.18), BorderThickness = new Thickness(1),
+                    // where the progress cards show, under the top bar at the right (top centre it covered the filter tabs), below a card
+                    HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top,
+                    Margin = new Thickness(0, ProgressToast.NoticeTop + ProgressToast.CardRoom, ProgressToast.NoticeEdge, 0),
+                    Child = new TextBlock { Text = text, FontSize = 19, FontFamily = Body, Foreground = Ink.Brush("SeleneInkColor"), TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Left },
                     IsHitTestVisible = false
                 }, 30, 0.45);
                 Grid.SetRowSpan(pill, 99); Grid.SetColumnSpan(pill, 99);
                 Panel.SetZIndex(pill, 9999);
                 host.Children.Add(pill);
                 notice = pill;
-                Rise(pill, 0, 12, 260);
+                Slide(pill, 26, 0, 0, 1, 260);   // (in from the edge, as the cards come)
                 NotifySound();
                 var gone = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(ms) };
                 gone.Tick += (s2, e2) =>

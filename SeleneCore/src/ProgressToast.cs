@@ -37,6 +37,19 @@ namespace Selene
         // a progress task is being shown as a card (or just was): focus moving around then is Playnite's own business
         public static bool Busy { get { return source != null || hiddenProgress != null || DateTime.Now < busyUntil || (layer != null && layer.Visibility == Visibility.Visible); } }
 
+        // where Selene's notes go (Ui.Notice): the cards' own spot, under the top bar at the right (clear of the filter tabs and
+        // the row), below a card that's showing
+        public const double NoticeTop = 112, NoticeEdge = Edge;
+        internal static double CardRoom
+        {
+            get
+            {
+                if (layer == null || card == null || layer.Visibility != Visibility.Visible) return 0;
+                double h = double.IsNaN(card.Height) ? card.ActualHeight : card.Height;
+                return h + 14;
+            }
+        }
+
         // the card (one at a time)
         // the card's layer inside Playnite's own window (a window of its own flashed a black box as it appeared, and overlapping
         // the full-screen window made Windows present Playnite's frames the slow way: everything stuttered while it showed)

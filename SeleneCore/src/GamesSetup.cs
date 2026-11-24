@@ -149,6 +149,12 @@ namespace Selene
         private void Next() { if (done) return; done = true; next(); }
 
         public override void Shown() { if (ask == null) Open(); }
-        public override void Handle(string button) { if (!done && ask != null) ask.Handle(button); }
+        public override void Handle(string button)
+        {
+            if (done || ask == null) return;
+            // B backs out of the question (to the setup check) instead of answering Skip for the user
+            if (button == "B") { done = true; Ui.Back(); LoginScene.Show(new SetupScreen(true), -1); return; }
+            ask.Handle(button);
+        }
     }
 }

@@ -1200,7 +1200,7 @@ namespace Selene
         // actions: pairs of button + label, e.g. "A", "Install"; the first is drawn as the main one
         public void Show(string icon, Tone tone, string name, string status, string text, string noteText, params string[] buttons)
         {
-            var key = tone == Tone.Success ? "SeleneSuccessColor" : tone == Tone.Muted ? "SeleneInkColor" : "GlyphColor";
+            var key = tone == Tone.Success ? "SeleneSuccessColor" : tone == Tone.Muted ? "SeleneInkColor" : "SeleneAccentInkColor";   // (the accent made readable on the glass)
             if (tone == Tone.Warning)
             {
                 circle.Fill = new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0x6B, 0x6B));
@@ -1250,7 +1250,7 @@ namespace Selene
             var badge = new Grid { Width = 84, Height = 84, HorizontalAlignment = HorizontalAlignment.Center };
             badge.Children.Add(new Ellipse { Fill = warning ? (Brush)new SolidColorBrush(Color.FromArgb(0x30, 0xFF, 0x6B, 0x6B)) : Ink.Brush("GlyphColor", 0.19) });
             // the icon centred by its ink (material: a Material Icons code, else Segoe MDL2)
-            var glyph = Ui.Glyph(icon, material ? Ui.Icons : Ui.Glyphs, 36, Ink.Brush("GlyphColor"));
+            var glyph = Ui.Glyph(icon, material ? Ui.Icons : Ui.Glyphs, 36, Ink.Brush("SeleneAccentInkColor"));
             if (warning) glyph.SetResourceReference(glyph is System.Windows.Shapes.Shape ? System.Windows.Shapes.Shape.FillProperty : TextBlock.ForegroundProperty, "WarningBrush");
             badge.Children.Add(glyph);
             col.Children.Add(badge);
@@ -1346,7 +1346,7 @@ namespace Selene
             // glass, deep enough to read over a busy wallpaper (the near-clear face lost its words in the art)
             Face = new Border
             {
-                CornerRadius = new CornerRadius(radius), Background = Ink.Brush("SeleneGlassColor", 0.72),
+                CornerRadius = new CornerRadius(radius), Background = Ink.Brush("SeleneGlassColor", 0.86),
                 BorderBrush = Ink.Brush("SeleneInkColor", 0.16), BorderThickness = new Thickness(1)
             };
             ring = new Border

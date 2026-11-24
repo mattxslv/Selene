@@ -49,7 +49,7 @@ BRUSHES = [
     ("SeleneInk60Brush", "SeleneInkColor", 0.6), ("SeleneInk25Brush", "SeleneInkColor", 0.25),
     ("SeleneInk15Brush", "SeleneInkColor", 0.15), ("SeleneScrimBrush", "SeleneScrimColor", 1),
     ("SeleneScrim65Brush", "SeleneScrimColor", 0.65), ("SeleneScrim45Brush", "SeleneScrimColor", 0.45),
-    ("SeleneGlassBrush", "SeleneGlassColor", 0.75), ("SeleneGlassSolidBrush", "SeleneGlassColor", 0.88),
+    ("SeleneGlassBrush", "SeleneGlassColor", 0.86), ("SeleneGlassSolidBrush", "SeleneGlassColor", 0.88),
     ("SeleneGlassLightBrush", "SeleneGlassColor", 0.45), ("SeleneSuccessBrush", "SeleneSuccessColor", 1),
 ]
 
@@ -79,6 +79,20 @@ def saturation(color):
 def contrast(a, b):
     hi, lo = sorted((luminance(a), luminance(b)), reverse=True)
     return (hi + 0.05) / (lo + 0.05)
+
+
+def mix(a, b, t):
+    ha, hb = a.lstrip("#"), b.lstrip("#")
+    return "#" + "".join("%02X" % round(int(ha[i:i + 2], 16) * (1 - t) + int(hb[i:i + 2], 16) * t) for i in (0, 2, 4))
+
+
+def readable(color, against, toward, minimum=4.5):
+    """color mixed toward `toward` just enough to read on `against`"""
+    for step in range(21):
+        out = mix(color, toward, step / 20)
+        if contrast(out, against) >= minimum:
+            return out
+    return toward
 
 
 def xaml(theme_id, name, c, wallpaper):
@@ -118,6 +132,9 @@ def xaml(theme_id, name, c, wallpaper):
     ink = c.get("ink", bg if light else bright)
     scrim = c.get("scrim", shade(fg, 0.42) if light else darker)
     glass = c.get("glass", shade(fg, 0.55) if light else dark)
+    # the accent as text and icons on the glass (status chips, icon badges): a deep accent (Latte's blue) on the dark glass
+    # was hard to read, so it is mixed toward the ink until it reads (4.5:1); bright accents stay as they are
+    accent_ink = c.get("accent_ink", readable(c["accent"], mix(glass, c["accent"], 0.2), ink))   # (on the chip: glass tinted with it)
     # the dim behind Playnite's menus and dialogs: a light one turned the whole home bright, so light themes dim with
     # the dark scrim too
     if light:
@@ -128,6 +145,7 @@ def xaml(theme_id, name, c, wallpaper):
         "SeleneInkColor": argb(ink),
         "SeleneScrimColor": argb(scrim),
         "SeleneGlassColor": argb(glass),
+        "SeleneAccentInkColor": argb(accent_ink),
         "SeleneSuccessColor": argb(c.get("green", "#3DDC84")),
     })
     lines = [

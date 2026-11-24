@@ -612,6 +612,12 @@ namespace Selene
             guard.Tick += (s, e) => { guard.Stop(); if (done) return; done = true; el.SizeChanged -= sized; act(); };
             guard.Start();
         }
+        private static SolidColorBrush veilBrush;
+        private static double VeilFor(ImageSource wallpaper)
+        {
+            double need = wallpaper != null ? Contrast.Need(wallpaper) : 0;
+            return Math.Max(0.45, Math.Min(0.72, 0.45 + (need - 0.35) * 0.8));
+        }
         private static Grid BuildScene()
         {
             var g = new Grid { ClipToBounds = true };
@@ -630,9 +636,18 @@ namespace Selene
             RenderOptions.SetBitmapScalingMode(wallpaper, BitmapScalingMode.HighQuality);
             backdropHost.Children.Add(wallpaper);
             backdrop.Add(wallpaper);
-            var veil = new Border { Background = Ink.Brush("SeleneScrimColor", 0.45) };
+            // the veil over the wallpaper deepens as much as the picture needs for the light words on it (a pale pastel
+            // wallpaper, Catppuccin Latte's own, left white titles unreadable at the old fixed 45%); dark ones keep 45%
+            veilBrush = Ink.Brush("SeleneScrimColor");
+            veilBrush.Opacity = VeilFor(Contrast.WallpaperImage);
+            var veil = new Border { Background = veilBrush };
             backdropHost.Children.Add(veil);
             backdrop.Add(veil);
+            Contrast.Changed += () =>
+            {
+                double to = VeilFor(Contrast.WallpaperImage);
+                if (Math.Abs(to - veilBrush.Opacity) > 0.01) veilBrush.BeginAnimation(Brush.OpacityProperty, new DoubleAnimation(to, TimeSpan.FromMilliseconds(300)) { EasingFunction = Ui.Out() });
+            };
             // the spotlight, floor glow and particles dress up the theme's plain gradient; over a wallpaper they stay off
             glow = BuildGlow();
             backdropHost.Children.Add(glow);

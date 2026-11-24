@@ -60,6 +60,7 @@
     <Color x:Key="SeleneInkColor">#FFFFFFFF</Color>        <!-- text and icons over game art -->
     <Color x:Key="SeleneScrimColor">#FF000000</Color>      <!-- darkens art under text (lightens it in light themes) -->
     <Color x:Key="SeleneGlassColor">#FF14181F</Color>      <!-- glass panels and cards -->
+    <Color x:Key="SeleneAccentInkColor">#FF9CCBFF</Color>  <!-- the accent as text and icons on glass (chips), always readable -->
     <Color x:Key="SeleneSuccessColor">#FF3DDC84</Color>
 
     <SolidColorBrush x:Key="SeleneFocusBrush" Color="{DynamicResource SeleneFocusColor}" />
@@ -72,7 +73,7 @@
     <SolidColorBrush x:Key="SeleneScrimBrush" Color="{DynamicResource SeleneScrimColor}" />
     <SolidColorBrush x:Key="SeleneScrim65Brush" Color="{DynamicResource SeleneScrimColor}" Opacity="0.65" />
     <SolidColorBrush x:Key="SeleneScrim45Brush" Color="{DynamicResource SeleneScrimColor}" Opacity="0.45" />
-    <SolidColorBrush x:Key="SeleneGlassBrush" Color="{DynamicResource SeleneGlassColor}" Opacity="0.75" />
+    <SolidColorBrush x:Key="SeleneGlassBrush" Color="{DynamicResource SeleneGlassColor}" Opacity="0.86" />
     <SolidColorBrush x:Key="SeleneGlassSolidBrush" Color="{DynamicResource SeleneGlassColor}" Opacity="0.88" />
     <SolidColorBrush x:Key="SeleneGlassLightBrush" Color="{DynamicResource SeleneGlassColor}" Opacity="0.45" />
     <SolidColorBrush x:Key="SeleneSuccessBrush" Color="{DynamicResource SeleneSuccessColor}" />

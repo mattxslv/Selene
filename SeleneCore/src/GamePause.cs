@@ -120,8 +120,12 @@ namespace Selene
         public static void Resume() { Resume(true); }
 
         // Kept for existing animation callers; no elevated helper is involved.
+        // counts every Resume, so a pause still waiting for its game to minimize (450 ms) knows the player already went back
+        public static int Resumes;
+
         public static void Resume(bool bringBack)
         {
+            Resumes++;
             if (pausedPid == 0) return;
             int pid = pausedPid;
             pausedPid = 0;

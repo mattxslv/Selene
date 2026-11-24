@@ -6654,12 +6654,13 @@ namespace Selene
                 // freezing switched off: every game is treated like an online one (only muted)
                 bool online = !Features.On("freeze") || GamePause.IsOnline((int)pid);
                 if (!online) ShowWindow(gameWindow, 7);  // SW_SHOWMINNOACTIVE: parked, so Windows will not ghost it once frozen
+                int resumes = GamePause.Resumes;
                 var target = gameWindow;
                 var later = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(online ? 1 : 450) };
                 later.Tick += (s, e) =>
                 {
                     later.Stop();
-                    if (gameWindow != target) return;  // already went back
+                    if (gameWindow != target || GamePause.Resumes != resumes) return;  // already went back (even within the 450 ms)
                     bool parked = online || IsIconic(target);
                     GamePause.Pause((int)pid, name ?? "", parked);
                 };

@@ -183,7 +183,7 @@ class BugsCheck
             Assert(scrollBadge.MinWidth == 48, "#96 badge switch off restores the previous Scroll badge");
             Features.Set("detailsbadges", true); Ui.PublishPrompts();
             Assert(GameMedia.Plainer("Hades [GOG]") == "Hades", "A store tag is left out of the name search");
-            Assert(GameMedia.Plainer("DOOM (2016)") == "DOOM", "A year in brackets is left out of the name search");
+            Assert(GameMedia.Plainer("DOOM (2016)") == "DOOM (2016)" && GameMedia.Plainer("Prey (Digital Deluxe)") == "Prey", "A year stays (another game of that name), other notes in brackets go");
             Assert(GameMedia.Plainer("Control\u2122") == "Control", "A trademark mark is left out of the name search");
             Assert(GameMedia.Plainer("The Witcher 3: Wild Hunt - GOG Edition") == "The Witcher 3: Wild Hunt", "A store's own edition is left out of the name search");
             Assert(GameMedia.Plainer("Genshin Impact game") == "Genshin Impact" && GameMedia.Plainer("Hard Game") == "Hard Game", "An install folder's trailing \"game\" is left out, never a two-word title's");

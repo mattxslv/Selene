@@ -25,6 +25,7 @@ namespace Selene
         private static readonly List<UIElement> backdrop = new List<UIElement>();
         // opened from the home (menu, store...): closing goes back to the home exactly as it was (no intro, same focus)
         private static bool keepHome;
+        public static bool OverHome { get { return keepHome; } }   // opened over the home (not the sign-in at start)
         private static IInputElement returnFocus;
 
         public static bool KeepHome { get { return keepHome; } }
@@ -448,6 +449,7 @@ namespace Selene
             ApplyOverlay(next.Overlay, next.OverlayShade);
             if (next is WhoScreen) ReleaseStartMusic();   // the music comes in with "Who's playing?"
             if (!next.Overlay) HomeNav.ClearSelectedGame();
+            else if (keepHome && old != null && !old.Overlay) HomeNav.RestoreSelected();   // (an overlay after a full screen: the home shows under it)
             // the new screen is set up first (its grids, pictures, preview), then both slide: set up inside the slide's first frame,
             // the work made it stutter (Selene settings -> Change theme)
             next.Root.Opacity = 0;
@@ -489,6 +491,7 @@ namespace Selene
                 if (DetailsStage.InBand) DetailsStage.FocusBand();   // back on a band of the details page: not its pills
                 else if (el != null && el.IsVisible) el.Focus();
                 keepHome = false;
+                HomeNav.RestoreSelected();
             };
             t.Start();
         }
@@ -1067,7 +1070,7 @@ namespace Selene
             menu.Child = menuStack;
             Root.Children.Add(menu);
 
-            Root.Children.Add(Ui.Prompts(true, Ui.Prompt("A", "Select")));
+            Root.Children.Add(LoginScene.OverHome ? Ui.Prompts(true, Ui.Prompt("B", "Back"), Ui.Prompt("A", "Select")) : Ui.Prompts(true, Ui.Prompt("A", "Select")));
             if (profiles.Count > 0) Root.Children.Add(Ui.Prompts(false, Ui.Prompt("Y", "Edit profile"), Ui.Prompt("X", "Remove")));
 
             var active = Profiles.Active;
@@ -1144,6 +1147,8 @@ namespace Selene
                 else confirm.Handle(b);
                 return;
             }
+            // opened from the menu over the home (Switch profile): B goes back to it (there was no way out but signing in)
+            if (b == "B" && LoginScene.OverHome) { leaving = true; Ui.Back(); LoginScene.Finish(); return; }
             if (b == "DPadDown" && !onPower) { onPower = true; Ui.Tick(); ShowFocus(); return; }
             if (b == "DPadUp" && onPower) { onPower = false; Ui.Tick(); ShowFocus(); return; }
             if (!onPower && (b == "DPadLeft" || b == "DPadRight"))

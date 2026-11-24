@@ -44,6 +44,7 @@ namespace Selene
         private static void OnWindowLoaded(object sender, RoutedEventArgs e)
         {
             var w = sender as Window;
+            if (w != null && w.GetType().Name == "MessageBoxWindow") HomeNav.MessageDuringLaunch(w);
             if (w == null || !Features.On("dialogs")) return;
             if (w.GetType().Name == "SingleItemSelectionWindow")
             {

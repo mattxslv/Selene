@@ -30,7 +30,9 @@ namespace Selene
         public static bool PageOpen { get { return details != null && details.IsVisible; } }
         public static bool InBand { get { return details != null && details.IsVisible && zone > 0; } }
 
-        public static void FocusBand() { if (sink != null) sink.Focus(); }
+        // (the focus holder of the bands is focusable only while it holds the focus: arrow keys from the buttons reached it, and
+        // nothing on the page looked focused)
+        public static void FocusBand() { if (sink != null) { sink.Focusable = true; sink.Focus(); } }
         private static Guid shownId;
         private static DispatcherTimer shotsWatch;
         private static int shotsSeen;
@@ -44,6 +46,37 @@ namespace Selene
             var npc = w.DataContext as System.ComponentModel.INotifyPropertyChanged;
             if (npc != null) npc.PropertyChanged += (s, e) => { if (e.PropertyName == "SelectedGame" && details.IsVisible) details.Dispatcher.BeginInvoke(new Action(Opened), DispatcherPriority.Background); };
             if (details.IsVisible) Opened();
+            // details that arrive while the page is open (the missing details lookup, Playnite's metadata download): the
+            // description and the developers were filled once, by hand, so they stayed empty
+            if (HomeNav.Api != null && !libraryWatched)
+            {
+                libraryWatched = true;
+                HomeNav.Api.Database.Games.ItemUpdated += (s, e) =>
+                {
+                    if (e.UpdatedItems == null) return;
+                    foreach (var u in e.UpdatedItems)
+                    {
+                        var n = u.NewData; var o = u.OldData;
+                        if (n == null || n.Id != shownId) continue;
+                        bool about = o == null || o.Description != n.Description;
+                        bool makers = o == null || !SameIds(o.DeveloperIds, n.DeveloperIds);
+                        if (!about && !makers) continue;
+                        details.Dispatcher.BeginInvoke(new Action(() =>
+                        {
+                            if (!details.IsVisible || n.Id != shownId) return;
+                            var fresh = HomeNav.Api.Database.Games.Get(n.Id) ?? n;
+                            if (about) FillDescription(fresh);
+                            if (makers) FillDevelopers(fresh);
+                        }), DispatcherPriority.Background);
+                    }
+                };
+            }
+        }
+        private static bool libraryWatched;
+        private static bool SameIds(List<Guid> a, List<Guid> b)
+        {
+            if (a == null || a.Count == 0) return b == null || b.Count == 0;
+            return b != null && a.Count == b.Count && !a.Except(b).Any();
         }
 
         private static T Part<T>(string name) where T : class { return details != null ? HomeNav.FindByName(details, name) as T : null; }
@@ -103,7 +136,9 @@ namespace Selene
                 }
                 if (sink == null || !ReferenceEquals(sink.Parent, page))
                 {
-                    sink = new Border { Width = 0, Height = 0, Focusable = true, FocusVisualStyle = null, IsHitTestVisible = false };
+                    sink = new Border { Width = 0, Height = 0, Focusable = false, FocusVisualStyle = null, IsHitTestVisible = false };
+                    KeyboardNavigation.SetIsTabStop(sink, false);
+                    sink.LostKeyboardFocus += (s2, e2) => ((Border)s2).Focusable = false;
                     page.Children.Add(sink);
                 }
                 // what the glide moves is cached in pieces: the top block is a texture, and each tile of the bands is one already (Tile);
@@ -250,7 +285,7 @@ namespace Selene
             // the screenshots arrive a moment after the selection: looked at again for a while
             shotsSeen = GameMedia.Current.Count; shotsFor = GameMedia.ShownId;
             // (by the game they belong to as well as their count: another game's cached list of the same length never changed the count)
-            if (shotsWatch == null) { shotsWatch = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(700) }; shotsWatch.Tick += (s, e) => { if (details == null || !details.IsVisible) { shotsWatch.Stop(); return; } if (GameMedia.Current.Count != shotsSeen || GameMedia.ShownId != shotsFor) { shotsSeen = GameMedia.Current.Count; shotsFor = GameMedia.ShownId; FillShots(); ShowFocus(); } }; }
+            if (shotsWatch == null) { shotsWatch = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) }; shotsWatch.Tick += (s, e) => { if (details == null || !details.IsVisible) { shotsWatch.Stop(); return; } if (GameMedia.Current.Count != shotsSeen || GameMedia.ShownId != shotsFor) { shotsSeen = GameMedia.Current.Count; shotsFor = GameMedia.ShownId; FillShots(); ShowFocus(); } }; }
             shotsWatch.Stop();
             shotsWatch.Start();
         }

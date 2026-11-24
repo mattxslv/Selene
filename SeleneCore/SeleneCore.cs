@@ -403,7 +403,6 @@ namespace Selene
             new Option { Group = "Notifications", Key = "taskcards", Label = "Progress cards", About = "Show cards while downloads, achievement checks and library updates run, and when they finish.", DefaultOn = false },
             new Option { Group = "Notifications", Key = "progresstoast", Label = "Download notifications", About = "Show downloads in a small notification instead of a window." },
             new Option { Group = "Notifications", Key = "updatecheck", Label = "Update notifications", About = "Check for a new version of Selene once a day." },
-            new Option { Group = "Notifications", Key = "setuphint", Label = "Add-on tips", About = "Let you know when logos and trailers need the Extra Metadata add-on." },
             // ---- Sound & music ----
             new Option { Group = "Sound & music", Key = "sounds", Note = () => MusicLevel.Installed() ? null : "For background music, install the UniPlaySong add-on.", Label = "Interface sounds", About = "Sounds as you move, select and go back. Off silences all of Selene's own sounds." },
             new Option { Group = "Sound & music", Key = "quietdetails", Label = "Quiet details transitions", About = "Avoid extra navigation ticks when opening game details." },
@@ -460,7 +459,7 @@ namespace Selene
             new Option { Group = "Games", Key = "hltbauto", Label = "HowLongToBeat for new games", About = "Get HowLongToBeat times when games are added to your library.", Get = HltbFetch.AutoImport, Put = HltbFetch.SetAutoImport, Available = HltbFetch.Installed },
             new Option { Group = "Look", Key = "wakeprofiles", Label = "Profiles after sleep", About = "Go back to choosing a profile when the PC wakes.", DefaultOn = false },
             new Option { Group = "Look", Key = "topbattery", Label = "Battery in the top bar", About = "Show this device's battery at the top left. Only on devices with a battery." },
-            new Option { Group = "Look", Key = "controllerbattery", Label = "Controller battery in the top bar", About = "Show your DualSense controller's battery at the top right. Needs the DualSense Battery Level add-on." },
+            new Option { Group = "Look", Key = "controllerbattery", Label = "Controller battery in the top bar", About = "Show your DualSense controller's battery at the top right. Needs the DualSense Battery Level add-on.", Available = ControllerBattery.Installed },
             new Option { Group = "Look", Key = "backgroundchanger", Label = "Background Changer backgrounds", About = "Use Background Changer on Spotlight, Collection and game pages. Requires the Background Changer add-on.", DefaultOn = false, Available = BackgroundChangerBridge.Available },
             new Option { Group = "Look", Key = "imagerotater", Label = "ImageRotater backgrounds", About = "Show ImageRotater's backgrounds on Spotlight and game pages too. Requires the ImageRotater add-on.", Available = BackgroundChangerBridge.RotaterAvailable },
             new Option { Group = "Look", Key = "topachievements", Label = "Achievements in the top bar", About = "Open all your games' achievements from the trophy next to your profile.", Available = AchievementsData.Available },

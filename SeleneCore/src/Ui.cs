@@ -1278,8 +1278,12 @@ namespace Selene
             ShowFocus();
         }
 
+        private DateTime openedAt = DateTime.MinValue;
+        private bool unasked;
+        public Dialog Unasked() { unasked = true; return this; }   // it comes up on its own (not from a press): A ignored for a moment
         public void Open(Panel host)
         {
+            openedAt = DateTime.Now;
             host.Children.Add(Root);
             Root.Opacity = 0;
             Ui.Fade(Root, 1, 200);
@@ -1306,6 +1310,9 @@ namespace Selene
             if (done) return;
             if (bodyScroll != null && (b == "DPadDown" || b == "DPadUp")) { bodyScroll.ScrollToVerticalOffset(bodyScroll.VerticalOffset + (b == "DPadDown" ? 60 : -60)); return; }
             if ((b == "DPadLeft" && onYesButton) || (b == "DPadRight" && !onYesButton)) { onYesButton = !onYesButton; Ui.Tick(); ShowFocus(); return; }
+            // (a question that came up on its own while you were playing around: an A already on its way meant the game under it,
+            // not this answer, e.g. "Download game media?" started its downloads)
+            if (b == "A" && unasked && (DateTime.Now - openedAt).TotalMilliseconds < 600) return;
             if (b == "A") Answer(onYesButton);
             else if (b == "B") Answer(false);
         }

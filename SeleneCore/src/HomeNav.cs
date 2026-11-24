@@ -135,6 +135,7 @@ namespace Selene
                 // the login layer (menu, profiles...) is up: its keys are its own (this class handler runs before the
                 // layer's, and moved the home row behind the menu)
                 if (LoginScene.IsActive) return;
+                if (GameMedia.ViewerOpen) return;   // the screenshot viewer takes its keys itself (they moved the page underneath)
                 // a window over Playnite (an add-on's dialog) is active: its keys are its own, nothing on the home or the page moves
                 if (DialogUp()) return;
                 // the keyboard copy of a pad press Selene already handled (it moved things a second time)
@@ -157,6 +158,8 @@ namespace Selene
                 }
                 // a stray Enter as the layer closes over the details page (a capture) reopened it; pad presses come the other way
                 if (asPad == "A" && (DateTime.Now - LoginScene.ClosedAt).TotalMilliseconds < 1500) { Log("keys: Enter right after the layer closed, ignored"); e.Handled = true; return; }
+                // Enter on a screenshot opens the viewer, as A does ("A View": the keyboard's Enter did nothing)
+                if (asPad == "A" && e.GetType().Name != "GameControllerInputEventArgs" && GameMedia.HandleButton("A", Keyboard.FocusedElement)) { e.Handled = true; return; }
                 if (asPad != null && !e.Handled && (StoreShowcase.Handle(asPad) || CardShowcase.Handle(asPad) || DetailsStage.Handle(asPad))) { e.Handled = true; return; }
                 // Up/Down never shrink the card; Left/Right only while moving inside the row (not in the bar below)
                 bool dirKey = e.Key == Key.Up || e.Key == Key.Down || e.Key == Key.Left || e.Key == Key.Right;
@@ -838,7 +841,7 @@ namespace Selene
         }
 
         // The library always opens in the horizontal layout (Hold-Y "Change layout" may have switched it).
-        private static void ForceHorizontalLibrary()
+        internal static void ForceHorizontalLibrary()
         {
             try
             {
@@ -2392,7 +2395,29 @@ namespace Selene
             var w = Application.Current.MainWindow;
             var vm = w != null ? w.DataContext : null;
             var prop = vm != null ? vm.GetType().GetProperty("SelectedGame") : null;
-            if (prop != null && prop.CanWrite && prop.GetValue(vm, null) != null) prop.SetValue(vm, null, null);
+            var had = prop != null ? prop.GetValue(vm, null) : null;
+            if (had != null) clearedGame = had;
+            if (prop != null && prop.CanWrite && had != null) prop.SetValue(vm, null, null);
+        }
+        private static object clearedGame;   // (put back by RestoreSelected in Collection)
+
+        // a full screen (Activity, Edit profile, Setup check...) cleared the selected game while it covered the home: back on the
+        // home (or an overlay over it), the row's game is the selected one again (its title, play time and art had gone)
+        public static void RestoreSelected()
+        {
+            try
+            {
+                if (LoginScene.CoversHome) return;
+                var row = LiveRow();
+                if (row != null && SpotlightShowing()) { PushSelected(row); clearedGame = null; return; }
+                // Collection: the game it had
+                var w = Application.Current.MainWindow;
+                var vm = w != null ? w.DataContext : null;
+                var prop = vm != null ? vm.GetType().GetProperty("SelectedGame") : null;
+                if (clearedGame != null && prop != null && prop.CanWrite && prop.GetValue(vm, null) == null) { prop.SetValue(vm, clearedGame, null); SetMusic("home"); }
+                clearedGame = null;
+            }
+            catch (Exception ex) { Log("restore selection: " + ex.Message); }
         }
 
         private static void PushSelected(ListBox row)
@@ -3708,7 +3733,8 @@ namespace Selene
                     again.Tick += (s2, e2) =>
                     {
                         again.Stop();
-                        if (row.IsVisible && !row.IsKeyboardFocusWithin)
+                        // (not once a game's page or a Selene screen has opened over it meanwhile: it took their focus)
+                        if (row.IsVisible && !row.IsKeyboardFocusWithin && !DetailsStage.PageOpen && !LoginScene.IsActive)
                         {
                             var fc2 = row.ItemContainerGenerator.ContainerFromIndex(first) as UIElement;
                             if (fc2 != null) { fc2.Focus(); Log("refocused first game"); }
@@ -4367,6 +4393,8 @@ namespace Selene
                 if (GameMedia.HandleButton(pressed, Keyboard.FocusedElement)) { e.Cancel(); return; }
                 if (DetailsStage.Handle(Ui.Normalize(pressed))) { e.Cancel(); return; }   // the details page's bands
                 if (pressed == "RightStick" && previewShowing) { TogglePreviewSound(); e.Cancel(); return; }
+                // ...and nothing else on Spotlight: Playnite opened its filter panel out of sight, which then came up over Collection
+                if (pressed == "RightStick" && SpotlightShowing()) { e.Cancel(); return; }
                 // A still launches the game below; Up/Down leave the card playing (only sideways moves shrink it)
                 bool dirPad = pressed.StartsWith("DPad") || (pressed.StartsWith("LeftStick") && pressed != "LeftStick");
                 bool sideways = dirPad && (pressed.EndsWith("Left") || pressed.EndsWith("Right"));
@@ -4623,8 +4651,9 @@ namespace Selene
             bool down = dirPad && pressed.EndsWith("Down"), up = dirPad && pressed.EndsWith("Up");
             bool left = dirPad && pressed.EndsWith("Left"), right = dirPad && pressed.EndsWith("Right");
             // cheap exits first: this runs on every controller press, and left/right inside the row never concerns the pills
-            if (!dirPad && pressed != "A") return false;
+            if (!dirPad && pressed != "A" && pressed != "B") return false;
             bool inRow = focused != null && IsInRow(focused);
+            if (pressed == "B" && (focused == null || inRow)) return false;
             if (inRow && up) { if (topShown) FocusPill(top); return true; }
             if (inRow && !down) return false;
             // the Library and Store cards have nothing under them: Down stays put (it used to move focus somewhere unseen)
@@ -4667,6 +4696,8 @@ namespace Selene
                 }
             }
             if (!onPlay && !onDetails && !onFav && !onAch) return false;
+            // B on a button under the game: back up to the row, as from the achievements button above (it did nothing)
+            if (pressed == "B") { ReleasePillLock(); FocusRowSoon(0); return true; }
             if (up) { ReleasePillLock(); FocusRowSoon(0); return true; }
             if (left || right)
             {
@@ -6037,7 +6068,7 @@ namespace Selene
             {
                 case "installed": title = "Nothing installed"; hint = "Install a game from the Library or a store and it shows up here."; break;
                 case "recent": title = "Nothing played lately"; hint = "Games you play show up here for a month."; break;
-                case "favorites": title = "No favorites yet"; hint = "Press X on a game to add it to your favorites."; break;
+                case "favorites": title = "No favorites yet"; hint = "Pick the heart under a game to add it to your favorites."; break;
                 case "unplayed": title = "You've started everything"; hint = "Every game in your library has been played at least once."; break;
                 default: title = "No games yet"; hint = "Add your stores in the setup check: Menu, Extensions, Selene."; break;
             }
@@ -6307,6 +6338,12 @@ namespace Selene
                     }
                 }
                 ApplyCardOrder(row);
+                // the caption under the selected tile goes with it (it stayed where the tile had been, under another game)
+                row.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    var c = row.ItemContainerGenerator.ContainerFromIndex(Math.Max(0, row.SelectedIndex)) as FrameworkElement;
+                    if (c != null) PlaceTitle(row, c, 0);
+                }), System.Windows.Threading.DispatcherPriority.Loaded);
                 Log("cards: row refreshed");
             }
             catch (Exception ex) { Log("cards: refresh: " + ex.Message); }
@@ -7381,7 +7418,7 @@ namespace Selene
                 {
                     try
                     {
-                        if (!any && !preLaunchPids.Contains(pr.Id) && Array.IndexOf(notLaunchers, pr.ProcessName.ToLowerInvariant()) < 0) any = true;
+                        if (!any && !preLaunchPids.Contains(pr.Id) && Array.IndexOf(notLaunchers, pr.ProcessName.ToLowerInvariant()) < 0 && !BackgroundNoise(pr)) any = true;
                     }
                     catch { }
                     pr.Dispose();
@@ -7390,6 +7427,26 @@ namespace Selene
             catch { }
             newProcsAlive = any;
             return any;
+        }
+        // a new process that is not a launcher at work: Windows' own (C:\Windows), browsers and their helpers, chat and music apps.
+        // Any of these starting during a launch held a game that had crashed (or never started) behind the loading screen for
+        // two minutes, counted as "a launcher still at work".
+        private static readonly string[] noiseNames = { "msedge", "msedgewebview2", "chrome", "firefox", "opera", "brave", "vivaldi", "discord", "spotify", "teams", "ms-teams",
+            "onedrive", "explorer", "searchhost", "searchapp", "startmenuexperiencehost", "widgets", "widgetservice", "gamebar", "gamebarftserver", "gamebarpresencewriter",
+            "nvcontainer", "nvidia share", "nvsphelper64", "radeonsoftware", "amdrsserv", "crashpad_handler", "werfault", "wermgr", "applicationframehost", "phoneexperiencehost",
+            "securityhealthsystray", "useroobebroker", "lockapp", "shellexperiencehost", "systemsettings", "compattelrunner", "devicecensus", "musnotification", "sppsvc" };
+        private static bool BackgroundNoise(System.Diagnostics.Process pr)
+        {
+            var name = pr.ProcessName.ToLowerInvariant();
+            if (Array.IndexOf(noiseNames, name) >= 0) return true;
+            try
+            {
+                var path = LocalGames.ExeOf(pr.Id);   // (Playnite is 32-bit: MainModule can't be read for a 64-bit process)
+                var windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+                if (!string.IsNullOrEmpty(path) && !string.IsNullOrEmpty(windows) && path.StartsWith(windows + "\\", StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            catch { }   // (a protected process: not readable, counted as before)
+            return false;
         }
         private static IntPtr unfocusedLauncher = IntPtr.Zero;  // that window while it sits behind the loading screen without the focus, and since when
         private static DateTime unfocusedSince = DateTime.MinValue;
@@ -8000,7 +8057,16 @@ namespace Selene
                 // hands over to another process, or an exe that asks for administrator rights. That window is the game; giving
                 // up on it here handed the screen to Playnite's blacked-out window and the game sat behind it (#110, #128).
                 var known = UsableGameWindow(lastGameWindow) ? lastGameWindow : IntPtr.Zero;
-                if (!alive || waited > 120) { RevealGame(known, alive ? "timeout, 2 min" : known != IntPtr.Zero ? "timeout, the game's window is up but Playnite doesn't see it running" : "timeout, nothing running"); return; }
+                if (!alive || waited > 120)
+                {
+                    // nothing of the game at all (no window, Playnite doesn't see it running, nothing in its folder): it isn't coming,
+                    // so back to the home (it "revealed" a game that wasn't there, with the ready sound)
+                    bool gameThere = known != IntPtr.Zero;
+                    try { var lg2 = Api != null ? Api.Database.Games.Get(launchGameId) : null; gameThere = gameThere || (lg2 != null && (lg2.IsRunning || LocalGames.ProcessesInGameFolder(lg2).Count > 0)); } catch { }
+                    if (!gameThere) { AbortLaunchCover(IntPtr.Zero, "timeout, nothing of the game came"); return; }
+                    RevealGame(known, alive ? "timeout, 2 min" : known != IntPtr.Zero ? "timeout, the game's window is up but Playnite doesn't see it running" : "timeout, nothing running");
+                    return;
+                }
             }
             var me = new System.Windows.Interop.WindowInteropHelper(w).Handle;
             // Alt+Tab away from the loading screen: it stops covering everything (it was always on top, so the window you
@@ -8655,6 +8721,22 @@ namespace Selene
         }
 
         // launch failed or Steam wants attention: drop the cover, show Playnite (or the dialog)
+        // Playnite's own message during a launch ("GameError": a missing file, no install support...) opened BEHIND the loading
+        // screen, which stays on top: the player saw "Starting..." with no end and the message unanswered. The game is not
+        // coming: the loading screen goes and the message comes to the front.
+        public static void MessageDuringLaunch(Window message)
+        {
+            try
+            {
+                if (!launching) return;
+                Log("launch: Playnite showed a message, the loading screen gives way");
+                AbortLaunchCover(IntPtr.Zero, "Playnite showed a message");
+                message.Topmost = true;
+                message.Dispatcher.BeginInvoke(new Action(() => { try { message.Activate(); message.Topmost = false; } catch { } }), System.Windows.Threading.DispatcherPriority.Background);
+            }
+            catch (Exception ex) { Log("launch: message: " + ex.Message); }
+        }
+
         private static void AbortLaunchCover(IntPtr bringForward, string why)
         {
             if (launchAttempt != null && !launchAttempt.Cancelled) launchAttempt.Complete();   // a failed launch: nothing left to cancel

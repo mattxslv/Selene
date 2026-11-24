@@ -578,11 +578,11 @@ namespace Selene
             return null;
         }
 
-        // the name without trademark marks, [tags], (years or notes) and a store's own suffix ("Hades [GOG]" -> "Hades")
+        // the name without trademark marks, [tags], (notes) and a store's own suffix ("Hades [GOG]" -> "Hades")
         public static string Plainer(string name)
         {
             var s = Regex.Replace(name ?? "", @"[\u2122\u00AE\u00A9]", "");
-            s = Regex.Replace(s, @"\s*[\[(][^\])]*[\])]", " ");
+            s = Regex.Replace(s, @"\s*(?:\[[^\]]*\]|\((?!(?:19|20)\d\d\))[^)]*\))", " ");   // (a year stays: "DOOM (2016)" is not the 1993 DOOM)
             s = Regex.Replace(s, @"\s+(?:-\s+)?(?:GOG|Epic Games|Windows 10|Win10|PC)(?: Edition| Version)?$", "", RegexOptions.IgnoreCase);
             s = Regex.Replace(s, @"^(\S+\s+\S+.*?)\s+game$", "$1", RegexOptions.IgnoreCase);   // a folder's name ("Genshin Impact game")
             return Regex.Replace(s, @"\s+", " ").Trim();
@@ -703,8 +703,8 @@ namespace Selene
             if (viewer != null)
             {
                 if (pressed == "B" || pressed == "A") { CloseViewer(); return true; }
-                if (pressed == "DPadRight" || pressed == "LeftStickRight") { Show(viewerIndex + 1); return true; }
-                if (pressed == "DPadLeft" || pressed == "LeftStickLeft") { Show(viewerIndex - 1); return true; }
+                if (pressed == "DPadRight" || pressed == "LeftStickRight") { Flip(1); return true; }
+                if (pressed == "DPadLeft" || pressed == "LeftStickLeft") { Flip(-1); return true; }
                 return true;  // nothing else reaches the home underneath
             }
             if (pressed != "A") return false;
@@ -730,13 +730,48 @@ namespace Selene
                 Foreground = Ink.Brush("SeleneInkColor", 0.7), FontSize = 20, FontFamily = new FontFamily("Segoe UI"),
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 40),
             };
-            viewer = new Grid { Background = Ink.Brush("SeleneScrimColor", 0.95), Focusable = false };
+            viewer = new Grid { Background = Ink.Brush("SeleneScrimColor", 0.95), Focusable = true, FocusVisualStyle = null, Opacity = 0 };
             if (host is Grid) { Grid.SetRowSpan(viewer, 99); Grid.SetColumnSpan(viewer, 99); }
             Panel.SetZIndex(viewer, 99999);
             viewer.Children.Add(viewerImage);
             viewer.Children.Add(viewerCount);
+            // the keyboard too (Enter / Escape / arrows): the viewer holds the focus while it's open (the keys went to the page
+            // underneath, and Escape closed the page with the viewer still up)
+            viewer.PreviewKeyDown += (s, e) =>
+            {
+                if (Ui.KeyIsPadCopy()) { e.Handled = true; return; }
+                if (e.Key == System.Windows.Input.Key.Escape || e.Key == System.Windows.Input.Key.Enter || e.Key == System.Windows.Input.Key.Back || e.Key == System.Windows.Input.Key.Space) { CloseViewer(); e.Handled = true; }
+                else if (e.Key == System.Windows.Input.Key.Right) { Flip(1); e.Handled = true; }
+                else if (e.Key == System.Windows.Input.Key.Left) { Flip(-1); e.Handled = true; }
+                else e.Handled = true;
+            };
             host.Children.Add(viewer);
             Show(index);
+            // in: the dark fades up and the picture grows to its place (200 ms, ease out)
+            Ui.Confirm();
+            viewerImage.RenderTransformOrigin = new Point(0.5, 0.5);
+            viewerImage.RenderTransform = new ScaleTransform(0.96, 0.96);
+            var ease = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut };
+            viewer.BeginAnimation(UIElement.OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(200)) { EasingFunction = ease });
+            foreach (var dp in new[] { ScaleTransform.ScaleXProperty, ScaleTransform.ScaleYProperty })
+                viewerImage.RenderTransform.BeginAnimation(dp, new System.Windows.Media.Animation.DoubleAnimation(0.96, 1, TimeSpan.FromMilliseconds(240)) { EasingFunction = ease });
+            viewer.Focus();
+        }
+
+        // Left / Right: the next picture slides in from that side as the old one goes (a tick, as every move)
+        private static void Flip(int step)
+        {
+            if (viewerItems == null || viewerItems.Count < 2 || viewerImage == null) return;
+            Ui.Tick();
+            Show(viewerIndex + step);
+            var ease = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut };
+            var slide = new TranslateTransform(step * 40, 0);
+            var group = new TransformGroup();
+            group.Children.Add(new ScaleTransform(1, 1));
+            group.Children.Add(slide);
+            viewerImage.RenderTransform = group;
+            slide.BeginAnimation(TranslateTransform.XProperty, new System.Windows.Media.Animation.DoubleAnimation(step * 40, 0, TimeSpan.FromMilliseconds(220)) { EasingFunction = ease });
+            viewerImage.BeginAnimation(UIElement.OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(0.25, 1, TimeSpan.FromMilliseconds(200)) { EasingFunction = ease });
         }
 
         private static void Show(int index)
@@ -750,10 +785,17 @@ namespace Selene
 
         private static void CloseViewer()
         {
-            var p = viewer != null ? viewer.Parent as Panel : null;
-            if (p != null) p.Children.Remove(viewer);
+            var gone = viewer;
+            var p = gone != null ? gone.Parent as Panel : null;
             viewer = null; viewerImage = null; viewerItems = null;
             if (returnFocus != null) returnFocus.Focus();
+            if (gone == null) return;
+            // out: a quick fade (160 ms) with the back sound, then it goes
+            Ui.Back();
+            gone.IsHitTestVisible = false;
+            var fade = new System.Windows.Media.Animation.DoubleAnimation(0, TimeSpan.FromMilliseconds(160)) { EasingFunction = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut } };
+            fade.Completed += (s, e) => { if (p != null) p.Children.Remove(gone); };
+            gone.BeginAnimation(UIElement.OpacityProperty, fade);
         }
 
         // the outermost panel that fills the window, so the viewer covers the whole screen

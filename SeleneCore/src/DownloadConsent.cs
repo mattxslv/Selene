@@ -40,15 +40,15 @@ namespace Selene
             if (key == "metadatacomplete")
             {
                 var files = HomeNav.Api != null ? Path.GetDirectoryName(HomeNav.Api.Database.GetFullFilePath("Selene-location-check")) : Path.Combine(config, "library", "files");
-                return "Fill missing details for your library using metadata add-ons and Steam. This can download covers and backgrounds. Existing details are kept.\n\nMedia is stored in your Playnite library:\n" + files;
+                return "Fill missing details for your library using metadata add-ons, Steam and IGDB. This can download covers and backgrounds. Existing details are kept.\n\nMedia is stored in your Playnite library:\n" + files;
             }
             if (key == "songsetup") return "Download missing songs for your whole library through UniPlaySong.\n\n" +
                 "This also downloads yt-dlp and ffmpeg if needed (about 130 MB of tools; songs use additional space).\n\n" +
                 "Songs: " + Path.Combine(config, "ExtraMetadata", "UniPlaySong", "Games") + "\nTools: " + Path.Combine(SelenePaths.DataFolder, "Tools") +
                 "\n\nThis requests one library batch. Automatic library/install triggers are disabled for Selene-managed tools. UniPlaySong manages its active queue; independent add-on setups have separate controls.";
-            if (key == "artdownload") return "Download missing logos and backgrounds for games you select, plus sample art when you open appearance previews. Existing files stay available while downloads are off.\n\n" +
+            if (key == "artdownload") return "Download missing logos and backgrounds for games you select or add, plus sample art when you open appearance previews. Existing files stay available while downloads are off.\n\n" +
                 "Logos: " + Path.Combine(config, "ExtraMetadata", "games") + "\nBackgrounds: " + SelenePaths.Media("Hero") + "\nPreview samples: " + SelenePaths.Media("Sample");
-            if (key == "screenshotsdownload") return "Download screenshots when you select a game. No whole-library background download.\n\nSaved to:\n" + SelenePaths.Media("Screenshots-v2");
+            if (key == "screenshotsdownload") return "Download screenshots when you select or add a game. No whole-library background download.\n\nSaved to:\n" + SelenePaths.Media("Screenshots-v2");
             int count = HomeNav.Api != null ? HomeNav.Api.Database.Games.Count(g => !g.Hidden) : 0;
             var estimate = Features.Value("trailerdownload") == "all" && count > 0 ? "\nUp to " + count + " games: roughly " + (count * 20.0 / 1024).ToString("0.0") + " GB if every trailer is missing. Actual sizes vary." : "";
             return "Download missing trailers from Steam for " + (Features.Value("trailerdownload") == "all" ? "your whole library" : "games you select") +

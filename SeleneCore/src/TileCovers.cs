@@ -91,7 +91,8 @@ namespace Selene
                 if (path == null)
                 {
                     wanted.Remove(el);
-                    if (el.Name == "SeleneCoverFace") { StandIn((Border)el, true); return; }
+                    // (a game only: the cards on the row (Store, Activity...) are glass with their mark, the cover stays clear under it)
+                    if (el.Name == "SeleneCoverFace") { if (GameOf(el.DataContext) != null) StandIn((Border)el, true); else { StandIn((Border)el, false); Show(el, null); } return; }
                     if (el.Name != "PART_ImageCover") Show(el, null);   // (no picture: the square art's place stays clear over the cover)
                     else NoCover((Image)el);   // a reused Collection tile kept the last game's cover (Control showed Apex's)
                     return;
@@ -200,9 +201,7 @@ namespace Selene
         // Selene's own cover with the game's name on it instead, until a cover arrives (Set takes the name off again)
         private static void StandIn(Border face, bool on)
         {
-            var grid = face.Parent as Panel;
-            var name = grid == null ? null : grid.Children.OfType<FrameworkElement>().FirstOrDefault(c => c.Name == "SeleneCoverName");
-            if (name != null) name.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+            CoverName(face, on);
             var brush = face.Background as ImageBrush;
             if (!on) { if (brush != null && !brush.IsFrozen) brush.AlignmentY = AlignmentY.Top; return; }
             if (brush == null) return;
@@ -212,6 +211,7 @@ namespace Selene
             brush.ViewboxUnits = BrushMappingMode.RelativeToBoundingBox;
             brush.Viewbox = new Rect(0, 0, 1, 1);
             brush.AlignmentY = AlignmentY.Center;   // (the moon in the middle, not the cover's top edge)
+            brush.Stretch = Stretch.UniformToFill;
             face.BeginAnimation(UIElement.OpacityProperty, null);
         }
 
@@ -219,6 +219,14 @@ namespace Selene
         {
             BindingOperations.ClearBinding(image, Image.SourceProperty);
             image.Source = Application.Current.TryFindResource("DefaultGameCover") as ImageSource;
+            CoverName(image, GameOf(image.DataContext) != null);   // (its name on it, as on Spotlight: the moons were all alike)
+        }
+
+        private static void CoverName(FrameworkElement cover, bool on)
+        {
+            var grid = cover.Parent as Panel;
+            var name = grid == null ? null : grid.Children.OfType<FrameworkElement>().FirstOrDefault(c => c.Name == "SeleneCoverName");
+            if (name != null) name.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private static void Show(FrameworkElement el, BitmapSource picture)
@@ -241,7 +249,7 @@ namespace Selene
         private static void Set(FrameworkElement el, BitmapSource picture, bool fade)
         {
             var image = el as Image;
-            if (image != null) { BindingOperations.ClearBinding(image, Image.SourceProperty); image.Source = picture; }
+            if (image != null) { BindingOperations.ClearBinding(image, Image.SourceProperty); image.Source = picture; CoverName(image, false); }
             else
             {
                 var border = (Border)el;

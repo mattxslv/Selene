@@ -117,7 +117,7 @@ namespace Selene
         {
             ask = GamesSetup.Question(() => { if (!MediaDownloads.Unified) LoginScene.Finish(); },
                 () => { if (MediaDownloads.Unified) Next(); },
-                () => { if (MediaDownloads.Unified) LoginScene.Finish(); });
+                () => { if (MediaDownloads.Unified) LoginScene.Finish(); }).Unasked();
         }
 
         private void Next() { accepted = true; LoginScene.Show(new SettingsScreen(false, "Games", "gamesget"), 1); }

@@ -40,8 +40,11 @@ namespace Selene
         public static void Added(IEnumerable<Guid> ids)
         {
             if (!DownloadConsent.Allowed("metadatacomplete")) return;
-            lock (added) foreach (var id in ids) added.Add(id);
-            if (completing) { again = true; return; }
+            lock (added)
+            {
+                foreach (var id in ids) added.Add(id);
+                if (completing) { again = true; return; }   // (under the lock the pass's end also reads: a game added just then is not missed)
+            }
             if (soon == null) { soon = new DispatcherTimer { Interval = TimeSpan.FromSeconds(4) }; soon.Tick += (s, e) => { soon.Stop(); Start(); }; }
             soon.Stop(); soon.Start();
         }
@@ -107,7 +110,7 @@ namespace Selene
                         }));
                     }
                     catch (Exception ex) { HomeNav.Log("game info: library pass failed: " + ex.Message); }
-                    finally { completing = false; if (again) { again = false; ui.BeginInvoke(new Action(() => Added(new Guid[0]))); } }
+                    finally { bool more; lock (added) { completing = false; more = again; again = false; } if (more) ui.BeginInvoke(new Action(() => Added(new Guid[0]))); }
                 });
             }
             catch (Exception ex) { HomeNav.Log("game info: " + ex.Message); }

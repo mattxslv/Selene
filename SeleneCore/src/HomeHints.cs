@@ -65,6 +65,18 @@ namespace Selene
             }), true);
         }
 
+        // A Selene screen over the home or Collection (the menu, settings, Find a game, a dialog's layer): their hints fade out
+        // under it and come back after. They showed through: "B Back" over "Spotlight", "A Select" over "Play".
+        private static bool covered;
+        public static void Covered(bool on)
+        {
+            if (covered == on) return;
+            covered = on;
+            var lib = libraryWindow != null ? HomeNav.FindByName(libraryWindow, "SeleneLibraryHints") as FrameworkElement : null;
+            foreach (var el in new FrameworkElement[] { bar, always, lib })
+                if (el != null) el.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(on ? 0 : 1, TimeSpan.FromMilliseconds(on ? 120 : 220)) { EasingFunction = Ui.Out() });
+        }
+
         // what's focused decides the hints; the bar crossfades when they change
         public static void Update()
         {
@@ -79,19 +91,26 @@ namespace Selene
             else if (item != null && HomeNav.InRow(item))
             {
                 if (item.DataContext is string) { key = "card"; hints = new[] { "Y", "Move", "A", "Open" }; }
-                else if (HomeNav.HasTrailerSound(item.DataContext)) { key = "game+"; hints = new[] { "R3", "Trailer sound", "X", "Details", "Y", "Game options", "A", "Play" }; }
-                else { key = "game"; hints = new[] { "X", "Details", "Y", "Game options", "A", "Play" }; }
+                else
+                {
+                    // A says what it does for this game: Resume while it runs, Install when it isn't installed
+                    var g = item.DataContext as Playnite.SDK.Models.Game;
+                    if (g == null) { var p = item.DataContext.GetType().GetProperty("Game"); g = p != null ? p.GetValue(item.DataContext, null) as Playnite.SDK.Models.Game : null; }
+                    var a = g == null ? "Play" : g.IsRunning || g.IsLaunching ? "Resume" : !g.IsInstalled ? "Install" : "Play";
+                    if (HomeNav.HasTrailerSound(item.DataContext)) { key = "game+" + a; hints = new[] { "R3", "Trailer sound", "X", "Details", "Y", "Game options", "A", a }; }
+                    else { key = "game" + a; hints = new[] { "X", "Details", "Y", "Game options", "A", a }; }
+                }
             }
             else if (focused != null && focused.Name.StartsWith("SeleneShotTile")) { key = "shot"; hints = new[] { "A", "View" }; }
             else if (focused != null && focused.Name == "SeleneTopAchievements") { key = "topachievements"; hints = new[] { "A", "Achievements", "B", "Back" }; }
-            else if (focused != null && (focused.Name == "SelenePlayBtn" || focused.Name == "SeleneDetailsBtn" || focused.Name == "SeleneFavBtn" || focused.Name == "SeleneAchBtn")) { key = "pill"; hints = new[] { "A", "Select" }; }
+            else if (focused != null && (focused.Name == "SelenePlayBtn" || focused.Name == "SeleneDetailsBtn" || focused.Name == "SeleneFavBtn" || focused.Name == "SeleneAchBtn")) { key = "pill"; hints = new[] { "B", "Back", "A", "Select" }; }
             else { key = "other"; hints = new string[0]; }
             if (Ui.PlayStationPrompts) key += "|ps";   // the button names changed (Xbox / PlayStation): built again
             if (key == shown) return;
             shown = key;
             bar.Children.Clear();
             for (int i = 0; i + 1 < hints.Length; i += 2) bar.Children.Add(Ui.Prompt(hints[i], hints[i + 1]));
-            bar.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0.3, 1, TimeSpan.FromMilliseconds(180)) { EasingFunction = Ui.Out() });
+            if (!covered) bar.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0.3, 1, TimeSpan.FromMilliseconds(180)) { EasingFunction = Ui.Out() });
         }
 
         // a hint whose button is a solid icon (View, Menu) instead of a letter, as bold as the letters beside it

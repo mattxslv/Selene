@@ -97,7 +97,6 @@ namespace Selene
             var status = HomeNav.FindByName(main, "PART_ElemGameStatus") as UIElement;
             if (status != null) status.IsVisibleChanged += (s, e) => { if ((bool)e.NewValue) HomeNav.GameStatusShown(); };
             hub.Command = new Relay(ShowHome);
-            AddonHintLater();
             var menuButton = HomeNav.FindByName(main, "PART_ButtonMainMenu") as ButtonBase;
             if (menuButton != null) menuButton.Command = new Relay(OpenMenu);
             // every way Playnite opens its main menu (Start, keys, the button) opens Selene's; Playnite's own stays reachable
@@ -257,6 +256,7 @@ namespace Selene
             BackgroundChangerBridge.RefreshAll();
             RememberScreen("collection");
             HomeNav.UpdateFilterTabs();
+            HomeNav.ForceHorizontalLibrary();   // Selene's one row before Collection shows (its first open showed Playnite's 2-row grid, then snapped)
             library.BeginAnimation(UIElement.OpacityProperty, null);
             library.Visibility = Visibility.Visible;   // under Spotlight, loading its art meanwhile
             HomeNav.SetMusic("home");   // Collection like Spotlight: the default track, a game's song with its trailer
@@ -291,9 +291,10 @@ namespace Selene
         {
             var home = Part("WelcomeHubOverlay");
             if (home == null || !home.IsVisible || !CollectionActive) return;
-            double now = home.Opacity;   // (where its fade-out is now: no jump back)
-            home.BeginAnimation(UIElement.OpacityProperty, null);
-            home.Opacity = now;
+            // back up to full, quickly, under the page that is still fading in: held where its fade-out was, Collection's info and
+            // hints showed through the half-faded Spotlight for a moment
+            double now = home.Opacity;
+            home.BeginAnimation(UIElement.OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(now, 1, TimeSpan.FromMilliseconds(90)));
             heldHome = switchCount;
         }
         public static void ReleaseHomeUnderDetails()
@@ -304,39 +305,6 @@ namespace Selene
             if (mine < 0 || home == null || mine != switchCount) return;   // (another screen switch since: it decides)
             home.Visibility = Visibility.Collapsed;
             home.Opacity = 1;
-        }
-
-        // a note on the home when the Extra Metadata add-on (logos, trailers) isn't installed: Spotlight looks bare without it and
-        // nothing says why; the setup check installs it
-        private static void AddonHintLater()
-        {
-            if (!Features.On("setuphint")) return;
-            int waited = 0;
-            var t = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
-            t.Tick += (s, e) =>
-            {
-                if (++waited > 40) { t.Stop(); return; }
-                if (LoginScene.IsActive || CollectionActive) return;
-                var home = Part("WelcomeHubOverlay");
-                if (home == null || !home.IsVisible) return;
-                t.Stop();
-                try
-                {
-                    var api = HomeNav.Api;
-                    if (api == null) return;
-                    // worked out off the UI thread (asking Playnite which add-ons are installed took ~120 ms: a hitch on the home)
-                    var ui = Application.Current.Dispatcher;
-                    System.Threading.Tasks.Task.Factory.StartNew(() =>
-                    {
-                        bool missing = false;
-                        try { foreach (var a in SetupCheck.MissingIncluded(api)) if (a.Id.StartsWith("ExtraMetadataLoader")) missing = true; }
-                        catch (Exception ex) { HomeNav.Log("add-on hint: " + ex.Message); }
-                        if (missing) ui.BeginInvoke(new Action(() => Ui.Notice("Logos and trailers need the Extra Metadata add-on. Install it from Setup check in the menu.", 9000)));
-                    });
-                }
-                catch (Exception ex) { HomeNav.Log("add-on hint: " + ex.Message); }
-            };
-            t.Start();
         }
 
         public static void ShowHome() { ShowHome(false); }
@@ -460,6 +428,7 @@ namespace Selene
             var login = Part("AcceuilSettings");
             if (login == null) return;
             HomeNav.QuietFocus(800);   // focus moves into the login layer: not a move
+            HomeHints.Covered(true);
             Raise(login, true);
             login.BeginAnimation(UIElement.OpacityProperty, null);
             login.Opacity = 0;
@@ -519,6 +488,7 @@ namespace Selene
             var login = Part("AcceuilSettings");
             if (login == null) return;
             HomeNav.QuietFocus(1200);   // focus goes back to the home
+            HomeHints.Covered(false);
             if (!LoginScene.KeepHome && StartOnCollection()) { ShowLibrary(); HomeNav.Log("start on Collection"); }
             else if (!LoginScene.KeepHome) HomeNav.HoldHomeForIntro();
             var fade = new DoubleAnimation(0, TimeSpan.FromMilliseconds(raised != null ? 200 : 420)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn } };

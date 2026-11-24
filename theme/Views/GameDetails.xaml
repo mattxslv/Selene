@@ -175,7 +175,7 @@
                                            MaxWidth="680" MaxHeight="180" Stretch="Uniform" HorizontalAlignment="Left" VerticalAlignment="Bottom"
                                            RenderOptions.BitmapScalingMode="Fant"/>
                                     <TextBlock Text="{Binding DisplayName}" Foreground="{DynamicResource SeleneInkBrush}" FontSize="62" FontFamily="Segoe UI Variable Display, Segoe UI"
-                                               FontWeight="SemiBold" VerticalAlignment="Bottom" TextWrapping="Wrap">
+                                               FontWeight="SemiBold" VerticalAlignment="Bottom" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="172" MaxWidth="1100">
                                         <TextBlock.Style>
                                             <Style TargetType="TextBlock">
                                                 <Setter Property="Visibility" Value="Collapsed"/>

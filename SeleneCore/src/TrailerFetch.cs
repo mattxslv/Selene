@@ -33,7 +33,11 @@ namespace Selene
         public static void Added(IEnumerable<Guid> ids)
         {
             if (HomeNav.Api == null || !WantArt) return;
-            lock (gate) foreach (var id in ids) { fresh.Add(id); tried.Remove(id); if (!queue.Contains(id)) queue.AddLast(id); }
+            var list = ids.ToList();
+            // a few games added (by hand, a folder scan, a new purchase): straight away. A whole store connected at once (hundreds)
+            // is left to browsing and the whole-library download, not hundreds of requests at once.
+            if (list.Count == 0 || list.Count > 50) return;
+            lock (gate) { var queued = new HashSet<Guid>(queue); foreach (var id in list) { fresh.Add(id); tried.Remove(id); if (queued.Add(id)) queue.AddLast(id); } }
             Start();
         }
         private static int libraryTotal, libraryChecked;

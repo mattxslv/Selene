@@ -4118,6 +4118,7 @@ namespace Selene
         private static DateTime devHoldAt = DateTime.MinValue;   // (developer) when the held direction went down, to time Playnite's first repeat
         private static string devHoldButton;
 
+        private static bool fastLayer;   // a Selene screen was up when the hold began
         private static void StartFastRepeat(string button)
         {
             StopFastRepeat();
@@ -4126,6 +4127,7 @@ namespace Selene
             fastPressedAt = fastHeardAt = DateTime.Now;
             fastHeard = false;
             fastSynthetic = Ui.SendingPad;
+            fastLayer = LoginScene.IsActive;
             fastSteps = 0;
             if (fastRepeat == null)
             {
@@ -4148,7 +4150,8 @@ namespace Selene
             if (fastButton == null) { StopFastRepeat(); return; }
             var now = DateTime.Now;
             var mainW = Application.Current != null ? Application.Current.MainWindow : null;
-            bool stop = !Features.On("fastrepeat") || mainW == null || mainW.WindowState == WindowState.Minimized || !PlayniteInFront();
+            // (also when a screen opened over it meanwhile, a question that came up on its own: the hold went on into its buttons)
+            bool stop = !Features.On("fastrepeat") || mainW == null || mainW.WindowState == WindowState.Minimized || !PlayniteInFront() || LoginScene.IsActive != fastLayer;
             if (!stop && !fastSynthetic)
             {
                 // the button let go without its release reaching Selene: Playnite's repeats stop (or never came), and an XInput

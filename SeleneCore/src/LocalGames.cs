@@ -14,6 +14,49 @@ namespace Selene
 {
     public static class LocalGames
     {
+        // Install on a game nothing can install (one added by hand or found here, whose file is gone: no library add-on
+        // behind it) showed Playnite's raw "GameError: Installation implementation is not available". Such a game says
+        // plainly what's wrong instead. (Quick check for labels; Install() also asks the add-ons, like Playnite does.)
+        public static bool CanInstall(Game g)
+        {
+            if (g == null || g.IsInstalled) return true;
+            var api = HomeNav.Api;
+            if (g.PluginId == Guid.Empty || api == null) return false;
+            try { return api.Addons.Plugins.Any(p => p.Id == g.PluginId); } catch { return true; }
+        }
+
+        public static void Install(Guid id)
+        {
+            var api = HomeNav.Api;
+            if (api == null) return;
+            var g = api.Database.Games.Get(id);
+            if (g == null) return;
+            if (CanInstall(g) || AnyInstallAction(g)) { api.InstallGame(id); return; }
+            HomeNav.Log("install: " + g.Name + " has nothing to install it (no library add-on), said so");
+            api.Dialogs.ShowMessage("Its files weren't found, and nothing can install it again. If you moved it, add it again from its new folder.", "Can't install " + g.Name);
+        }
+
+        private static bool AnyInstallAction(Game g)
+        {
+            var found = false;
+            try
+            {
+                foreach (var p in HomeNav.Api.Addons.Plugins)
+                {
+                    try
+                    {
+                        var acts = p.GetInstallActions(new Playnite.SDK.Plugins.GetInstallActionsArgs { Game = g });
+                        if (acts == null) continue;
+                        foreach (var a in acts) { if (a != null) { found = true; try { a.Dispose(); } catch { } } }
+                    }
+                    catch { }
+                    if (found) break;
+                }
+            }
+            catch { }
+            return found;
+        }
+
         // the folders set on the add-on page; none set: a Games folder at the root of each drive (like D:\Games), where
         // people tend to keep what no store installed
         private static string[] Roots

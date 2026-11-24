@@ -258,7 +258,7 @@ namespace Selene
                         var id = pick.Id; bool installed = pick.IsInstalled;
                         LoginScene.Finish();
                         if (installed) HomeNav.StartGameNow(id);
-                        else if (HomeNav.Api != null) HomeNav.Api.InstallGame(id);
+                        else LocalGames.Install(id);
                     }
                     return;
                 case "X":

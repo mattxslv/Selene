@@ -390,7 +390,7 @@ namespace Selene
                 bool installed = owned.IsInstalled;
                 LoginScene.Finish();
                 if (installed) HomeNav.StartGameNow(id);
-                else if (HomeNav.Api != null) HomeNav.Api.InstallGame(id);
+                else LocalGames.Install(id);
                 HomeNav.Log("store: " + (installed ? "play " : "install ") + item.Title);
                 return;
             }

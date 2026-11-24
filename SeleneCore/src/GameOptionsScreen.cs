@@ -95,7 +95,7 @@ namespace Selene
             var api = HomeNav.Api;
             var l = new Level { Title = "Game options" };
             if (game.IsInstalled) l.Entries.Add(new Entry { Label = "Play", Icon = 0xe037, Run = () => { var id = game.Id; LoginScene.FinishThen(() => HomeNav.StartGameNow(id)); } });
-            else l.Entries.Add(new Entry { Label = "Install", Icon = 0xe2c4, Run = () => { var id = game.Id; LoginScene.FinishThen(() => api.InstallGame(id)); } });
+            else l.Entries.Add(new Entry { Label = "Install", Icon = 0xe2c4, Run = () => { var id = game.Id; LoginScene.FinishThen(() => LocalGames.Install(id)); } });
             if (Features.On("achievements") && AchievementsData.Available())
                 l.Entries.Add(new Entry { Label = "Achievements", Sub = "What you've unlocked in this game.", Icon = 0xea65, Opens = true, Run = OpenAchievements });
             if (move != null) { var m = move; l.Entries.Add(new Entry { Label = "Move", Sub = "Change its place on Spotlight.", Icon = 0xe8d4, Run = () => LoginScene.FinishThen(m) }); }

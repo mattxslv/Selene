@@ -93,10 +93,11 @@ namespace Selene
                 if (item.DataContext is string) { key = "card"; hints = new[] { "Y", "Move", "A", "Open" }; }
                 else
                 {
-                    // A says what it does for this game: Resume while it runs, Install when it isn't installed
+                    // A says what it does for this game: Resume while it runs, Install when it isn't installed (a game nothing can
+                    // install, its files gone, doesn't promise Install: A says why)
                     var g = item.DataContext as Playnite.SDK.Models.Game;
                     if (g == null) { var p = item.DataContext.GetType().GetProperty("Game"); g = p != null ? p.GetValue(item.DataContext, null) as Playnite.SDK.Models.Game : null; }
-                    var a = g == null ? "Play" : g.IsRunning || g.IsLaunching ? "Resume" : !g.IsInstalled ? "Install" : "Play";
+                    var a = g == null ? "Play" : g.IsRunning || g.IsLaunching ? "Resume" : !g.IsInstalled ? (LocalGames.CanInstall(g) ? "Install" : "Not installed") : "Play";
                     if (HomeNav.HasTrailerSound(item.DataContext)) { key = "game+" + a; hints = new[] { "R3", "Trailer sound", "X", "Details", "Y", "Game options", "A", a }; }
                     else { key = "game" + a; hints = new[] { "X", "Details", "Y", "Game options", "A", a }; }
                 }

@@ -4535,7 +4535,7 @@ namespace Selene
                     if (gid is Guid)
                     {
                         if (Equals(Prop(dc, "IsInstalled"), true)) { Log("play in Collection -> " + Prop(dc, "Name")); StartGameNow((Guid)gid); }
-                        else Api.InstallGame((Guid)gid);
+                        else LocalGames.Install((Guid)gid);
                         e.Cancel();
                         return;
                     }
@@ -4734,7 +4734,7 @@ namespace Selene
                 if (id is Guid && Api != null)
                 {
                     // the pill reads Install for a game that isn't installed (#167)
-                    if (!Equals(Prop(game, "IsInstalled"), true)) { Log("install button -> " + game); Api.InstallGame((Guid)id); }
+                    if (!Equals(Prop(game, "IsInstalled"), true)) { Log("install button -> " + game); LocalGames.Install((Guid)id); }
                     else { Log("play button -> " + game); StartGameNow((Guid)id); }
                 }
                 return true;
@@ -7455,6 +7455,11 @@ namespace Selene
         private static readonly HashSet<int> gamePids = new HashSet<int>();
         private static DateTime gamePidsAt = DateTime.MinValue, soundSince = DateTime.MinValue, lastSoundAt = DateTime.MinValue;
         private static int soundTick;
+        // a silent game's window settled in front (full screen, focused, responding, not moving), and since when
+        private static DateTime gameSettledSince = DateTime.MinValue;
+        private static RECT gameSettledRect;
+        private static FrameworkElement coverWaitMark, coverCancelHint;   // on the loading screen: the game's name with a pulse (on black), B Cancel
+        [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool IsHungAppWindow(IntPtr h);
 
         public static void GameStarting() { GameStarting(Guid.Empty); }
 
@@ -7596,6 +7601,7 @@ namespace Selene
                 }
                 coverBlack = new Border { Background = Brushes.Black, Opacity = 0, IsHitTestVisible = false };
                 root.Children.Add(coverBlack);
+                coverWaitMark = null; coverCancelHint = null;
                 coverDark = false;
                 coverWindow = new Window
                 {
@@ -7845,6 +7851,7 @@ namespace Selene
             if (cw == null) { if (after != null) after(); return; }
             var black = coverBlack;
             coverBlack = null;
+            if (fade) FadeCoverExtras();
             if (!fade || black == null) { if (after != null) after(); try { cw.Close(); } catch { } return; }
             Action fadeIntoGame = () =>
             {
@@ -7914,6 +7921,8 @@ namespace Selene
                 ReturnToGame(Application.Current.MainWindow);
                 return;
             }
+            // A on a game that isn't installed: Playnite's start would install it; one nothing can install says so instead
+            if (g != null && !g.IsInstalled && !g.IsRunning && !g.IsLaunching && !LocalGames.CanInstall(g)) { LocalGames.Install(id); return; }
             // A again while this game's loading screen is up: nothing (it cancelled the first start and began another, so every
             // press put the start off, and after a launcher hand-off started the launcher twice)
             if (((launching && id == launchGameId) || (launchAttempt != null && launchAttempt.GameId == id && launchAttempt.CanCancel && (DateTime.Now - launchAttemptAt).TotalSeconds < 4)) && g != null && !g.IsRunning) { Log("play: " + (g != null ? g.Name : "game") + " is already starting"); return; }
@@ -7998,6 +8007,7 @@ namespace Selene
                 launchStart = DateTime.Now;
                 gameWindowSeenAt = DateTime.MinValue;
                 gameGoneSince = DateTime.MinValue;
+                gameSettledSince = DateTime.MinValue;
                 coverArtGone = false;
                 launchShownLogged = 0;
                 lastGameWindow = IntPtr.Zero;
@@ -8182,9 +8192,12 @@ namespace Selene
             }
             // ONE rule for every game (no per-game timing): the game is ready when it is really showing something -
             //   its own (nearly) full-screen window is up AND it is making sound (intro logos / menu music)
-            // Fallbacks: window up 12 s but silent -> show it; sound for 10 s but no full-screen window (windowed game) ->
-            // show it; nothing of the game running after 25 s -> back to Playnite (timeouts above).
-            // (A big window alone revealed too early: launchers, splash screens, black windows before the first frame.)
+            // Fallbacks: a silent game's window settled in front for 3 s (full screen, focused, responding, not resizing) or
+            // up 8 s at all -> show it; sound for 10 s but no full-screen window (windowed game) -> show it; nothing of the
+            // game running after 25 s -> back to Playnite (timeouts above).
+            // (A big window alone, at once, revealed too early: launchers, splash screens, black windows before the first
+            // frame. Those are still resizing, not responding or not in front in their first seconds; a silent game sat
+            // behind plain black for 8 s and looked hung.)
             var found = FindFullscreenGameWindow(me);
             var now = DateTime.Now;
             if ((now - gamePidsAt).TotalSeconds >= 1)
@@ -8237,9 +8250,21 @@ namespace Selene
                 else if (soundSince != DateTime.MinValue && (now - lastSoundAt).TotalSeconds > 2) soundSince = DateTime.MinValue;  // a blip, not the game
             }
             bool sounding = soundSince != DateTime.MinValue && (now - soundSince).TotalSeconds >= 0.4;
+            // the game's window in front and steady: the same full-screen window, with the focus, answering Windows, same size
+            RECT settledRect = new RECT();
+            bool settled = ours && found == lastGameWindow && !switchedAway && !coverCancelledByGuide && GetForegroundWindow() == found
+                && !IsHungAppWindow(found) && GetWindowRect(found, out settledRect);
+            if (!settled) gameSettledSince = DateTime.MinValue;
+            else if (gameSettledSince == DateTime.MinValue || settledRect.Left != gameSettledRect.Left || settledRect.Top != gameSettledRect.Top
+                || settledRect.Right != gameSettledRect.Right || settledRect.Bottom != gameSettledRect.Bottom)
+            { gameSettledSince = now; gameSettledRect = settledRect; }
+            if (coverArtGone && coverWaitMark == null && gameWindowSeenAt != DateTime.MinValue && (now - gameWindowSeenAt).TotalSeconds >= 1.2) ShowCoverWaitMark();
+            if (coverCancelHint == null && (now - launchStart).TotalSeconds >= 10) ShowCoverCancelHint();
             IntPtr readyWindow = IntPtr.Zero;
             string why = null;
             if (ours && sounding) { readyWindow = found; why = "game window + sound"; }
+            else if (gameSettledSince != DateTime.MinValue && (now - gameSettledSince).TotalSeconds >= 3 * launchGrace)
+            { readyWindow = found; why = "game window settled in front 3 s, no sound"; }
             else if (gameWindowSeenAt != DateTime.MinValue && (now - gameWindowSeenAt).TotalSeconds >= 8 * launchGrace && lastGameWindow != IntPtr.Zero && IsWindow(lastGameWindow))
             { readyWindow = lastGameWindow; why = "game window up 8 s, no sound"; }
             else if (soundSince != DateTime.MinValue && (now - soundSince).TotalSeconds >= 10 && found == IntPtr.Zero)
@@ -8455,6 +8480,59 @@ namespace Selene
             var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
             launcherCaption.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0.85, TimeSpan.FromMilliseconds(260)) { EasingFunction = ease });
             ((TranslateTransform)launcherCaption.RenderTransform).BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(12, 0, TimeSpan.FromMilliseconds(260)) { EasingFunction = ease });
+        }
+
+        // once the loading screen has gone black for the game's window: the game's name stays, quietly, with three dots
+        // pulsing under it, so a game that takes its time on black doesn't look hung (above the black, on the cover's layer)
+        private static void ShowCoverWaitMark()
+        {
+            var root = coverRoot;
+            var g = Api != null ? Api.Database.Games.Get(launchGameId) : null;
+            var mark = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Opacity = 0, IsHitTestVisible = false, RenderTransform = new TranslateTransform(0, 10) };
+            coverWaitMark = mark;
+            if (root == null || coverWindow == null || !launching || coverCancelledByGuide) return;
+            if (g != null && !string.IsNullOrEmpty(g.Name))
+                mark.Children.Add(new TextBlock
+                {
+                    Text = g.Name, FontFamily = Ui.TextFont, FontSize = 30, Foreground = Ink.Brush("SeleneInkColor", 0.75), TextAlignment = TextAlignment.Center,
+                    TextWrapping = TextWrapping.Wrap, MaxWidth = 900, HorizontalAlignment = HorizontalAlignment.Center
+                });
+            var dots = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 22, 0, 0) };
+            for (int i = 0; i < 3; i++)
+            {
+                var dot = new System.Windows.Shapes.Ellipse { Width = 9, Height = 9, Margin = new Thickness(7, 0, 7, 0), Fill = Ink.Brush("SeleneInkColor"), Opacity = 0.2 };
+                dot.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0.2, 0.8, TimeSpan.FromMilliseconds(600))
+                {
+                    BeginTime = TimeSpan.FromMilliseconds(200 * i), AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever,
+                    EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+                });
+                dots.Children.Add(dot);
+            }
+            mark.Children.Add(dots);
+            root.Children.Add(mark);
+            var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+            mark.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(300)) { EasingFunction = ease });
+            ((TranslateTransform)mark.RenderTransform).BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(10, 0, TimeSpan.FromMilliseconds(300)) { EasingFunction = ease });
+            Log("launch cover: the game's name and a pulse on black while it gets ready");
+        }
+
+        // B cancels a launch, but nothing said so: after 10 s on the loading screen its hint fades in, bottom right
+        private static void ShowCoverCancelHint()
+        {
+            var root = coverRoot;
+            if (root == null || coverWindow == null || !launching || coverCancelledByGuide || launchAttempt == null || !launchAttempt.CanCancel) return;
+            var hint = Ui.Prompts(true, Ui.Prompt("B", "Cancel"));
+            hint.IsHitTestVisible = false;
+            hint.Opacity = 0;
+            coverCancelHint = hint;
+            root.Children.Add(hint);
+            hint.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 0.85, TimeSpan.FromMilliseconds(300)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+        }
+
+        private static void FadeCoverExtras()
+        {
+            foreach (var el in new[] { coverWaitMark, coverCancelHint })
+                if (el != null) el.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(200)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
         }
 
         public static bool LaunchCoverUp { get { return launching && coverWindow != null; } }

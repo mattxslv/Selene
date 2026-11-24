@@ -4,6 +4,31 @@ Selene (theme) and Selene Core (add-on) share one version number and are release
 
 ## Unreleased
 
+- Launchers that wait for you (a sign-in, a Play button, an update prompt) come up over the loading screen instead of staying hidden behind it. A launcher that is just at work (Rockstar signing you in and starting the game) stays under the loading screen; one left waiting with nothing happening comes up after 20 s, and after 10 s the loading screen says it's open so Guide can show it at once. This works the same for every launcher (Rockstar, EA app, Ubisoft Connect, Battle.net, Epic, HoYoPlay, Steam's dialogs...). The loading screen stays behind the launcher and comes back over it once the game starts, so you never land on the desktop or have to Alt+Tab. Games > Show launchers that wait for you turns it off.
+- Games whose exe hands the start to their launcher and quits (EA app, Ubisoft Connect and similar) keep the loading screen and get the screen when they open, instead of starting behind Playnite.
+- Selene takes the focus when it starts while another window (a browser, a launcher) is in front, so the controller works straight away without a mouse. Later, a controller press takes the focus back from a window hidden behind Selene. Games > Controller always reaches Selene turns it off.
+- View + Start together no longer opens Selene settings or search: the pair is left to the system (Steam, sleep and TV/desk switchers use it).
+- Guide while a game is starting now answers: the loading screen shows "Starting <game>…" (or where to continue in the launcher) with Selene's move sound, instead of doing nothing.
+- A game that makes no sound at start is shown after 8 s instead of 12 (the loading screen is already black by then).
+- Controller presses that belong to a game are no longer written to Selene's log one by one (a long session made the log tens of MB and wrote to disk on every press).
+- Smoother loading screen: its fade-in and the slow zoom of the art run at the screen's full rate (they ran at half rate, 30 fps on a 60 Hz screen).
+- Smoother game starts: Steam's window no longer flashes and shrinks over the loading screen, the loading screen no longer shows the home for a frame as it settles (and no zoomed frame on 4K screens), and its fade to black no longer stutters when Playnite minimizes itself.
+- Smoother Guide: no black frame on the way to the home (also the first press, out of the tray), and the way back to a game is a crossfade from a fresh picture of it, for every game (it was a fade to black and a cut unless the game was paused).
+- Games whose launcher takes over (Steam handing RDR2 to the Rockstar launcher, the EA app, Ubisoft): the loading screen waits while the launcher works out of sight, Guide and Close game work on them, and their real play time is counted.
+- Small Steam pop-ups ("preparing to launch", shaders) stay under the loading screen; launchers that open maximized or without a frame (Rockstar, Riot) are shown when they wait for you.
+- A game Windows can't open (a Store or Xbox game on a drive that isn't connected) ends the loading screen at once with a Selene message you can close with A, instead of a mouse-only Windows box behind a 2-minute loading screen.
+- Selene takes the focus at start-up from a maximized browser or a window on another monitor too, so the controller works right away.
+- Fixed: Selene no longer changes the Play actions of games you added yourself. Every library update switched their tracking mode to Folder; only games Selene adds itself are set up that way now. Starting games you also added to Steam through Steam changes the Play action, so it is off by default (Games > Start through Steam shortcuts) (#200). A game Selene already changed keeps its setting until you set it back in Playnite.
+- Spotlight: with screenshots off, Down on a game no longer slides the page to a hidden strip, and the logo keeps its size when the trailer plays (#191).
+- Menu: Sort this tab is hidden on Playnite preset tabs, which keep the preset's own order (#192).
+- Activity and More like this: each card takes its cover's shape, square and wide covers included, instead of showing black bars (#195).
+- Game songs download again with UniPlaySong 1.9.1 and newer, instead of stopping at "Check UniPlaySong" (#199).
+- Collection shows the game's art (Same art as Spotlight) even with Playnite's own background image turned off (#193).
+- Turning off Square art from SteamGridDB now shows every tile's cover again, instead of keeping the squares already downloaded (#201).
+- A game's page opens more gently: it fades in once it's ready while its content rises a little, and Spotlight or Collection stays underneath until the page covers it (the screen went dark under the page for a moment, #194).
+- Smoother Achievements and Activity: moving through the list no longer redraws every row on each step, the Activity panel no longer rereads every game's play sessions from disk in the middle of browsing, and Captures builds its grid after the screen has slid in (#194).
+- Long sessions stay light: colors that follow the theme no longer pile up a record of every brush made on each move.
+
 ## 1.5.7 - 2026-11-09
 
 - Launch choices use Selene's rounded dialog card and spaced rows. Look > Selene dialogs restores the native layout when off; applies to the next dialog opened.

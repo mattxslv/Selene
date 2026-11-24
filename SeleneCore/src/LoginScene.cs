@@ -244,8 +244,11 @@ namespace Selene
                 else if (step[1] == "front?") HomeNav.DevFront();
                 else if (step[1].StartsWith("pos?")) HomeNav.DevPos(step[1].Substring(4));
                 else if (step[1] == "guide") HomeNav.DevGuide();
+                else if (step[1] == "snaptest") HomeNav.DevSnapTest();
+                else if (step[1] == "installed?") foreach (var x in HomeNav.Api.Database.Games.Where(x => x.IsInstalled).OrderBy(x => x.Name)) HomeNav.Log("dev installed: " + x.Name + " | source=" + (x.Source != null ? x.Source.Name : "-") + " | dir=" + x.InstallDirectory);
                 else if (step[1] == "collection") SeleneShell.ShowLibrary();
                 else if (step[1].StartsWith("testgame:")) HomeNav.DevTestGame(step[1].Substring(9));
+                else if (step[1].StartsWith("launch:") || step[1].StartsWith("closegame:")) HomeNav.DevRealGame(step[1].Substring(0, step[1].IndexOf(':')), step[1].Substring(step[1].IndexOf(':') + 1).Replace('_', ' '));   // a real game of the library, by name: started as Play does / closed as Close game does
                 else if (step[1] == "refresh") HomeNav.ScreenRefresh("dev key");
                 else if (step[1].StartsWith("addgame:") || step[1].StartsWith("playgame:") || step[1].StartsWith("favgame:") || step[1].StartsWith("dropgame:") || step[1].StartsWith("uninstallgame:") || step[1].StartsWith("platformgame:") || step[1].StartsWith("covergame:") || step[1].StartsWith("presetgame:") || step[1].StartsWith("varpathgame:") || step[1].StartsWith("showgame:") || step[1].StartsWith("choicegame:") || step[1].StartsWith("installedgame:"))
                 { int c = step[1].IndexOf(':'); HomeNav.DevGameChange(step[1].Substring(0, c - 4), step[1].Substring(c + 1).Replace('_', ' ')); }

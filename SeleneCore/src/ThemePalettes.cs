@@ -136,6 +136,7 @@ namespace Selene
         }
 
         private static readonly List<Live> live = new List<Live>();
+        private static int sweepAt = 4096;
 
         public static Color Of(string key, double alpha = 1)
         {
@@ -159,6 +160,13 @@ namespace Selene
         public static T Track<T>(T target, DependencyProperty property, string key, double alpha = 1) where T : DependencyObject
         {
             target.SetValue(property, Of(key, alpha));
+            // screens make a fresh brush on every focus move (rows, pills, tabs): without a sweep the list only shrank on a theme
+            // change, so a long session piled up hundreds of thousands of dead weak references for every collection to walk
+            if (live.Count >= sweepAt)
+            {
+                live.RemoveAll(l => { DependencyObject t; return !l.Target.TryGetTarget(out t); });
+                sweepAt = Math.Max(4096, live.Count * 2);
+            }
             live.Add(new Live { Target = new WeakReference<DependencyObject>(target), Property = property, Key = key, Alpha = alpha });
             return target;
         }

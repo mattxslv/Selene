@@ -56,7 +56,15 @@ namespace Selene
             {
                 // minimized = into the tray too: no taskbar button, only the hidden-icons area
                 if (w.WindowState == WindowState.Minimized)
-                    w.Dispatcher.BeginInvoke(new Action(() => { if (w.WindowState == WindowState.Minimized && w.IsVisible) HideToTray(); }));
+                    w.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        if (w.WindowState != WindowState.Minimized || !w.IsVisible) return;
+                        // Playnite minimizes itself as the game's window appears (Minimize after game startup): hiding right then
+                        // (panels closed, sessions muted, on the UI thread) froze the loading screen's fade to black, which then
+                        // jumped. It waits until the game has the screen.
+                        if (HomeNav.LaunchCoverUp) { if (!hideAfterLaunch) HomeNav.Log("tray: hiding waits until the game is shown"); hideAfterLaunch = true; return; }
+                        HideToTray();
+                    }));
                 else if (w.IsVisible) Shown();
             };
             Application.Current.SessionEnding += (s, e) => { reallyQuit = true; HomeNav.BeginQuit(); };
@@ -183,6 +191,16 @@ namespace Selene
         }
 
         public static bool IsHidden { get { var w = Application.Current.MainWindow; return w != null && !w.IsVisible; } }
+
+        private static bool hideAfterLaunch;
+        // the launch is over: the game has the screen (hide now, unseen) or the launch ended without it (stay)
+        public static void LaunchEnded(bool gameShown)
+        {
+            if (!hideAfterLaunch) return;
+            hideAfterLaunch = false;
+            var w = Application.Current.MainWindow;
+            if (gameShown && w != null && w.IsVisible && w.WindowState == WindowState.Minimized) HideToTray();
+        }
 
         public static void HideToTray()
         {

@@ -52,7 +52,7 @@ namespace Selene
                 new[] { "Music setup", "music", "songsetup", "songsettle" } } },
             { "Games", new[] {
                 new[] { "Your library", "gamesget", "gamesask" },
-                new[] { "Launching", "launchstyle", "launchmotion", "launchshade", "loadingscreen", "launchseamless", "launchchoice", "aftergame", "guidefocus" },
+                new[] { "Launching", "launchstyle", "launchmotion", "launchshade", "loadingscreen", "launchseamless", "launcherfront", "launchchoice", "steamshortcuts", "aftergame", "guidefocus", "takefront" },
                 new[] { "While playing", "freeze", "powerconfirm", "tray", "quietbackups" },
                 new[] { "Game pages", "gameoptions", "achievements", "achcelebrate", "achsetup", "hltb", "hltbauto", "metadatacomplete", "metasource" },
                 new[] { "Store", "storepage", "storetrailers", "storetab", "storeregion" },
@@ -528,6 +528,7 @@ namespace Selene
                 if (key == "lightweight") HomeNav.ApplyPerformanceMode();
                 if (key == "perflog") { PerformanceRecorder.SetRecording(Features.On(key)); Ui.Notice(Features.On(key) ? "Performance recording started. Use Selene normally, then turn this off." : "Performance recording stopped.", 6000); }
                 if (key == "collectionglide") LibraryStage.ApplyNavigationSettings();
+                if (key == "squareart") TileCovers.SquareArrived();   // the tiles drop or show their square art at once
                 if (key == "glow") LoginScene.RefreshBackdrop();
                 if (key == "songsettle") SongSetup.ApplySongSettle();
                 if (key == "selenemusic") { SongSetup.ApplyDefaultMusic(); Ui.Notice("Restart Playnite to hear it.", 5000); }

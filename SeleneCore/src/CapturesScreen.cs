@@ -198,7 +198,10 @@ namespace Selene
             {
                 var found = Scan(MaxItems);
                 if (System.IO.File.Exists(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "selene-dev-slow-captures"))) System.Threading.Thread.Sleep(2000);   // dev: a big capture folder's wait
-                dispatcher.BeginInvoke(new Action(() => { if (closed) return; all.Clear(); all.AddRange(found); Apply(); }), DispatcherPriority.Background);
+                // the grid (up to 150 tiles) is made after the screen's slide-in: made in the middle of it, it held one frame
+                // 130 ms (#194). Opened on one capture (a game's page), the viewer opens at once as before
+                Action fill = () => { if (closed) return; all.Clear(); all.AddRange(found); Apply(); };
+                dispatcher.BeginInvoke(new Action(() => { if (openPath != null) fill(); else Ui.AfterHold(fill); }), DispatcherPriority.Background);
             });
         }
 

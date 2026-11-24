@@ -11,10 +11,13 @@
 #   -Visible on the real desktop instead (it takes the screen!); -Shots are then pictures of the whole main screen
 #   -Login  keep the sign-in (and a new copy's first-run setup) instead of skipping it
 #   -Wait   seconds to let it run; still running then = closed by PID (the result says so)
+#   -Tray   keep Close to tray on (Playnite hides to the tray while a game starts, as for most people)
+#   -Monitor <n> with -Visible: Playnite opens on that screen (its index in Screen.AllScreens) and -Shots picture that screen,
+#           so a run can use a second monitor while the main one stays in use
 #   -Size   "3440x1440": the screen size Playnite lays out for (its --fullscreenwidth/height), to check other shapes: ultrawide
 #           21:9 / 32:9, or a 16:10 handheld (1280x800). Playnite keeps the layout 1080 tall; the width follows the shape.
 param([string]$Keys = "", [string]$Values = "", [string]$Theme = 'Selene_a98e0027-fa6a-4f5e-a087-bad8d69f2443', [switch]$Visible, [int]$Relaunch = 0, [int]$Wait = 40, [string]$Shots = "", [string]$Root = "$env:USERPROFILE\selene-fresh", [scriptblock]$Prep = $null,
-      [switch]$Login, [string]$Size = "",
+      [switch]$Login, [string]$Size = "", [int]$Monitor = -1, [switch]$Tray,
       [string[]]$Disable = @('PlayniteAudioSwitcher_708b6ec4-bf96-4c0d-bd9d-fe0aa04d6bf1', 'UniPlaySong.a1b2c3d4-e5f6-7890-abcd-ef1234567890'))
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
@@ -54,13 +57,15 @@ try {
     $cfg | Add-Member -NotePropertyName DisabledPlugins -NotePropertyValue $Disable -Force
     $cfg | ConvertTo-Json -Depth 20 | Set-Content $files[0] -Encoding UTF8
     $full = if (Test-Path $files[1]) { Get-Content $files[1] -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }
-    foreach ($kv in @{ Theme = $Theme; EnableGameControllerSupport = $false; InterfaceVolume = 0.0; BackgroundVolume = 0.0; MuteInBackground = $true }.GetEnumerator()) {
+    $fullValues = @{ Theme = $Theme; EnableGameControllerSupport = $false; InterfaceVolume = 0.0; BackgroundVolume = 0.0; MuteInBackground = $true }
+    if ($Monitor -ge 0) { $fullValues.Monitor = $Monitor }
+    foreach ($kv in $fullValues.GetEnumerator()) {
         $full | Add-Member -NotePropertyName $kv.Key -NotePropertyValue $kv.Value -Force
     }
     $full | ConvertTo-Json -Depth 20 | Set-Content $files[1] -Encoding UTF8
     if (Test-Path $files[2]) {
         $sel = Get-Content $files[2] -Raw | ConvertFrom-Json
-        $off = @($sel.TurnedOff) + @('tray', 'trailersound') | Where-Object { $_ } | Select-Object -Unique
+        $off = @($sel.TurnedOff) + @('trailersound') + $(if ($Tray) { @() } else { @('tray') }) | Where-Object { $_ } | Select-Object -Unique   # (-Tray: Close to tray stays on, as most people have it)
         $sel | Add-Member -NotePropertyName TurnedOff -NotePropertyValue @($off) -Force
         if ($Values) {
             if (-not $sel.Values) { $sel | Add-Member -NotePropertyName Values -NotePropertyValue ([pscustomobject]@{}) -Force }
@@ -113,7 +118,7 @@ try {
             $s = $shotQueue.Dequeue()
             $out = Join-Path $shotDir "shot-$s.png"
             if ($Visible) {
-                $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+                $b = if ($Monitor -ge 0) { [System.Windows.Forms.Screen]::AllScreens[$Monitor].Bounds } else { [System.Windows.Forms.Screen]::PrimaryScreen.Bounds }
                 $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
                 $g = [System.Drawing.Graphics]::FromImage($bmp); $g.CopyFromScreen($b.Left, $b.Top, 0, 0, $bmp.Size); $g.Dispose()
                 (New-Object System.Drawing.Bitmap $bmp, 1280, ([int](1280 * $b.Height / $b.Width))).Save($out, [System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose()

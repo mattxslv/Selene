@@ -40,7 +40,7 @@ namespace Selene
         {
             details = HomeNav.FindByName(w, "PART_ElemGameDetails") as FrameworkElement;
             if (details == null) { HomeNav.Log("details stage: no details view"); return; }
-            details.IsVisibleChanged += (s, e) => { if ((bool)e.NewValue) Opened(); else Closed(); };
+            details.IsVisibleChanged += (s, e) => { if ((bool)e.NewValue) Opened(true); else Closed(); };
             var npc = w.DataContext as System.ComponentModel.INotifyPropertyChanged;
             if (npc != null) npc.PropertyChanged += (s, e) => { if (e.PropertyName == "SelectedGame" && details.IsVisible) details.Dispatcher.BeginInvoke(new Action(Opened), DispatcherPriority.Background); };
             if (details.IsVisible) Opened();
@@ -63,20 +63,26 @@ namespace Selene
             if (on) stickScroll.Start(); else stickScroll.Stop();
         }
 
-        private static void Opened()
+        private static void Opened() { Opened(false); }
+
+        // entering: the page just came up (not another game picked while it's open)
+        private static void Opened(bool entering)
         {
             HomeNav.QuietDetailsTransition();
             var g = Selected();
             if (g == null) return;
-            // the page fades in instead of cutting in (#176); the same switch fades it back out to Spotlight
-            if (Features.On("smoothswitch")) { details.BeginAnimation(UIElement.OpacityProperty, null); details.Opacity = 0; Ui.Fade(details, 1, 260); }
+            // the page fades in instead of cutting in (#176); the same switch fades it back out to Spotlight. Coming up, it waits
+            // until it's filled (Enter), so the fill's frame doesn't eat the start of the fade (it came in half done: "sudden", #194)
+            bool enter = entering && Features.On("smoothswitch");
+            if (Features.On("smoothswitch")) { details.BeginAnimation(UIElement.OpacityProperty, null); details.Opacity = 0; if (!enter) Ui.Fade(details, 1, 260); }
+            if (enter) SeleneShell.HoldHomeUnderDetails();
             WatchStick(true);
             // the page's parts are in the template, made once the view shows
             details.Dispatcher.BeginInvoke(new Action(() =>
             {
                 var page = Part<Grid>("SeleneDetailsPage");
                 shift = page != null ? page.RenderTransform as TranslateTransform : null;
-                if (page == null) { HomeNav.Log("details stage: no page in the template"); return; }
+                if (page == null) { HomeNav.Log("details stage: no page in the template"); if (enter) Enter(); return; }
                 HltbFetch.ForPage(g);
                 // Game Options: Selene's screen (Playnite's own menu when that's switched off)
                 var options = Part<System.Windows.Controls.Primitives.ButtonBase>("PART_ButtonOptions");
@@ -127,9 +133,31 @@ namespace Selene
                 var idle = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1500) };
                 idle.Tick += (s2, e2) => { idle.Stop(); if (details.IsVisible) Ui.MeasureFrames("details at rest", 500); };
                 idle.Start();
-                HideUnder(true);
+                if (enter) Enter(); else HideUnder(true);
                 var f = Keyboard.FocusedElement as DependencyObject;
                 if (f == null || !details.IsAncestorOf(f)) FocusPills();
+            }), DispatcherPriority.Loaded);
+        }
+
+        // The page comes up once it's filled and laid out: it fades in while its content rises a little, 280 ms, easing out.
+        // What it opened over (Collection, or Spotlight held by HoldHomeUnderDetails) stays under it until it's covered; hiding
+        // Collection at once left a dark, nearly empty screen under the fading page for a moment.
+        private const int EnterMs = 280;
+        private const double EnterRise = 22;
+        private static void Enter()
+        {
+            bool rise = shift != null && zone == 0;
+            if (rise) { shift.BeginAnimation(TranslateTransform.YProperty, null); shift.Y = EnterRise; }
+            // (Loaded comes after the next layout and render: the filled page's own heavy frame is behind it)
+            details.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (!details.IsVisible) { SeleneShell.ReleaseHomeUnderDetails(); return; }
+                var fade = Ui.Fast(new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(EnterMs)) { EasingFunction = Ui.Out() });
+                fade.Completed += (s, e) => { if (!details.IsVisible) return; HideUnder(true); SeleneShell.ReleaseHomeUnderDetails(); };
+                details.BeginAnimation(UIElement.OpacityProperty, fade);
+                // (a Down pressed meanwhile glides from where the rise is: the glide animates the same transform)
+                if (rise && zone == 0 && !shift.HasAnimatedProperties)
+                    shift.BeginAnimation(TranslateTransform.YProperty, Ui.Fast(new DoubleAnimation(EnterRise, 0, TimeSpan.FromMilliseconds(EnterMs)) { EasingFunction = Ui.Out() }));
             }), DispatcherPriority.Loaded);
         }
 
@@ -162,6 +190,7 @@ namespace Selene
             BackgroundChangerBridge.RefreshAll();
             WatchStick(false);
             HideUnder(false);
+            SeleneShell.ReleaseHomeUnderDetails();
             zone = 0;
             if (shotsWatch != null) shotsWatch.Stop();
             if (shift != null) { shift.BeginAnimation(TranslateTransform.YProperty, null); shift.Y = 0; }

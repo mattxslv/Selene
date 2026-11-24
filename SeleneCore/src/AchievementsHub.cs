@@ -26,6 +26,7 @@ namespace Selene
         private readonly TranslateTransform recentShift = new TranslateTransform();
         private readonly List<AchievementsData.GameSet> games = new List<AchievementsData.GameSet>();
         private readonly List<Border> gameRows = new List<Border>();
+        private int litRow = -1;   // the row drawn focused (ShowFocus)
         private readonly StackPanel list = new StackPanel();
         private readonly ScrollViewer scroller;
         private readonly Image hero = new Image { Stretch = Stretch.UniformToFill, Opacity = 0, IsHitTestVisible = false };
@@ -163,7 +164,7 @@ namespace Selene
             keepZone = zone; keepIndex = zone == 0 ? col : row;
             summary.Children.Clear();
             recent.Clear(); recentTiles.Clear(); recentStrip.Children.Clear();
-            games.Clear(); gameRows.Clear(); list.Children.Clear();
+            games.Clear(); gameRows.Clear(); litRow = -1; list.Children.Clear();
             note.Visibility = Visibility.Visible;
             Build(sets);
         }
@@ -229,7 +230,7 @@ namespace Selene
             sortLabel.Text = Sorts[sort];
             Ui.Pop(sortLabel);
             // the first rows made again in the new order (only those in sight: quick), a short fade over the change
-            list.Children.Clear(); games.Clear(); gameRows.Clear();
+            list.Children.Clear(); games.Clear(); gameRows.Clear(); litRow = -1;
             games.AddRange(Order(allSets));
             keepIndex = 0;
             reordering = true; BuildRows(FirstRows); reordering = false;   // (no rise: the fade says it)
@@ -385,11 +386,14 @@ namespace Selene
         private void ShowFocus(bool animate)
         {
             for (int i = 0; i < recentTiles.Count; i++) recentTiles[i].Focus(zone == 0 && i == col);
-            for (int i = 0; i < gameRows.Count; i++)
+            // only the row losing the focus and the one getting it change (every row got new brushes on every move: the whole
+            // list, hundreds of rows deep once scrolled, was redrawn and a pile of brushes made for each step)
+            int lit = zone == 1 && row < gameRows.Count ? row : -1;
+            if (lit != litRow)
             {
-                bool on = zone == 1 && i == row;
-                gameRows[i].BorderBrush = on ? Ink.Brush("SeleneFocusColor") : Brushes.Transparent;
-                gameRows[i].Background = Ink.Brush("SeleneGlassColor", on ? 0.9 : 0.55);
+                if (litRow >= 0 && litRow < gameRows.Count) { gameRows[litRow].BorderBrush = Brushes.Transparent; gameRows[litRow].Background = Ink.Brush("SeleneGlassColor", 0.55); }
+                if (lit >= 0) { gameRows[lit].BorderBrush = Ink.Brush("SeleneFocusColor"); gameRows[lit].Background = Ink.Brush("SeleneGlassColor", 0.9); }
+                litRow = lit;
             }
             // the row of unlocks moves along once the focus goes past its first tiles
             recentShift.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(-Math.Max(0, col - 12) * Pitch, TimeSpan.FromMilliseconds(animate ? 240 : 0)) { EasingFunction = Ui.Out() });

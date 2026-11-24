@@ -30,6 +30,7 @@ namespace Selene
         private List<AchievementsData.Item> shown = new List<AchievementsData.Item>();
         private readonly HashSet<AchievementsData.Item> revealed = new HashSet<AchievementsData.Item>();
         private readonly List<Border> rows = new List<Border>();
+        private int litRow = -1;   // the row drawn focused (ShowFocus)
         private readonly List<Border> tabPills = new List<Border>();
         private readonly StackPanel list = new StackPanel();
         private readonly ScrollViewer scroller;
@@ -266,6 +267,7 @@ namespace Selene
             shown = items.ToList();
             list.Children.Clear();
             rows.Clear();
+            litRow = -1;
             built = 0;
             index = 0;
             scroller.ScrollToVerticalOffset(0);
@@ -468,11 +470,14 @@ namespace Selene
         private void ShowFocus()
         {
             if (index >= built - 10 && built < shown.Count) BuildMore();
-            for (int i = 0; i < rows.Count; i++)
+            // only the row losing the focus and the one getting it change (all of them got new brushes on every move: the whole
+            // list was redrawn for each step)
+            int lit = !inRecent && index < rows.Count ? index : -1;
+            if (lit != litRow)
             {
-                bool on = i == index && !inRecent;
-                rows[i].BorderBrush = on ? Ink.Brush("SeleneFocusColor") : Brushes.Transparent;
-                rows[i].Background = Ink.Brush("SeleneGlassColor", on ? 0.95 : 0.72);
+                if (litRow >= 0 && litRow < rows.Count) { rows[litRow].BorderBrush = Brushes.Transparent; rows[litRow].Background = Ink.Brush("SeleneGlassColor", 0.72); }
+                if (lit >= 0) { rows[lit].BorderBrush = Ink.Brush("SeleneFocusColor"); rows[lit].Background = Ink.Brush("SeleneGlassColor", 0.95); }
+                litRow = lit;
             }
             if (index >= rows.Count) return;
             try

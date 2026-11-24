@@ -185,8 +185,11 @@ namespace Selene
             return grid != null ? grid.Children.OfType<TextBlock>().FirstOrDefault(t => t.Name == "SquarePath") : null;
         }
 
+        // Look > Square art from SteamGridDB off: the squares already downloaded stay on disk but no longer show, so every tile
+        // is the game's own cover again (#201: turning it off left a mix of squares and covers)
         private static string SquareFile(FrameworkElement el)
         {
+            if (!Features.On("squareart")) return null;
             var t = SquarePathOf(el);
             var file = t != null ? t.Text : null;
             return !string.IsNullOrEmpty(file) && System.IO.File.Exists(file) ? file : null;

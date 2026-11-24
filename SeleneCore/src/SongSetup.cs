@@ -439,8 +439,9 @@ namespace Selene
         private static bool Fetch(object plugin, bool note)
         {
             if (!DownloadConsent.Allowed("songsetup")) return false;
-            var fetch = plugin.GetType().GetMethod("AutoDownloadMusicForGamesAsync", BindingFlags.Instance | BindingFlags.NonPublic);
-            if (fetch == null) { downloadProblem = "Use UniPlaySong to start song downloads."; return false; }
+            object target;
+            var fetch = FindAutoDownload(plugin, out target);
+            if (fetch == null) { downloadProblem = "This UniPlaySong version can't take Selene's song request. Start downloads from UniPlaySong's own menu."; HomeNav.Log("songs: UniPlaySong has no AutoDownloadMusicForGamesAsync"); return false; }
             var games = HomeNav.Api.Database.Games.Where(g => !g.Hidden).OrderByDescending(g => g.LastActivity ?? DateTime.MinValue).ToList();
             // off the UI thread, as UniPlaySong starts it (its search runs a while before it first yields); one game every
             // couple of seconds, the games that have a song skipped
@@ -452,7 +453,7 @@ namespace Selene
                 {
                     if (DownloadConsent.Allowed("songsetup"))
                     {
-                        var task = fetch.Invoke(plugin, new object[] { games }) as System.Threading.Tasks.Task;
+                        var task = fetch.Invoke(target, new object[] { games }) as System.Threading.Tasks.Task;
                         if (task != null) await task;
                         else if (requestGeneration == generation) downloadProblem = "Song progress unavailable. Check UniPlaySong.";
                     }
@@ -467,6 +468,29 @@ namespace Selene
             HomeNav.Log("songs: UniPlaySong is getting songs for the games without one (" + games.Count + " games)");
             if (note && Features.On("taskcards")) ProgressToast.ShowNote("Game songs", "Downloading", 0xE405);
             return true;
+        }
+
+        // UniPlaySong's library-wide download: on the add-on itself up to 1.9.0, in its AutoDownloadService (the add-on's
+        // _autoDownload field) from 1.9.1. Not found there, Selene said "Check UniPlaySong" with nothing to check.
+        internal static MethodInfo FindAutoDownload(object plugin, out object target)
+        {
+            target = null;
+            if (plugin == null) return null;
+            const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+            var own = plugin.GetType().GetMethod("AutoDownloadMusicForGamesAsync", Any);
+            if (own != null) { target = plugin; return own; }
+            for (var t = plugin.GetType(); t != null; t = t.BaseType)
+                foreach (var f in t.GetFields(Any | BindingFlags.DeclaredOnly))
+                {
+                    try
+                    {
+                        var m = f.FieldType.GetMethod("AutoDownloadMusicForGamesAsync", Any);
+                        var value = m != null ? f.GetValue(plugin) : null;
+                        if (value != null) { target = value; return m; }
+                    }
+                    catch (AmbiguousMatchException) { }
+                }
+            return null;
         }
 
         private static object Field(object o, string name)

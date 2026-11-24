@@ -427,6 +427,7 @@ namespace Selene
             new Option { Group = "Sound & music", Key = "independentmusic", Label = "Game music without trailers", About = "Play game songs without waiting for a trailer. Requires UniPlaySong.", DefaultOn = false },
             new Option { Group = "Sound & music", Key = "launchquiet", Label = "Quiet loading screen", About = "Keep the loading screen silent until the game appears." },
             new Option { Group = "Games", Key = "launchseamless", Label = "Smooth loading screen", About = "Keep the picture on screen as the loading screen starts." },
+            new Option { Group = "Games", Key = "launcherfront", Label = "Show launchers that wait for you", About = "A launcher left waiting for you (sign-in, Play) shows over the loading screen after 20 s, or at once with Guide. Off: after 12 s." },
             new Option { Group = "Games", Key = "launchhandoff", Label = "Make sure the game comes to the front", About = "After the loading screen, check the game really is in front and hand it back if a launcher pulls Playnite forward." },
             new Option { Group = "Games", Key = "launchchoice", Label = "Keep launch choices above loading", About = "Show launch choices before the loading screen." },
             // ---- Look ----
@@ -443,6 +444,7 @@ namespace Selene
             new Option { Group = "Look", Key = "backgroundfit", Label = "Background sizing", About = "Choose how background images fill the screen.", Choices = new[] { "fill", "fit", "stretch" }, Names = new[] { "Fill", "Fit", "Stretch" }, Default = "fill" },
             new Option { Group = "Look", Key = "language", Label = "Language", About = "Choose the language for Selene.", Choices = new[] { "auto", "en", "de", "es", "fr", "pt_BR", "zh_CN", "ja", "fil" }, Names = new[] { "Follow Playnite", "English", "Deutsch", "Español", "Français", "Português (Brasil)", "简体中文", "日本語", "Filipino" }, Default = "auto" },
             new Option { Group = "Look", Key = "languagerestart", Label = "Ask to restart only when the language changes", About = "Selene asks to restart Playnite after you pick a language only if it would show different words. Off: it asks after every change." },
+            new Option { Group = "Games", Key = "takefront", Label = "Controller always reaches Selene", About = "Selene takes the focus from a window behind it, and at start-up, so the controller works without a mouse." },
             new Option { Group = "Games", Key = "guidefocus", Label = "Focus on Guide", About = "Bring Selene to the front when you press the Guide button. Turn this off if another overlay uses the Guide button." },
             new Option { Group = "Look", Key = "homebackground", Label = "Spotlight background", About = "Choose what appears behind the selected game.", Choices = new[] { "art", "wallpaper" }, Names = new[] { "Game art", "Wallpaper only" }, Default = "art" },
             new Option { Group = "Look", Key = "glow", Label = "Animated background", About = "Show a moving background behind the profile screen and cards." },
@@ -477,6 +479,7 @@ namespace Selene
             new Option { Group = "Look", Key = "previewartfit", Label = "Keep trailer-card artwork proportional", About = "Prevent stretched artwork in trailer cards. Restart Playnite to apply." },
             new Option { Group = "Games", Key = "gamesask", Label = "Offer to get art for a new library", About = "Offer media downloads when setting up a new library." },
             new Option { Group = "Games", Key = "gameresolution", Label = "Match the screen's resolution", About = "Start fullscreen Unity and Unreal games at the resolution of the screen Selene is on, like 4K on a TV." },
+            new Option { Group = "Games", Key = "steamshortcuts", Label = "Start through Steam shortcuts", About = "Start games you also added to Steam through Steam, so Steam Input handles the controller. This changes their Play action.", DefaultOn = false },
             new Option { Group = "Games", Key = "loadingscreen", Label = "Loading screen", About = "Show the game's artwork and logo while it starts." },
             new Option { Group = "Games", Key = "aftergame", Label = "After a game", About = "Choose where you return to after you close a game.", Choices = new[] { "spotlight", "where" }, Names = new[] { "Spotlight, on that game", "Where you were" }, Default = "spotlight" },
             new Option { Group = "Games", Key = "freeze", Label = "Pause games on Guide", About = "Pause offline games when you press the Guide button. When this is off, games are only muted." },

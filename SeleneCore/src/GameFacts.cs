@@ -94,7 +94,7 @@ namespace Selene
         {
             try
             {
-                if (g == null) return null;
+                if (g == null || !Features.On("squareart")) return null;   // (switched off: the cover, as on the tiles)
                 var square = System.IO.Path.Combine(SelenePaths.Media("Square"), g.Id + ".jpg");
                 return System.IO.File.Exists(square) ? square : null;
             }
@@ -190,8 +190,29 @@ namespace Selene
                 if (idx >= tiles.Count) return;
                 var fill = CoverFace(pic, wholeCover);
                 tiles[idx].Face.Child = fill;
+                if (wholeCover) FitToCover(tiles[idx], pic);
                 Ui.Fade(fill, 1, 240);
             });
+        }
+
+        // a whole cover: the card takes the cover's shape inside its slot (a square or wide cover sat in a tall card with
+        // black bars, #195). It sits at the slot's bottom, centred across, so the row and the lines under it stay put.
+        private static void FitToCover(Tile t, ImageSource picture)
+        {
+            var root = t.Root;
+            double slotW = root.Width, slotH = root.Height;
+            if (double.IsNaN(slotW) || double.IsNaN(slotH) || picture.Width <= 0 || picture.Height <= 0) return;
+            double ratio = picture.Width / picture.Height;
+            double w = slotW, h = slotW / ratio;
+            if (h > slotH) { h = slotH; w = slotH * ratio; }
+            if (Math.Abs(w - slotW) < 1 && Math.Abs(h - slotH) < 1) return;
+            var from = root.Margin;
+            var to = new System.Windows.Thickness(from.Left + (slotW - w) / 2, from.Top + slotH - h, from.Right + (slotW - w) / 2, from.Bottom);
+            root.Width = w; root.Height = h; root.Margin = to;
+            var time = TimeSpan.FromMilliseconds(220);
+            root.BeginAnimation(System.Windows.FrameworkElement.WidthProperty, new System.Windows.Media.Animation.DoubleAnimation(slotW, w, time) { EasingFunction = Ui.Out() });
+            root.BeginAnimation(System.Windows.FrameworkElement.HeightProperty, new System.Windows.Media.Animation.DoubleAnimation(slotH, h, time) { EasingFunction = Ui.Out() });
+            root.BeginAnimation(System.Windows.FrameworkElement.MarginProperty, new System.Windows.Media.Animation.ThicknessAnimation(from, to, time) { EasingFunction = Ui.Out() });
         }
 
         private static System.Windows.Controls.Border CoverFace(ImageSource picture, bool wholeCover)

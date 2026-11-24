@@ -283,6 +283,29 @@ namespace Selene
             HomeNav.Log("shell: library");
         }
 
+        // A game's page opened from Spotlight: Spotlight was melting away to Collection while the page faded in over both, so
+        // Collection showed through for a moment and then vanished (#194, "too sudden"). Spotlight now stays as it is under the
+        // page and goes once the page covers it.
+        private static int heldHome = -1;
+        public static void HoldHomeUnderDetails()
+        {
+            var home = Part("WelcomeHubOverlay");
+            if (home == null || !home.IsVisible || !CollectionActive) return;
+            double now = home.Opacity;   // (where its fade-out is now: no jump back)
+            home.BeginAnimation(UIElement.OpacityProperty, null);
+            home.Opacity = now;
+            heldHome = switchCount;
+        }
+        public static void ReleaseHomeUnderDetails()
+        {
+            int mine = heldHome;
+            heldHome = -1;
+            var home = Part("WelcomeHubOverlay");
+            if (mine < 0 || home == null || mine != switchCount) return;   // (another screen switch since: it decides)
+            home.Visibility = Visibility.Collapsed;
+            home.Opacity = 1;
+        }
+
         // a note on the home when the Extra Metadata add-on (logos, trailers) isn't installed: Spotlight looks bare without it and
         // nothing says why; the setup check installs it
         private static void AddonHintLater()

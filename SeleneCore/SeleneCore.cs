@@ -143,7 +143,7 @@ namespace Selene
                 System.Windows.Application.Current.Dispatcher.BeginInvoke(new Action(() =>
                 {
                     var t = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1800) };
-                    t.Tick += (s, e) => { t.Stop(); ProgressToast.ShowSession(game, secs); };
+                    t.Tick += (s, e) => { t.Stop(); if (!HomeNav.NeverShown(game.Id)) ProgressToast.ShowSession(game, secs); };   // (the start may have turned out a failure meanwhile)
                     t.Start();
                 }));
             }

@@ -451,13 +451,14 @@ namespace Selene
 
         // a Spotlight picture started to fade in (or was up already): the game block waiting for it comes in
         private static int heroInDelay = 70;
-        internal static void HubArtShown(bool image)
+        internal static void HubArtShown(bool image, bool fadingOut)
         {
             var waiter = heroArtWaiter;
             if (waiter == null) return;
             heroArtWaiter = null;
-            HeroLog(image ? "art in" : "art gone");
-            heroInDelay = image ? 70 : 170;   // (an old picture fading out to none: the block waits until it is mostly gone)
+            HeroLog(image ? "art in" : fadingOut ? "art gone" : "no art");
+            // (an old picture fading out to none: the block waits until it is mostly gone; none before either: nothing to wait for)
+            heroInDelay = image ? 70 : fadingOut ? 220 : 0;
             waiter();
         }
 
@@ -9153,7 +9154,7 @@ namespace Selene
         // a start that never got to the game (B on the loading screen, a game that quit or never came): no "Session ended" card
         // for it afterwards
         private static Guid notPlayed = Guid.Empty;
-        public static bool NeverShown(Guid id) { return id != Guid.Empty && id == notPlayed; }
+        public static bool NeverShown(Guid id) { return id != Guid.Empty && (id == notPlayed || (launching && id == launchGameId)); }   // (still loading when it stopped: never shown either)
 
         private static void AbortLaunchCover(IntPtr bringForward, string why)
         {
@@ -10493,7 +10494,7 @@ namespace Selene
         {
             if (Disabled || (CanLoad != null && !CanLoad())) return;
             if (Hub && SeleneShell.CollectionActive) return;
-            if (Equals(value, shown)) { if (Hub && decoding == 0) Arrived(hasImage); return; }   // (already up: the game block needn't wait; still decoding: it comes then)
+            if (Equals(value, shown)) { if (Hub && decoding == 0) Arrived(hasImage, hasImage); return; }   // (already up: the game block needn't wait; still decoding: it comes then)
             shown = value;
             shownKey = null;
             int id = ++request;
@@ -10589,9 +10590,10 @@ namespace Selene
         public static bool HubBusy() { return HubFades().Any(cf => cf.Busy); }
 
         // Spotlight's art reached what its game has: a picture fading in, or none at all once no other layer still brings one
-        private void Arrived(bool image)
+        // had: this layer showed a picture before (it fades out now)
+        private void Arrived(bool image, bool had)
         {
-            if (image || !HubFades().Any(cf => cf != this && cf.Busy)) HomeNav.HubArtShown(image);
+            if (image || !HubFades().Any(cf => cf != this && cf.Busy)) HomeNav.HubArtShown(image, had || HubFades().Any(cf => cf != this && cf.hasImage));
         }
 
         // Spotlight coming back on a game its pictures don't show (another tab picked in Collection, an empty tab): the stale
@@ -10614,8 +10616,9 @@ namespace Selene
         private void Show(ImageSource img)
         {
             if (Hub) Contrast.Art(this, img);   // the home's shades as deep as this picture needs
+            bool had = hasImage;
             hasImage = img != null;
-            if (Hub) Arrived(img != null);   // the game's logo and info come in with its picture
+            if (Hub) Arrived(img != null, had);   // the game's logo and info come in with its picture
             // Spotlight: ease-out, so the picture is mostly in by the time the logo coming with it is
             EasingFunctionBase ease = Hub ? (EasingFunctionBase)new CubicEase { EasingMode = EasingMode.EaseOut } : new QuadraticEase { EasingMode = EasingMode.EaseInOut };
             if (img == null)

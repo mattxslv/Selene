@@ -280,6 +280,13 @@ namespace Selene
                 res["SeleneShot" + i + "Vis"] = i < items.Count ? Visibility.Visible : Visibility.Collapsed;
             }
             res["SeleneShotsNone"] = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            // "No screenshots" fades in with the game block (it popped in ahead of the block's fade)
+            if (items.Count == 0)
+            {
+                var none = Application.Current.MainWindow != null ? HomeNav.FindByName(Application.Current.MainWindow, "SeleneShotsNoneText") as UIElement : null;
+                if (none != null) { none.BeginAnimation(UIElement.OpacityProperty, null); none.Opacity = 0; }
+                if (none != null) none.BeginAnimation(UIElement.OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(260)) { BeginTime = TimeSpan.FromMilliseconds(80), EasingFunction = Ui.Out() });
+            }
             var strip = Strip();
             if (strip != null) { strip.BeginAnimation(UIElement.OpacityProperty, null); strip.Opacity = 1; }
             // animate once per game: the same game's pictures coming back within 2 s are shown without replaying it

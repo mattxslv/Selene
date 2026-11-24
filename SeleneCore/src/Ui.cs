@@ -706,20 +706,29 @@ namespace Selene
                     }
                 if (padArgs == null || padInput == null || padState == null) { HomeNav.Log("pad: Playnite's controller types not found"); return false; }
                 var key = button == "DPadLeft" ? System.Windows.Input.Key.Left : button == "DPadRight" ? System.Windows.Input.Key.Right : button == "DPadUp" ? System.Windows.Input.Key.Up
-                    : button == "DPadDown" ? System.Windows.Input.Key.Down : button == "A" ? System.Windows.Input.Key.Enter : System.Windows.Input.Key.Escape;
+                    : button == "DPadDown" ? System.Windows.Input.Key.Down : System.Windows.Input.Key.None;
                 var names = Enum.GetNames(padState);
                 var state = Enum.Parse(padState, down ? (names.FirstOrDefault(n => n.IndexOf("Press", StringComparison.OrdinalIgnoreCase) >= 0) ?? names[0])
                                                       : (names.FirstOrDefault(n => n.IndexOf("Releas", StringComparison.OrdinalIgnoreCase) >= 0) ?? names[names.Length - 1]));
-                // both stages, each its own event, as Playnite sends them: Selene's row moves on the Preview, its pad handling
-                // (repeats, holds) reads the KeyDown
-                foreach (var stage in down ? new[] { System.Windows.Input.Keyboard.PreviewKeyDownEvent, System.Windows.Input.Keyboard.KeyDownEvent }
-                                           : new[] { System.Windows.Input.Keyboard.PreviewKeyUpEvent, System.Windows.Input.Keyboard.KeyUpEvent })
+                // What Playnite does for a real press (its GameControllerManager, read from Playnite.dll): ONE controller event,
+                // a KeyDown (or KeyUp) with no key at all, then, for a direction, the arrow key as a keyboard message, the copy
+                // Selene drops when it handled the press (KeyIsPadCopy). This sent a Preview and a KeyDown, both carrying the
+                // arrow key: WPF turns an unhandled Preview into a KeyDown of its own, so a press was handled twice (held-direction
+                // steps and hint clicks moved two places, B closed a page and the screen under it).
+                var e = (System.Windows.Input.KeyEventArgs)Activator.CreateInstance(padArgs, System.Windows.Input.Key.None, state, Enum.Parse(padInput, button));
+                e.RoutedEvent = down ? System.Windows.Input.Keyboard.KeyDownEvent : System.Windows.Input.Keyboard.KeyUpEvent;
+                SendingPad = true;
+                try { System.Windows.Input.InputManager.Current.ProcessInput(e); }
+                finally { SendingPad = false; }
+                if (key != System.Windows.Input.Key.None)
                 {
-                    var e = (System.Windows.Input.KeyEventArgs)Activator.CreateInstance(padArgs, key, state, Enum.Parse(padInput, button));
-                    e.RoutedEvent = stage;
-                    SendingPad = true;
-                    try { System.Windows.Input.InputManager.Current.ProcessInput(e); }
-                    finally { SendingPad = false; }
+                    var keyboard = System.Windows.Input.Keyboard.PrimaryDevice;
+                    var source = keyboard.ActiveSource ?? (Application.Current.MainWindow != null ? PresentationSource.FromVisual(Application.Current.MainWindow) : null);
+                    if (source != null)
+                    {
+                        var copy = new System.Windows.Input.KeyEventArgs(keyboard, source, Environment.TickCount, key) { RoutedEvent = down ? System.Windows.Input.Keyboard.PreviewKeyDownEvent : System.Windows.Input.Keyboard.PreviewKeyUpEvent };
+                        System.Windows.Input.InputManager.Current.ProcessInput(copy);   // (WPF raises its KeyDown / KeyUp after the Preview)
+                    }
                 }
                 return true;
             }

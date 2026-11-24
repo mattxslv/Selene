@@ -332,36 +332,40 @@ namespace Selene
                 HomeNav.Log("shell: home (instant)");
                 return;
             }
-            // Spotlight comes back unseen over Collection, gets its own selection and art (setting its "no game" made its list
-            // jump to its first game: the 007 flash), then fades in over Collection, which goes once it's covered (at most
-            // 400 ms wait). Live screens, no still: WPF draws a still in software, seconds on a 4K TV.
-            bool over = library != null && library.IsVisible && !LibraryStage.Playing;
+            // Spotlight fades in over Collection at once, on the pictures it still holds of its own game (they hold still while
+            // Collection shows; ones of another game go first: PrepareReturn) and without its game block. Once it covers
+            // Collection, Collection goes and Spotlight's game is selected again: the block comes in with its art. (Selecting it
+            // first changed Collection's art under its old logo for most of a second, and made its list jump: the 007 flash.)
+            // Live screens, no still: WPF draws a still in software, seconds on a 4K TV. Over a playing trailer too (it waited
+            // with a black screen).
+            bool over = library != null && library.IsVisible;
             if (!over && library != null) { library.BeginAnimation(UIElement.OpacityProperty, null); library.Visibility = Visibility.Collapsed; }
             home.BeginAnimation(UIElement.OpacityProperty, null);
             home.Opacity = 0;
             home.Visibility = Visibility.Visible;
             HomeNav.CatchUpRowFilter();   // the tab picked in Collection (its row waits for Spotlight to show)
-            bool revealed = false;
-            System.Windows.Threading.DispatcherTimer cap = null;
-            Action reveal = () =>
+            HomeNav.PrepareReturn();
+            bool selected = false;
+            Action select = () =>
             {
-                if (revealed || mine != switchCount) return;
-                revealed = true;
-                if (cap != null) cap.Stop();
-                var fade = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(over ? 220 : 280)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
-                fade.Completed += (s, e) =>
-                {
-                    if (mine != switchCount) return;
-                    home.BeginAnimation(UIElement.OpacityProperty, null);
-                    home.Opacity = 1;
-                    if (library != null) { library.BeginAnimation(UIElement.OpacityProperty, null); library.Visibility = Visibility.Collapsed; }
-                };
-                home.BeginAnimation(UIElement.OpacityProperty, fade);
+                if (selected || mine != switchCount) return;
+                selected = true;
+                if (library != null) { library.BeginAnimation(UIElement.OpacityProperty, null); library.Visibility = Visibility.Collapsed; }
+                HomeNav.SyncSelectionForHome(null);   // Spotlight's own selection: its block comes in with its art
             };
-            cap = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
-            cap.Tick += (s, e) => reveal();
-            cap.Start();
-            HomeNav.SyncSelectionForHome(reveal);   // Spotlight's own selection
+            var fade = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(over ? 220 : 260)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
+            fade.Completed += (s, e) =>
+            {
+                if (mine != switchCount) return;
+                home.BeginAnimation(UIElement.OpacityProperty, null);
+                home.Opacity = 1;
+                select();
+            };
+            home.BeginAnimation(UIElement.OpacityProperty, fade);
+            // (the fade replaced by another animation never completes: the selection still follows)
+            var late = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(700) };
+            late.Tick += (s, e) => { late.Stop(); select(); };
+            late.Start();
             HomeNav.Log("shell: home");
         }
 

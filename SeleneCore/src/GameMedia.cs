@@ -50,19 +50,48 @@ namespace Selene
                 // only once the selection has settled: stepping card by card with short pauses used to load (and animate) the
                 // strip after nearly every card, and that work landed right when the next move started
                 debounce = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(600) };
-                debounce.Tick += (s, e) => { debounce.Stop(); if (HomeNav.SigningIn) return; Load(pending); Preload(pendingNeighbours); };
+                debounce.Tick += (s, e) =>
+                {
+                    debounce.Stop();
+                    if (HomeNav.SigningIn) return;
+                    // Spotlight's game block is waiting for its art: the strip comes with it (HeroShown), not over the last art
+                    if (HomeNav.HeroWaiting && !DetailsStage.PageOpen) { waitsForHero = true; return; }
+                    Load(pending); Preload(pendingNeighbours);
+                };
             }
+            waitsForHero = false;   // (the new selection's own wait follows)
             var g = AsGame(game);
             if (g != null) PerformanceRecorder.Mark("selection", g.Id + " " + g.Name);
-            if (g == null || g.Id != shown) FadeOut();
+            if (g == null || g.Id != shown) { FadeOut(); Application.Current.Resources["SeleneShotsNone"] = Visibility.Collapsed; }   // (the last game's "no screenshots" stayed up)
             // no loading cards when there's no strip to load (screenshots on Spotlight off, #165)
-            if (g != null && !cache.ContainsKey(g.Id) && (Features.On("spotlightshots") || DetailsStage.PageOpen)) ShowLoading();
+            // (Spotlight's game block waiting for its art: they come with it, HeroShown)
+            if (g != null && !cache.ContainsKey(g.Id) && (Features.On("spotlightshots") || DetailsStage.PageOpen) && !(HomeNav.HeroWaiting && !DetailsStage.PageOpen)) ShowLoading();
             else HideLoading(false);
             debounce.Stop();
             // pictures already decoded come with the game's logo and art (Spotlight pushes its selection 250 ms after a move):
             // after 600 ms they came in a beat behind the rest. Ones still to load keep the longer wait (work while stepping on)
             debounce.Interval = TimeSpan.FromMilliseconds(g != null && cache.ContainsKey(g.Id) ? 300 : 600);
             debounce.Start();
+        }
+
+        private static bool waitsForHero;
+
+        // Spotlight's game block came in with its art: the strip waiting for it comes too, and one about to load from the cache
+        // loads now (with the block, not a beat after)
+        public static void HeroShown()
+        {
+            if (debounce == null || HomeNav.SigningIn) return;
+            var g = AsGame(pending);
+            bool due = waitsForHero || (debounce.IsEnabled && (g == null || cache.ContainsKey(g.Id)));
+            waitsForHero = false;
+            if (!due)
+            {
+                // still loading: its loading cards now, with the block
+                if (debounce.IsEnabled && g != null && Features.On("spotlightshots")) ShowLoading();
+                return;
+            }
+            debounce.Stop();
+            Load(pending); Preload(pendingNeighbours);
         }
 
         // the details page: its game's pictures at once (the wait is for Spotlight's row to settle; a page is open already)
@@ -119,6 +148,7 @@ namespace Selene
                 // fade out on the way away, so it comes back
                 var strip = Strip();
                 if (strip != null && strip.Opacity < 0.99) strip.BeginAnimation(UIElement.OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(1, TimeSpan.FromMilliseconds(200)));
+                Application.Current.Resources["SeleneShotsNone"] = current.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
                 return;
             }
             List<ShotItem> items;

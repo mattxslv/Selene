@@ -74,7 +74,9 @@
                                 </Border>
 
                                 <!-- logo, chips and genres come in together each time the game changes (the logo's binding signals it) -->
-                                <StackPanel Grid.Row="1" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="100,0,0,0" Width="840">
+                                <!-- (Selene Core fades this out while another tab's first game's picture loads: its name came in over the last game's art) -->
+                                <Grid x:Name="SeleneLibraryInfoGate" Grid.Row="1">
+                                <StackPanel HorizontalAlignment="Left" VerticalAlignment="Center" Margin="100,0,0,0" Width="840">
                                     <StackPanel.RenderTransform><TranslateTransform x:Name="LibraryInfoShift" X="0"/></StackPanel.RenderTransform>
                                     <StackPanel.Triggers>
                                         <EventTrigger RoutedEvent="Binding.TargetUpdated">
@@ -185,6 +187,7 @@
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
                                 </StackPanel>
+                                </Grid>
 
                                 <!-- achievements of the selected game (Playnite Achievements), bottom right above the covers (clear of the chosen one, which grows): a trophy badge
                                      (gold once every one is earned), the count large with the share beside it, a glowing bar -->

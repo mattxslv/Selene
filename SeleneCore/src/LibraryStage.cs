@@ -71,6 +71,7 @@ namespace Selene
             arm.Tick += (s, e) => { arm.Stop(); Play(); };
             list.SelectionChanged += (s, e) =>
             {
+                InfoSelectionChanged();
                 Rearm(true);
                 AttachGlide();   // (the list's parts aren't made yet when this is set up, and it may never load again)
                 KeepNearLeft();
@@ -80,7 +81,7 @@ namespace Selene
             ((System.Collections.Specialized.INotifyCollectionChanged)list.Items).CollectionChanged += (s, e) => EmptyCover(!library.IsVisible);
             library.IsVisibleChanged += (s, e) =>
             {
-                if (!(bool)e.NewValue) { Stop(); if (relatedWork != null) relatedWork.Stop(); return; }
+                if (!(bool)e.NewValue) { Stop(); ReleaseInfo(); if (relatedWork != null) relatedWork.Stop(); return; }
                 EmptyCover(true);
                 Rearm(false);
                 QueueRelatedWork();
@@ -533,6 +534,7 @@ namespace Selene
                 DependencyPropertyDescriptor.FromProperty(Image.SourceProperty, typeof(Image)).AddValueChanged(img, (s, e) =>
                 {
                     if (snapCovering && img.Source != null) fe.Dispatcher.BeginInvoke(new Action(MeltSnapshot), DispatcherPriority.Loaded);
+                    if (infoHeld && infoMoved && img.Source != null && !ReferenceEquals(img.Source, heldPicture)) fe.Dispatcher.BeginInvoke(new Action(() => { if (Ui.DevFrames && infoHeld) HomeNav.Log("collection info: picture in"); ReleaseInfo(120); }), DispatcherPriority.Loaded);
                 });
             }
         }
@@ -567,6 +569,64 @@ namespace Selene
             snapCovering = true;
             snapFallback.Stop();
             snapFallback.Start();
+        }
+
+        // ---- LB / RB: another tab's first game's name and logo come with its picture ----
+        // Collection's info follows the selection at once while its art loads a moment later: switching tabs, the new game's name
+        // sat over the last game's art. The info goes as the tab switches and comes back as the picture comes in (or at
+        // most a moment later: a game without art, the same game, an empty tab).
+        private static bool infoHeld;
+        private static DispatcherTimer infoCap;
+        private static object heldFrom;
+        private static ImageSource heldPicture;   // the art up as the tab switched (Playnite's image moves it between its layers too)
+
+        private static UIElement InfoGate() { return library != null ? HomeNav.FindByName(library, "SeleneLibraryInfoGate") as UIElement : null; }
+
+        public static void HoldInfo()
+        {
+            var gate = InfoGate();
+            if (gate == null || list == null || !library.IsVisible) return;
+            infoHeld = true;
+            heldFrom = list.SelectedItem;
+            var fe = art as FrameworkElement;
+            var showing = fe != null ? Inner(fe).FirstOrDefault(i => i.Source != null && i.Opacity > 0.5 && i.IsVisible) : null;
+            heldPicture = showing != null ? showing.Source : null;
+            gate.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(HomeNav.Lite ? 0 : 100)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+            if (infoCap == null)
+            {
+                infoCap = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(900) };
+                infoCap.Tick += (s, e) => { if (Ui.DevFrames) HomeNav.Log("collection info: cap " + (infoMoved ? "(no picture)" : "(same game)")); ReleaseInfo(); };
+            }
+            // no other game selected by then (the same game, or none): nothing new to wait for
+            infoMoved = false;
+            infoCap.Stop();
+            infoCap.Interval = TimeSpan.FromMilliseconds(350);
+            infoCap.Start();
+        }
+
+        // the tab's game is selected: its name waits for its picture now (at most a moment: a game without art)
+        private static bool infoMoved;
+        private static void InfoSelectionChanged()
+        {
+            if (!infoHeld || infoMoved || ReferenceEquals(list.SelectedItem, heldFrom)) return;
+            infoMoved = true;
+            if (Ui.DevFrames) HomeNav.Log("collection info: waits for " + HomeNav.DevName(list.SelectedItem));
+            infoCap.Stop();
+            infoCap.Interval = TimeSpan.FromMilliseconds(1200);
+            infoCap.Start();
+        }
+
+        // delay: the picture just came in under the last one's still (it melts away): the info follows a beat behind it
+        private static void ReleaseInfo() { ReleaseInfo(0); }
+        private static void ReleaseInfo(int delay)
+        {
+            if (!infoHeld) return;
+            infoHeld = false;
+            heldFrom = null;
+            heldPicture = null;
+            if (infoCap != null) infoCap.Stop();
+            var gate = InfoGate();
+            if (gate != null) gate.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(HomeNav.Lite ? 0 : 240)) { BeginTime = TimeSpan.FromMilliseconds(HomeNav.Lite ? 0 : delay), EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
         }
 
         private static void MeltSnapshot()

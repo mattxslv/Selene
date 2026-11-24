@@ -450,29 +450,56 @@ namespace Selene
         }
 
         // a Spotlight picture started to fade in (or was up already): the game block waiting for it comes in
-        internal static void HubArtShown()
+        private static int heroInDelay = 70;
+        internal static void HubArtShown(bool image)
         {
             var waiter = heroArtWaiter;
             if (waiter == null) return;
             heroArtWaiter = null;
+            HeroLog(image ? "art in" : "art gone");
+            heroInDelay = image ? 70 : 170;   // (an old picture fading out to none: the block waits until it is mostly gone)
             waiter();
         }
 
+        // the push (or Spotlight coming back) armed the wait: at most `ms` for the picture, a little longer while one is still
+        // decoding (a slow PC), never past HeroWaitMax: a game without art has none coming
+        private const int HeroWaitMax = 1200;
+        private static DateTime heroWaitFrom;
         private static void HeroCap(int ms)
         {
             if (heroCap == null)
             {
                 heroCap = new System.Windows.Threading.DispatcherTimer();
-                heroCap.Tick += (s, e) => { heroCap.Stop(); HeroIn(); };
+                heroCap.Tick += (s, e) =>
+                {
+                    heroCap.Stop();
+                    if (heroArtWaiter == null && fastButton != null) { heroCap.Interval = TimeSpan.FromMilliseconds(300); heroCap.Start(); return; }   // (a held direction: nothing pushed yet)
+                    if (heroArtWaiter != null && SeleneCrossfade.HubBusy() && (DateTime.Now - heroWaitFrom).TotalMilliseconds < HeroWaitMax) { heroCap.Interval = TimeSpan.FromMilliseconds(100); heroCap.Start(); return; }
+                    var waiter = heroArtWaiter;
+                    heroArtWaiter = null;
+                    HeroLog("in (cap)");
+                    if (waiter != null) waiter(); else HeroIn();
+                };
             }
             heroCap.Stop();
             heroCap.Interval = TimeSpan.FromMilliseconds(ms);
             heroCap.Start();
         }
 
+        // the game block waits for the art Playnite's selection brings now (HubArtShown), with a cap
+        private static void HeroWaitForArt(Action then, int ms)
+        {
+            heroArtWaiter = then;
+            heroWaitFrom = DateTime.Now;
+            HeroCap(ms);
+        }
+
         private static void HeroOnMove(ListBox row, object from, object to)
         {
-            if (to == null || to is string || to is RowPad) { HeroIn(); return; }   // a card: its own panel, no game to wait for
+            if (to == null || to is RowPad) { HeroIn(); return; }
+            // card to card with no game's art up (nor on its way): no art changes, each card's panel fades in on its own
+            if (to is string && from is string && !heroHidden && Prop(row.DataContext, "SelectedGame") == null) { HeroIn(); return; }
+            // a game or a card: the block goes, and comes back as its art fades in (a card's: the game's art fading out)
             // from a card the block would show the empty "no game" state for a moment: gone at once
             HeroOut(row, from is string);
         }
@@ -481,21 +508,36 @@ namespace Selene
         {
             var info = HeroBlock(row);
             if (info == null) return;
+            if (!heroHidden) HeroLog("out");
             heroHidden = true;
             heroArtWaiter = null;
             info.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(instant || Lite ? 0 : 120)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
-            HeroCap(900);   // (restarted by every move of a hold; the push arms a shorter one)
+            HeroCap(2500);   // (only if no push comes: the push arms the real wait; a held direction keeps it off)
         }
 
-        private static void HeroIn()
+        // fromArt: the art just started its fade, so the block follows a beat behind it (it got ahead of the art otherwise)
+        private static void HeroIn() { HeroIn(false); }
+        private static void HeroIn(bool fromArt)
         {
             heroArtWaiter = null;
             if (heroCap != null) heroCap.Stop();
             if (!heroHidden) return;
             heroHidden = false;
+            HeroLog("in" + (fromArt ? " (art)" : ""));
+            int delay = fromArt && !Lite ? heroInDelay : 0;
             var info = heroBlock != null ? heroBlock.Target as UIElement : null;
-            if (info == null) return;
-            info.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(Lite ? 0 : 280)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+            if (info != null)
+                info.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(Lite ? 0 : 240))
+                {
+                    BeginTime = TimeSpan.FromMilliseconds(delay),
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                });
+            // the screenshots come with it (as it starts to show)
+            heroShowAt = DateTime.Now.AddMilliseconds(delay);
+            if (delay <= 0) { GameMedia.HeroShown(); return; }
+            var withBlock = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(delay) };
+            withBlock.Tick += (s, e) => { withBlock.Stop(); heroShowAt = DateTime.MinValue; if (!heroHidden) GameMedia.HeroShown(); };
+            withBlock.Start();
         }
 
         // something else takes over the block's look (the intro, a page switch): nothing waits any more
@@ -503,8 +545,16 @@ namespace Selene
         {
             heroHidden = false;
             heroArtWaiter = null;
+            heroShowAt = DateTime.MinValue;
             if (heroCap != null) heroCap.Stop();
+            GameMedia.HeroShown();
         }
+
+        // the screenshot strip waits while the block does (it came in over the last game's art)
+        internal static bool HeroWaiting { get { return heroHidden || DateTime.Now < heroShowAt; } }
+        private static DateTime heroShowAt;
+
+        private static void HeroLog(string what) { if (Ui.DevFrames) Log("hero: " + what); }
 
         // what a newly selected game brings: Playnite's selection, the trailer card's wait, its art ahead, the heart, the screenshots
         private static void AfterSelection(ListBox row)
@@ -1894,18 +1944,55 @@ namespace Selene
 
         private static DateTime lastPushAt = DateTime.MinValue;
 
+        // A tap is pushed 150 ms after its move (the row's glide is mostly done), and its picture is decoded meanwhile, so the
+        // next game's art and logo come about a quarter second after a tap. A held direction is never pushed until it is let
+        // go: on a slow PC its steps came further apart than the wait, and a passed game's art showed up mid-hold.
+        private const int PushMs = 150, PushHeldMaxMs = 1500;
+        private static DateTime lastQueuedAt = DateTime.MinValue;
+
         private static void QueuePush(ListBox row)
         {
-            // first move after a rest goes through immediately (music fades back to the default right away);
-            // fast scrolling stays debounced so holding the stick does not stutter
             if (pushTimer == null)
             {
-                pushTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
-                pushTimer.Tick += (s, e) => { pushTimer.Stop(); lastPushAt = DateTime.Now; var r = pushTimer.Tag as ListBox; if (r != null) PushSelected(r); };
+                pushTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(PushMs) };
+                pushTimer.Tick += (s, e) =>
+                {
+                    pushTimer.Stop();
+                    // the direction is still down (its repeats are about to come): wait for the release (at most a while: a release
+                    // that never reached Selene)
+                    if (fastButton != null && (DateTime.Now - lastQueuedAt).TotalMilliseconds < PushHeldMaxMs) { pushTimer.Interval = TimeSpan.FromMilliseconds(40); pushTimer.Start(); return; }
+                    lastPushAt = DateTime.Now;
+                    var r = pushTimer.Tag as ListBox;
+                    if (r != null) PushSelected(r);
+                };
             }
+            var now = DateTime.Now;
+            // a tap (not a step of a hold): its game's picture is decoded while the row glides
+            if ((now - lastQueuedAt).TotalMilliseconds > 200) PrefetchHubArt(row.SelectedItem);
+            lastQueuedAt = now;
             pushTimer.Stop();
+            pushTimer.Interval = TimeSpan.FromMilliseconds(PushMs);
             pushTimer.Tag = row;
             pushTimer.Start();
+        }
+
+        // the picture Spotlight will show for this game: its own hero art if it has one, else Playnite's background
+        private static void PrefetchHubArt(object item)
+        {
+            try
+            {
+                if (item == null || item is string || item is RowPad || SeleneCrossfade.Disabled) return;
+                var id = Prop(item, "Id");
+                var root = Application.Current.Resources["SeleneHeroRoot"] as string;
+                if (id is Guid && !string.IsNullOrEmpty(root))
+                {
+                    var g = Api != null ? Api.Database.Games.Get((Guid)id) : null;
+                    var hero = System.IO.Path.Combine(root, "Hero", id + ".jpg");
+                    if (!(Features.On("ownbackground") && GameFacts.BackgroundPath(g) != null) && System.IO.File.Exists(hero)) { SeleneCrossfade.Prefetch(hero); return; }
+                }
+                SeleneCrossfade.Prefetch(Prop(item, "DisplayBackgroundImage") as string);
+            }
+            catch { }
         }
 
         // the home's game art fades in or out when a profile's home background changes
@@ -2107,7 +2194,7 @@ namespace Selene
             var now = prop.GetValue(vm, null);
             if (ReferenceEquals(now, want) || (want != null && now == null)) return;   // (a game being pushed after its delay is fine)
             guarding = true;
-            try { prop.SetValue(vm, want, null); Log("spotlight: selection put back (" + (now != null ? Prop(now, "Name") : "null") + " -> " + (want != null ? Prop(want, "Name") : "none") + ")"); }
+            try { prop.SetValue(vm, want, null); hubArtFor = want; Log("spotlight: selection put back (" + (now != null ? Prop(now, "Name") : "null") + " -> " + (want != null ? Prop(want, "Name") : "none") + ")"); }
             finally { guarding = false; }
         }
 
@@ -2473,13 +2560,46 @@ namespace Selene
                 // a check afterwards only loads anything if they don't (e.g. Playnite started on Collection)
                 // Spotlight shows once its game's picture is up (the cap in ShowHome covers a game without one): it came back on
                 // the last picture it had, with no logo, for a moment
+                if (returningHome) HeroLog("back: " + DevName(game) + " selected");
+                returningHome = false;
                 bool waits = game != null && art != null;
-                if (waits) heroArtWaiter = () => { ready(); HeroIn(); };
+                if (waits) HeroWaitForArt(() => { ready(); HeroIn(true); }, 450);
                 if (art != null) foreach (var cf in FindAll(art, d => d is SeleneCrossfade)) { var x = (SeleneCrossfade)cf; x.Dispatcher.BeginInvoke(new Action(x.Refresh), System.Windows.Threading.DispatcherPriority.Background); }
                 if (!ReferenceEquals(prop.GetValue(vm, null), game)) prop.SetValue(vm, game, null);
-                if (!waits) ready();
+                hubArtFor = game;
+                if (!waits) { ready(); HeroIn(); }
             }
             catch (Exception ex) { Log("home selection sync: " + ex.Message); ready(); }
+        }
+
+        // the game Spotlight's pictures were last asked for (they hold still while Collection shows)
+        private static object hubArtFor;
+        // Spotlight is fading in over Collection (SeleneShell.ShowHome): its selection is pushed once it covers Collection, not by
+        // the hub's reopening (PlayIntro), which changed Collection's art under its old logo
+        private static bool returningFlag;
+        private static DateTime returningAt;
+        private static bool returningHome
+        {
+            get { return returningFlag && (DateTime.Now - returningAt).TotalMilliseconds < 1000; }   // (another switch meanwhile: not stuck)
+            set { returningFlag = value; returningAt = DateTime.Now; }
+        }
+
+        // Spotlight is coming back from Collection, still hidden: its game block (it shows Collection's game until Spotlight's own
+        // is selected again) goes, and its pictures go too when they show another game than its row's (a tab picked in
+        // Collection, an empty tab): the right ones fade in once its game is selected, never the stale ones over its row
+        public static void PrepareReturn()
+        {
+            try
+            {
+                var row = LiveRow();
+                if (row == null) return;
+                var item = row.SelectedItem;
+                object game = item is string || item is RowPad ? null : item;
+                HeroOut(row, true);
+                returningHome = true;
+                if (!ReferenceEquals(game, hubArtFor)) { SeleneCrossfade.ClearHub(); PrefetchHubArt(game); HeroLog("back: pictures were another game's"); }
+            }
+            catch (Exception ex) { Log("return to Spotlight: " + ex.Message); }
         }
 
         // while the login screens cover the home nothing is selected for Playnite (its music add-ons would play)
@@ -2514,9 +2634,12 @@ namespace Selene
             catch (Exception ex) { Log("restore selection: " + ex.Message); }
         }
 
+        internal static string DevName(object item) { var n = item != null ? Prop(item, "Name") : null; return n != null ? n.ToString() : (item ?? "none").ToString(); }
+
         private static void PushSelected(ListBox row)
         {
             if (LoginScene.CoversHome) { ClearSelectedGame(); return; }
+            if (returningHome) return;   // (Spotlight still fading in over Collection: ShowHome selects its game once it covers it)
             var game = row.SelectedItem;
             if (game == null) return;
             LoginScene.HomeSelection(game is string);
@@ -2527,14 +2650,26 @@ namespace Selene
             if (prop == null || !prop.CanWrite) return;
             // card: default background. Nothing is selected for UniPlaySong then, and over a game's song it only fades that out (it
             // waits for a game to pick the next track): the default track is asked for as soon as it is idle (EmptyLibraryMusic)
-            if (game is string) { if (prop.GetValue(vm, null) != null) { prop.SetValue(vm, null, null); cardPushedAt = DateTime.Now; } HeroIn(); return; }
+            // the game block (a card's panel too) waits for this selection's art: the game's picture fading in, or for a card the
+            // last game's fading out (at most a moment: a game without art has none coming)
+            if (!SeleneShell.CollectionActive) hubArtFor = game is string ? null : game;
+            if (game is string)
+            {
+                if (prop.GetValue(vm, null) != null)
+                {
+                    if (heroHidden) HeroWaitForArt(() => HeroIn(true), 300);
+                    prop.SetValue(vm, null, null);
+                    cardPushedAt = DateTime.Now;
+                }
+                else if (heroArtWaiter == null) HeroIn();   // (already waiting for this selection's art: it still does)
+                return;
+            }
             if (!ReferenceEquals(prop.GetValue(vm, null), game))
             {
-                // the game block waits for this game's picture (at most a moment: a game without art has none coming)
-                if (heroHidden) { heroArtWaiter = HeroIn; HeroCap(450); }
+                if (heroHidden) HeroWaitForArt(() => HeroIn(true), 450);
                 prop.SetValue(vm, game, null);
             }
-            else HeroIn();
+            else if (heroArtWaiter == null) HeroIn();
         }
 
         private static string lastShoulder = "RightShoulder";
@@ -3857,7 +3992,8 @@ namespace Selene
             // the cards' fly-in: the first time the home shows, and after every sign-in (as the login's dimmed wallpaper clears)
             bool animate = (!introDone || coveredForSignIn) && !Lite;  // full intro only the first time the hub is seen after Playnite starts (never in a streamed session)
             introDone = true;
-            HeroReset();
+            bool back = returningHome && !animate;   // (coming back from Collection: ShowHome selects and shows the block)
+            if (!back) HeroReset();
             try
             {
                 // The row's SelectedItem -> SelectedGame binding only pushes on change, so on open Playnite
@@ -3890,7 +4026,7 @@ namespace Selene
                     };
                     again.Start();
                 }
-                PushSelected(row);  // hub open: Playnite's selection follows the row right away
+                if (!back) PushSelected(row);  // hub open: Playnite's selection follows the row right away
                 ArmPreview(row);    // same game still selected -> no SelectionChanged; restart the "rested on it" timer
 
                 row.UpdateLayout();
@@ -3901,8 +4037,8 @@ namespace Selene
                     coveredForSignIn = false;
                     // the game info was held hidden for a fly-in that isn't coming
                     var heldInfo = FindByName(VisualTreeHelper.GetParent(VisualTreeHelper.GetParent(row)), "SeleneInfoIntro");
-                    if (heldInfo != null) heldInfo.BeginAnimation(UIElement.OpacityProperty, null);
-                    Log("hub reopened: default view, no intro");
+                    if (heldInfo != null && !back) heldInfo.BeginAnimation(UIElement.OpacityProperty, null);
+                    Log("hub reopened: default view, no intro" + (back ? " (back from Collection)" : ""));
                     return;
                 }
 
@@ -9953,6 +10089,7 @@ namespace Selene
             rowFilter = (RowFilter + dir + RowFilters.Length) % RowFilters.Length;
             try { System.IO.File.WriteAllText(RowFilterFile, RowFilters[rowFilter]); } catch { }
             RenderFilterTabs(w, dir);
+            LibraryStage.HoldInfo();   // the next tab's game's name comes with its picture
             ApplyCollectionFilter();
             // Spotlight shows the same tab when you go back: its row is refiltered then (CatchUpRowFilter), not on every switch
             // here (it doubled the work of each switch while hidden: a slow frame every time)
@@ -10296,7 +10433,9 @@ namespace Selene
         private Image back = new Image { Stretch = Stretch.UniformToFill, Opacity = 0 };
         private int request;
         private const double FadeMs = 350;
-        private double Ms { get { return Hub ? 520 : FadeMs; } }   // Spotlight's art changes slower and softer than Collection's (#176: it looked sharp)
+        // Spotlight's art: ease-out, a little longer than Collection's (#176: it looked sharp), but no longer half a second while
+        // the next game's logo (coming in with it) is already up
+        private double Ms { get { return Hub ? 380 : FadeMs; } }
 
         public SeleneCrossfade()
         {
@@ -10329,11 +10468,13 @@ namespace Selene
         private void OnSource(object value)
         {
             pending = value;
+            // Spotlight: a picture still decoding for the game before is no longer wanted (it came in over the next game's logo)
+            if (Hub) request++;
             if (settle == null)
             {
-                // Spotlight's pictures only change once its row has rested (the selection is pushed 250 ms after a move): a long
-                // wait on top of that left the next game's name over the last one's picture
-                settle = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(Hub ? 40 : 150) };
+                // Spotlight's pictures only change once its row has rested (Selene pushes the selection then): a wait on top of
+                // that left the next game's name over the last one's picture
+                settle = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(Hub ? 15 : 150) };
                 settle.Tick += (s, e) => { settle.Stop(); Load(pending); };
             }
             settle.Stop();
@@ -10344,7 +10485,7 @@ namespace Selene
         {
             if (Disabled || (CanLoad != null && !CanLoad())) return;
             if (Hub && SeleneShell.CollectionActive) return;
-            if (Equals(value, shown)) { if (Hub && hasImage) HomeNav.HubArtShown(); return; }   // (already up: the game block needn't wait)
+            if (Equals(value, shown)) { if (Hub && decoding == 0) Arrived(hasImage); return; }   // (already up: the game block needn't wait; still decoding: it comes then)
             shown = value;
             shownKey = null;
             int id = ++request;
@@ -10356,11 +10497,30 @@ namespace Selene
             shownKey = key;
             ImageSource hit;
             if (decoded.TryGetValue(key, out hit)) { decodedOrder.Remove(key); decodedOrder.AddFirst(key); Show(hit); return; }
-            // in real pixels: the screen width is in scaled units (a 4K screen at 300% says 1280)
-            var source = PresentationSource.FromVisual(this);
-            double scale = source != null && source.CompositionTarget != null ? source.CompositionTarget.TransformToDevice.M11 : VisualTreeHelper.GetDpi(this).DpiScaleX;
-            int width = (int)Math.Max(1280, SystemParameters.PrimaryScreenWidth * scale);
-            System.Threading.Tasks.Task.Run(() =>
+            decoding = id;
+            Decode(path, key, DecodeWidth(this)).ContinueWith(task =>
+            {
+                if (decoding == id) decoding = 0;
+                if (id == request) Show(task.Result);  // a newer selection wins
+            }, System.Threading.Tasks.TaskScheduler.FromCurrentSynchronizationContext());
+        }
+
+        // in real pixels: the screen width is in scaled units (a 4K screen at 300% says 1280)
+        private static int DecodeWidth(Visual v)
+        {
+            var source = PresentationSource.FromVisual(v);
+            double scale = source != null && source.CompositionTarget != null ? source.CompositionTarget.TransformToDevice.M11 : VisualTreeHelper.GetDpi(v).DpiScaleX;
+            return (int)Math.Max(1280, SystemParameters.PrimaryScreenWidth * scale);
+        }
+
+        // one decode per picture: one asked for ahead (Prefetch) and then by the crossfade itself is decoded once
+        private static readonly Dictionary<string, System.Threading.Tasks.Task<ImageSource>> inFlight = new Dictionary<string, System.Threading.Tasks.Task<ImageSource>>();
+
+        private static System.Threading.Tasks.Task<ImageSource> Decode(string path, string key, int width)
+        {
+            System.Threading.Tasks.Task<ImageSource> running;
+            if (inFlight.TryGetValue(key, out running)) return running;
+            var task = System.Threading.Tasks.Task.Run(() =>
             {
                 try
                 {
@@ -10375,16 +10535,70 @@ namespace Selene
                     return (ImageSource)bi;
                 }
                 catch { return null; }
-            }).ContinueWith(task =>
+            }).ContinueWith(t =>
             {
-                if (task.Result != null && !decoded.ContainsKey(key))
+                inFlight.Remove(key);
+                if (t.Result != null && !decoded.ContainsKey(key))
                 {
-                    decoded[key] = task.Result;
+                    decoded[key] = t.Result;
                     decodedOrder.AddFirst(key);
                     while (decodedOrder.Count > DecodedMax) { decoded.Remove(decodedOrder.Last.Value); decodedOrder.RemoveLast(); }
                 }
-                if (id == request) Show(task.Result);  // a newer selection wins
+                return t.Result;
             }, System.Threading.Tasks.TaskScheduler.FromCurrentSynchronizationContext());
+            inFlight[key] = task;
+            return task;
+        }
+
+        // Spotlight: the picture of the game just moved to, decoded while the row glides (its selection is pushed a moment
+        // later), so it is up at once then instead of a decode later
+        public static void Prefetch(string path)
+        {
+            try
+            {
+                path = HomeNav.FullPath(path);
+                if (Disabled || string.IsNullOrEmpty(path) || path.StartsWith("http", StringComparison.OrdinalIgnoreCase) || !System.IO.File.Exists(path)) return;
+                var key = Key(path);
+                if (decoded.ContainsKey(key) || inFlight.ContainsKey(key)) return;
+                var hub = HubFades().FirstOrDefault();
+                if (hub != null) Decode(path, key, DecodeWidth(hub));
+            }
+            catch { }
+        }
+
+        private static List<SeleneCrossfade> HubFades()
+        {
+            List<WeakReference> live; lock (all) live = all.ToList();
+            return live.Select(w => w.Target as SeleneCrossfade).Where(cf => cf != null && cf.Hub).ToList();
+        }
+
+        private int decoding;   // the request whose picture is decoding now (0: none)
+
+        // still working towards a picture (waiting out its settle or decoding it), and allowed to show one
+        private bool Busy { get { return ((settle != null && settle.IsEnabled) || decoding != 0) && (CanLoad == null || CanLoad()); } }
+
+        // a Spotlight picture is still on its way (the game block waits for it a little longer)
+        public static bool HubBusy() { return HubFades().Any(cf => cf.Busy); }
+
+        // Spotlight's art reached what its game has: a picture fading in, or none at all once no other layer still brings one
+        private void Arrived(bool image)
+        {
+            if (image || !HubFades().Any(cf => cf != this && cf.Busy)) HomeNav.HubArtShown(image);
+        }
+
+        // Spotlight coming back on a game its pictures don't show (another tab picked in Collection, an empty tab): the stale
+        // picture goes at once (the screen is still hidden), the right one fades in once that game is selected
+        public static void ClearHub()
+        {
+            foreach (var cf in HubFades())
+            {
+                cf.request++;
+                cf.decoding = 0;
+                cf.shown = DependencyProperty.UnsetValue;
+                cf.shownKey = null;
+                cf.hasImage = false;
+                foreach (var layer in new[] { cf.front, cf.back }) { layer.BeginAnimation(OpacityProperty, null); layer.Opacity = 0; layer.Source = null; }
+            }
         }
 
         private bool hasImage;
@@ -10393,8 +10607,9 @@ namespace Selene
         {
             if (Hub) Contrast.Art(this, img);   // the home's shades as deep as this picture needs
             hasImage = img != null;
-            if (Hub && img != null) HomeNav.HubArtShown();   // the game's logo and info come in with its picture
-            var ease = new QuadraticEase { EasingMode = EasingMode.EaseInOut };
+            if (Hub) Arrived(img != null);   // the game's logo and info come in with its picture
+            // Spotlight: ease-out, so the picture is mostly in by the time the logo coming with it is
+            EasingFunctionBase ease = Hub ? (EasingFunctionBase)new CubicEase { EasingMode = EasingMode.EaseOut } : new QuadraticEase { EasingMode = EasingMode.EaseInOut };
             if (img == null)
             {
                 // nothing to show (a card is selected): both layers go, the one still fading out included

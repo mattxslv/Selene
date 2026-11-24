@@ -138,6 +138,22 @@ namespace Selene
                 if (GameMedia.ViewerOpen) return;   // the screenshot viewer takes its keys itself (they moved the page underneath)
                 // a window over Playnite (an add-on's dialog) is active: its keys are its own, nothing on the home or the page moves
                 if (DialogUp()) return;
+                // Collection with games, keyboard: Escape / Backspace back to Spotlight like B (only the empty case did)
+                if (SeleneShell.CollectionActive && !Ui.KeyIsPadCopy() && e.GetType().Name != "GameControllerInputEventArgs"
+                    && (e.Key == Key.Escape || e.Key == Key.Back) && InLibraryList(Keyboard.FocusedElement as DependencyObject))
+                {
+                    var mwk = Application.Current.MainWindow;
+                    var detailsK = mwk != null ? FindByName(mwk, "PART_ElemGameDetails") : null;
+                    var proxyK = mwk != null ? FindByName(mwk, "SeleneNav_hub") as System.Windows.Controls.Primitives.ButtonBase : null;
+                    if ((detailsK == null || !detailsK.IsVisible) && proxyK != null && proxyK.Command != null)
+                    {
+                        Log("keyboard back in Collection -> Spotlight");
+                        Ui.Back();
+                        proxyK.Command.Execute(null);
+                        e.Handled = true;
+                        return;
+                    }
+                }
                 // the keyboard copy of a pad press Selene already handled (it moved things a second time)
                 if (Ui.KeyIsPadCopy(e.Key == Key.Left ? "DPadLeft" : e.Key == Key.Right ? "DPadRight" : e.Key == Key.Up ? "DPadUp" : e.Key == Key.Down ? "DPadDown" : null) && (e.Key == Key.Left || e.Key == Key.Right || e.Key == Key.Up || e.Key == Key.Down || e.Key == Key.Enter || e.Key == Key.Escape)) { e.Handled = true; return; }
                 // the cards are still flying in: nothing moves yet
@@ -385,13 +401,8 @@ namespace Selene
             if (target == null) return;
 
             ScheduleTitle(row, 230);
-            // Leaving a section card: the game info still shows the old game until the delayed SelectedGame
-            // binding (250 ms) catches up, so keep it hidden for that moment.
-            if (row.Items[cur] is string && !(row.Items[next] is string))
-            {
-                var info = FindByName(VisualTreeHelper.GetParent(VisualTreeHelper.GetParent(row)), "SeleneInfoIntro");
-                if (info != null) info.BeginAnimation(UIElement.OpacityProperty, Keys(0, 1, 0.3, 0.25, null));
-            }
+            // the game block (logo, name, info) goes as the move starts and comes back with the next game's picture
+            HeroOnMove(row, row.Items[cur], row.Items[next]);
 
             // Slide the row from where the tile was to where it is now.
             if (double.IsNaN(before) && !double.IsNaN(fromBefore) && leaving.IsVisible && row.ItemContainerGenerator.IndexFromContainer(leaving) == cur)
@@ -414,6 +425,85 @@ namespace Selene
             }
             target.Focus();
             if (rideFirst < 0) EnsureTileCaches(row);   // (a walk caches its tiles once it lands: a cache per passed tile stuttered)
+        }
+
+        // ---- the hero as one: background, logo and info change together ----
+        // Playnite's selection (so the name, logo and info) changed 250 ms after a move, while the picture came 150 ms + its
+        // decode + a 520 ms fade later: for most of a second the next game's name sat over the last one's art. Now the game
+        // block fades out as the move starts and comes back when the picture of the game it shows starts to fade in (at the
+        // latest a moment later). A held stick keeps it out, over the art of where it started: nothing flashes on each step.
+        private static bool heroHidden;
+        private static Action heroArtWaiter;
+        private static System.Windows.Threading.DispatcherTimer heroCap;
+        private static WeakReference heroBlock, heroBlockRow;
+
+        private static UIElement HeroBlock(ListBox row)
+        {
+            var info = heroBlock != null ? heroBlock.Target as UIElement : null;
+            if (info != null && heroBlockRow != null && ReferenceEquals(heroBlockRow.Target, row)) return info;
+            if (row == null) return info;
+            var scope = VisualTreeHelper.GetParent(VisualTreeHelper.GetParent(row));
+            info = scope != null ? FindByName(scope, "SeleneInfoIntro") : null;
+            heroBlock = new WeakReference(info);
+            heroBlockRow = new WeakReference(row);
+            return info;
+        }
+
+        // a Spotlight picture started to fade in (or was up already): the game block waiting for it comes in
+        internal static void HubArtShown()
+        {
+            var waiter = heroArtWaiter;
+            if (waiter == null) return;
+            heroArtWaiter = null;
+            waiter();
+        }
+
+        private static void HeroCap(int ms)
+        {
+            if (heroCap == null)
+            {
+                heroCap = new System.Windows.Threading.DispatcherTimer();
+                heroCap.Tick += (s, e) => { heroCap.Stop(); HeroIn(); };
+            }
+            heroCap.Stop();
+            heroCap.Interval = TimeSpan.FromMilliseconds(ms);
+            heroCap.Start();
+        }
+
+        private static void HeroOnMove(ListBox row, object from, object to)
+        {
+            if (to == null || to is string || to is RowPad) { HeroIn(); return; }   // a card: its own panel, no game to wait for
+            // from a card the block would show the empty "no game" state for a moment: gone at once
+            HeroOut(row, from is string);
+        }
+
+        private static void HeroOut(ListBox row, bool instant)
+        {
+            var info = HeroBlock(row);
+            if (info == null) return;
+            heroHidden = true;
+            heroArtWaiter = null;
+            info.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(instant || Lite ? 0 : 120)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+            HeroCap(900);   // (restarted by every move of a hold; the push arms a shorter one)
+        }
+
+        private static void HeroIn()
+        {
+            heroArtWaiter = null;
+            if (heroCap != null) heroCap.Stop();
+            if (!heroHidden) return;
+            heroHidden = false;
+            var info = heroBlock != null ? heroBlock.Target as UIElement : null;
+            if (info == null) return;
+            info.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(Lite ? 0 : 280)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+        }
+
+        // something else takes over the block's look (the intro, a page switch): nothing waits any more
+        private static void HeroReset()
+        {
+            heroHidden = false;
+            heroArtWaiter = null;
+            if (heroCap != null) heroCap.Stop();
         }
 
         // what a newly selected game brings: Playnite's selection, the trailer card's wait, its art ahead, the heart, the screenshots
@@ -2381,9 +2471,13 @@ namespace Selene
                 var art = FindByName(w, "SeleneHubArt") as UIElement;
                 // Spotlight's pictures held still while Collection showed (SeleneCrossfade.Hub): they already show its game,
                 // a check afterwards only loads anything if they don't (e.g. Playnite started on Collection)
+                // Spotlight shows once its game's picture is up (the cap in ShowHome covers a game without one): it came back on
+                // the last picture it had, with no logo, for a moment
+                bool waits = game != null && art != null;
+                if (waits) heroArtWaiter = () => { ready(); HeroIn(); };
                 if (art != null) foreach (var cf in FindAll(art, d => d is SeleneCrossfade)) { var x = (SeleneCrossfade)cf; x.Dispatcher.BeginInvoke(new Action(x.Refresh), System.Windows.Threading.DispatcherPriority.Background); }
                 if (!ReferenceEquals(prop.GetValue(vm, null), game)) prop.SetValue(vm, game, null);
-                ready();
+                if (!waits) ready();
             }
             catch (Exception ex) { Log("home selection sync: " + ex.Message); ready(); }
         }
@@ -2433,8 +2527,14 @@ namespace Selene
             if (prop == null || !prop.CanWrite) return;
             // card: default background. Nothing is selected for UniPlaySong then, and over a game's song it only fades that out (it
             // waits for a game to pick the next track): the default track is asked for as soon as it is idle (EmptyLibraryMusic)
-            if (game is string) { if (prop.GetValue(vm, null) != null) { prop.SetValue(vm, null, null); cardPushedAt = DateTime.Now; } return; }
-            if (!ReferenceEquals(prop.GetValue(vm, null), game)) prop.SetValue(vm, game, null);
+            if (game is string) { if (prop.GetValue(vm, null) != null) { prop.SetValue(vm, null, null); cardPushedAt = DateTime.Now; } HeroIn(); return; }
+            if (!ReferenceEquals(prop.GetValue(vm, null), game))
+            {
+                // the game block waits for this game's picture (at most a moment: a game without art has none coming)
+                if (heroHidden) { heroArtWaiter = HeroIn; HeroCap(450); }
+                prop.SetValue(vm, game, null);
+            }
+            else HeroIn();
         }
 
         private static string lastShoulder = "RightShoulder";
@@ -2456,6 +2556,7 @@ namespace Selene
         {
             // signing in rebuilds the row too: nothing slides then, the home is simply there as the login clears
             if (coveredForSignIn || profileRebuild) return;
+            HeroReset();
             var host = VisualTreeHelper.GetParent(row) as UIElement;
             var inf = FindByName(VisualTreeHelper.GetParent(VisualTreeHelper.GetParent(row)), "SeleneInfoIntro");
             if (host != null) host.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, TimeSpan.Zero));
@@ -3318,32 +3419,77 @@ namespace Selene
             var row = previewRow != null ? previewRow.Target as ListBox : null;
             var item = previewItem != null ? previewItem.Target as ListBoxItem : null;
             var tile = item != null ? FindByName(item, "Tile") : null;
-            if (row == null || item == null || tile == null) { HidePreview(false); return; }
-            var root = Window.GetWindow(row) as UIElement;
-            Point preL = tile.TranslatePoint(new Point(0, 0), root), preR = tile.TranslatePoint(new Point(tile.ActualWidth, tile.ActualHeight), root);
+            var panel = row != null ? FindChild<VirtualizingStackPanel>(row) : null;
+            if (row == null || item == null || tile == null || panel == null) { HidePreview(false); return; }
+            // (all in the row's own units: the window can be scaled to the screen)
+            Point preL = tile.TranslatePoint(new Point(0, 0), row), preR = tile.TranslatePoint(new Point(tile.ActualWidth, tile.ActualHeight), row);
+            // where the other tiles are drawn now, beside the wide card
+            var neighbours = new List<Tuple<ListBoxItem, double>>();
+            foreach (var child in panel.Children)
+            {
+                var li = child as ListBoxItem;
+                if (li != null && li != item && li.IsVisible) neighbours.Add(Tuple.Create(li, li.TranslatePoint(new Point(0, 0), row).X));
+            }
             HidePreview(false);  // layout + row offset back to normal, preview animations released
             row.UpdateLayout();
-            Point postL = tile.TranslatePoint(new Point(0, 0), root), postR = tile.TranslatePoint(new Point(tile.ActualWidth, tile.ActualHeight), root);
+            Point postL = tile.TranslatePoint(new Point(0, 0), row), postR = tile.TranslatePoint(new Point(tile.ActualWidth, tile.ActualHeight), row);
             double preW = preR.X - preL.X, postW = Math.Max(1, postR.X - postL.X);
             double preH = preR.Y - preL.Y, postH = Math.Max(1, postR.Y - postL.Y);
             double preC = (preL.X + preR.X) / 2, postC = (postL.X + postR.X) / 2;
             var ease = new QuinticEase { EasingMode = EasingMode.EaseOut };
             var dur = TimeSpan.FromMilliseconds(230);
+            double rowFrom = preC - postC;
 
             // row: start where the card's centre was, glide to the new layout
             var shift = PreviewShift(row);
-            var back = new DoubleAnimation(preC - postC, 0, dur) { EasingFunction = ease };
+            var back = new DoubleAnimation(rowFrom, 0, dur) { EasingFunction = ease };
             back.Completed += (s, e) => shift.BeginAnimation(TranslateTransform.XProperty, null);
             shift.BeginAnimation(TranslateTransform.XProperty, back);
 
-            // the old card: drawn from its wide size down to the tile
-            var shrink = new ScaleTransform(preW / postW, preH / postH);
-            tile.RenderTransformOrigin = new Point(0.5, 0);
+            // the old card: drawn from its wide size down to the tile, around its centre and from exactly where it was (pinned
+            // at its top it hung below the row)
+            double sx0 = preW / postW, sy0 = preH / postH;
+            double oy = 0.5;
+            if (Math.Abs(1 - sy0) > 0.01) oy = ((preL.Y - sy0 * postL.Y) / (1 - sy0) - postL.Y) / postH;
+            if (double.IsNaN(oy) || double.IsInfinity(oy)) oy = 0.5;
+            var shrink = new ScaleTransform(sx0, sy0);
+            tile.RenderTransformOrigin = new Point(0.5, Math.Max(-2, Math.Min(3, oy)));
             tile.RenderTransform = shrink;
-            var sx = new DoubleAnimation(preW / postW, 1, dur) { EasingFunction = ease };
+            var sx = new DoubleAnimation(sx0, 1, dur) { EasingFunction = ease };
             sx.Completed += (s, e) => { tile.RenderTransform = Transform.Identity; };
             shrink.BeginAnimation(ScaleTransform.ScaleXProperty, sx);
-            shrink.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(preH / postH, 1, dur) { EasingFunction = ease });
+            shrink.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(sy0, 1, dur) { EasingFunction = ease });
+
+            // the tiles beside it: from where they were drawn beside the wide card to their places, on the card's own curve, so
+            // they make room as it shrinks (they snapped in at once, and the shrinking card was drawn over them)
+            foreach (var n in neighbours)
+            {
+                var li = n.Item1;
+                double from = n.Item2 - li.TranslatePoint(new Point(0, 0), row).X - rowFrom;
+                if (Math.Abs(from) < 0.5) continue;
+                var own = ItemShift(li);
+                var slide = new DoubleAnimation(from, 0, dur) { EasingFunction = ease };
+                slide.Completed += (s, e) => own.BeginAnimation(TranslateTransform.XProperty, null);
+                own.BeginAnimation(TranslateTransform.XProperty, slide);
+            }
+        }
+
+        // a tile's own sideways offset (inside the transforms the intro may have left on it)
+        private static TranslateTransform ItemShift(ListBoxItem li)
+        {
+            var own = li.RenderTransform as TranslateTransform;
+            if (own != null && !own.IsFrozen) return own;
+            var group = li.RenderTransform as TransformGroup;
+            if (group != null && !group.IsFrozen)
+                foreach (var t in group.Children)
+                {
+                    var tt = t as TranslateTransform;
+                    if (tt != null && !tt.IsFrozen) return tt;
+                }
+            own = new TranslateTransform();
+            if (group != null && !group.IsFrozen) group.Children.Add(own);
+            else li.RenderTransform = own;
+            return own;
         }
 
         private static void HidePreview() { HidePreview(false); }
@@ -3493,6 +3639,7 @@ namespace Selene
                 // first intro after start: tile art is still decoding; wait for an idle moment so the fly-in is smooth
                 var holder = FindByName(window, "SeleneRowIntro") as UIElement;
                 if (holder != null) holder.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, TimeSpan.Zero));
+                HeroReset();
                 var infoHold = FindByName(window, "SeleneInfoIntro") as UIElement;
                 var bgHold = FindByName(window, "SeleneHubGameBackground") as UIElement;
                 if (infoHold != null) infoHold.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, TimeSpan.Zero));
@@ -3710,6 +3857,7 @@ namespace Selene
             // the cards' fly-in: the first time the home shows, and after every sign-in (as the login's dimmed wallpaper clears)
             bool animate = (!introDone || coveredForSignIn) && !Lite;  // full intro only the first time the hub is seen after Playnite starts (never in a streamed session)
             introDone = true;
+            HeroReset();
             try
             {
                 // The row's SelectedItem -> SelectedGame binding only pushes on change, so on open Playnite
@@ -4451,6 +4599,13 @@ namespace Selene
                         int to = pressed == "TriggerLeft" ? 0 : last;
                         if (to != tr.SelectedIndex) { HidePreview(); Ui.Tick(); PlaceAtLeft(tr, to); }
                     }
+                    e.Cancel();
+                    return;
+                }
+                // LT / RT in Collection: a page of covers back or on, with the same glide as a move
+                if ((pressed == "TriggerLeft" || pressed == "TriggerRight") && SeleneShell.CollectionActive && InLibraryList(Keyboard.FocusedElement as DependencyObject))
+                {
+                    if (LibraryStage.Page(pressed == "TriggerRight" ? 1 : -1)) Ui.Tick();
                     e.Cancel();
                     return;
                 }
@@ -5455,7 +5610,7 @@ namespace Selene
                 Api.Database.Games.ItemCollectionChanged += (s, e) =>
                 {
                     int added = e.AddedItems != null ? e.AddedItems.Count : 0, removed = e.RemovedItems != null ? e.RemovedItems.Count : 0;
-                    if (added + removed > 0) QueueRowSync(added + " added, " + removed + " removed");
+                    if (added + removed > 0) QueueRowSync(added + " added, " + removed + " removed", removed > 0 ? e.RemovedItems.Where(g => g != null).Select(g => g.Id).ToList() : null);
                     // a new game's cover, details, art and screenshots straight away (not at the next start, or once selected)
                     if (added > 0)
                     {
@@ -5499,7 +5654,11 @@ namespace Selene
             return b != null && a.SequenceEqual(b);
         }
 
-        public static void QueueRowSync(string why)
+        public static void QueueRowSync(string why) { QueueRowSync(why, null); }
+
+        // removed: the games taken out of the library (the selected one among them: the row follows at once, not 1.2 s later
+        // with the removed game's art and info still up)
+        private static void QueueRowSync(string why, List<Guid> removed)
         {
             var app = Application.Current;
             if (app == null) return;
@@ -5511,9 +5670,35 @@ namespace Selene
                     rowSyncTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1200) };
                     rowSyncTimer.Tick += (s, e) => SyncRow();
                 }
+                var row = LiveRow();
+                var id = row != null ? Prop(row.SelectedItem, "Id") : null;
+                bool selectedGone = removed != null && id is Guid && removed.Contains((Guid)id);
                 rowSyncTimer.Stop();   // (restarted: a burst ends 1.2 s after its last change)
+                rowSyncTimer.Interval = TimeSpan.FromMilliseconds(selectedGone ? 120 : 1200);
                 rowSyncTimer.Start();
             }));
+        }
+
+        // the selected game left the row: the game after it in the row (the one before when it was the last), not the first
+        private static int NextSurvivor(IList before, object gone, ListBox row)
+        {
+            int at = before != null ? before.IndexOf(gone) : -1;
+            if (at < 0) return -1;
+            for (int i = at + 1; i < before.Count; i++)
+            {
+                var o = before[i];
+                if (o is string || o is RowPad) continue;
+                int k = row.Items.IndexOf(o);
+                if (k >= 0) return k;
+            }
+            for (int i = at - 1; i >= 0; i--)
+            {
+                var o = before[i];
+                if (o is string || o is RowPad) continue;
+                int k = row.Items.IndexOf(o);
+                if (k >= 0) return k;
+            }
+            return -1;
         }
 
         private static void SyncRow()
@@ -5537,8 +5722,11 @@ namespace Selene
                 if (ReferenceEquals(before, games)) return;   // the same games in the same order: nothing to do (RebuildGames swaps the list otherwise)
                 row.UpdateLayout();
                 int idx = selected != null && !(selected is RowPad) ? row.Items.IndexOf(selected) : -1;
+                bool lost = idx < 0 && selected != null && !(selected is RowPad) && !(selected is string);
+                if (lost) idx = NextSurvivor(before, selected, row);
                 if (idx < 0) idx = FirstGameIndex(row);
                 if (idx < 0) { Log("row sync (" + rowSyncWhy + "): row empty"); return; }
+                if (lost) HeroOut(row, false);   // its logo and info go now, and the next game's come with its picture
                 row.SelectedIndex = idx;
                 var sv = FindChild<ScrollViewer>(row);
                 if (sv != null) sv.ScrollToHorizontalOffset(Math.Max(0, idx - AnchorSlot));
@@ -5547,6 +5735,7 @@ namespace Selene
                 if (c != null && hadFocus) c.Focus();
                 EnsureTileCaches(row);
                 ScheduleTitle(row, 200);
+                if (lost) PushSelected(row);   // Playnite's selection (art, music) at once, not after the move delay
                 Log("row sync (" + rowSyncWhy + "): " + games.Count(g => !(g is string) && !(g is RowPad)) + " games, " + sw.ElapsedMilliseconds + " ms");
             }
             catch (Exception ex) { Log("row sync: " + ex.Message); }
@@ -5787,6 +5976,7 @@ namespace Selene
         private static void ApplyRowFilter(ListBox row)
         {
             int dir = filterDir;
+            rowFilterStale = false;
             var sw = System.Diagnostics.Stopwatch.StartNew();
             PreparePresetFilter();
             HidePreview(false, 0);
@@ -5797,6 +5987,9 @@ namespace Selene
             if (idx >= 0)
             {
                 idx = RememberedTabGame(row, idx);
+                // the game block waits for the new tab's game's picture, as after a move (not when Spotlight is coming back
+                // from Collection with it: Spotlight itself waits for its picture then)
+                if (!rowFilterCatchUp && row.IsVisible && !ReferenceEquals(row.SelectedItem, row.Items[idx])) HeroOnMove(row, row.SelectedItem, row.Items[idx]);
                 row.SelectedIndex = idx;
                 var sv = FindChild<ScrollViewer>(row);
                 if (sv != null) sv.ScrollToHorizontalOffset(Math.Max(0, idx - AnchorSlot));
@@ -9747,10 +9940,27 @@ namespace Selene
             try { System.IO.File.WriteAllText(RowFilterFile, RowFilters[rowFilter]); } catch { }
             RenderFilterTabs(w, dir);
             ApplyCollectionFilter();
-            var row = LiveRow();
-            if (row != null) { filterDir = dir; ApplyRowFilter(row); }   // Spotlight shows the same when you go back
+            // Spotlight shows the same tab when you go back: its row is refiltered then (CatchUpRowFilter), not on every switch
+            // here (it doubled the work of each switch while hidden: a slow frame every time)
+            if (LiveRow() != null) rowFilterStale = true;
             Ui.Tick();
             return true;
+        }
+
+        private static bool rowFilterStale, rowFilterCatchUp;
+
+        // Spotlight is shown again (SeleneShell.ShowHome): its row takes the tab picked in Collection meanwhile
+        public static void CatchUpRowFilter()
+        {
+            if (!rowFilterStale) return;
+            rowFilterStale = false;
+            var row = LiveRow();
+            if (row == null) return;
+            filterDir = 0;
+            rowFilterCatchUp = true;
+            try { ApplyRowFilter(row); }
+            catch (Exception ex) { Log("row filter catch-up: " + ex.Message); }
+            finally { rowFilterCatchUp = false; }
         }
 
         public static void ApplyCollectionFilter()
@@ -10107,7 +10317,9 @@ namespace Selene
             pending = value;
             if (settle == null)
             {
-                settle = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+                // Spotlight's pictures only change once its row has rested (the selection is pushed 250 ms after a move): a long
+                // wait on top of that left the next game's name over the last one's picture
+                settle = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(Hub ? 40 : 150) };
                 settle.Tick += (s, e) => { settle.Stop(); Load(pending); };
             }
             settle.Stop();
@@ -10118,7 +10330,7 @@ namespace Selene
         {
             if (Disabled || (CanLoad != null && !CanLoad())) return;
             if (Hub && SeleneShell.CollectionActive) return;
-            if (Equals(value, shown)) return;
+            if (Equals(value, shown)) { if (Hub && hasImage) HomeNav.HubArtShown(); return; }   // (already up: the game block needn't wait)
             shown = value;
             shownKey = null;
             int id = ++request;
@@ -10161,9 +10373,13 @@ namespace Selene
             }, System.Threading.Tasks.TaskScheduler.FromCurrentSynchronizationContext());
         }
 
+        private bool hasImage;
+
         private void Show(ImageSource img)
         {
             if (Hub) Contrast.Art(this, img);   // the home's shades as deep as this picture needs
+            hasImage = img != null;
+            if (Hub && img != null) HomeNav.HubArtShown();   // the game's logo and info come in with its picture
             var ease = new QuadraticEase { EasingMode = EasingMode.EaseInOut };
             if (img == null)
             {

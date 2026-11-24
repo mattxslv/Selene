@@ -1232,10 +1232,10 @@
                                                                     <Storyboard>
                                                                         <DoubleAnimationUsingKeyFrames Storyboard.TargetProperty="Opacity">
                                                                             <LinearDoubleKeyFrame KeyTime="0:0:0" Value="0"/>
-                                                                            <LinearDoubleKeyFrame KeyTime="0:0:0.3" Value="0"/>
-                                                                            <LinearDoubleKeyFrame KeyTime="0:0:0.7" Value="1"/>
+                                                                            <LinearDoubleKeyFrame KeyTime="0:0:0.1" Value="0"/>
+                                                                            <LinearDoubleKeyFrame KeyTime="0:0:0.4" Value="1"/>
                                                                         </DoubleAnimationUsingKeyFrames>
-                                                                        <DoubleAnimation Storyboard.TargetName="LogoShift" Storyboard.TargetProperty="X" From="-30" To="0" BeginTime="0:0:0.3" Duration="0:0:0.4">
+                                                                        <DoubleAnimation Storyboard.TargetName="LogoShift" Storyboard.TargetProperty="X" From="-30" To="0" BeginTime="0:0:0.1" Duration="0:0:0.3">
                                                                             <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
                                                                         </DoubleAnimation>
                                                                     </Storyboard>

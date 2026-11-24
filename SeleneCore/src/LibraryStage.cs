@@ -77,9 +77,11 @@ namespace Selene
                 QueueRelatedWork();
             };
             list.SizeChanged += (s, e) => measuredPitch = 0;
+            ((System.Collections.Specialized.INotifyCollectionChanged)list.Items).CollectionChanged += (s, e) => EmptyCover(!library.IsVisible);
             library.IsVisibleChanged += (s, e) =>
             {
                 if (!(bool)e.NewValue) { Stop(); if (relatedWork != null) relatedWork.Stop(); return; }
+                EmptyCover(true);
                 Rearm(false);
                 QueueRelatedWork();
                 // the row's edges as soon as it shows (not from the first move)
@@ -314,7 +316,7 @@ namespace Selene
             {
                 if (Math.Abs(e.HorizontalChange) < 0.001 || !library.IsVisible) return;
                 ShowFades(sv);
-                if (!Features.On("collectionglide")) return;
+                if (!Features.On("collectionglide") || paging) return;   // (a page glides on its own: Page)
                 if (!list.IsKeyboardFocusWithin) { if (told++ < 3) HomeNav.Log("collection glide: scrolled " + e.HorizontalChange + " without the focus in the row"); return; }
                 var presenter = rowPresenter;
                 double pitch = Pitch();
@@ -330,6 +332,88 @@ namespace Selene
                 lastStep = DateTime.Now;
                 HomeNav.Glide(shift, delta, since < 260);   // (a held stick glides on at one speed)
             };
+        }
+
+        // ---- LT / RT: a page of covers ----
+        // The row moves on by as many covers as it shows, the ring stays on its place among them (at the ends it goes to the
+        // first or last cover), and the covers glide there like a move. False when there's nowhere to go.
+        private static bool paging;
+
+        public static bool Page(int dir)
+        {
+            if (list == null || library == null || !library.IsVisible || list.Items.Count == 0) return false;
+            int last = list.Items.Count - 1;
+            int sel = Math.Max(0, Math.Min(last, list.SelectedIndex));
+            var sv = RowScroller();
+            if (sv != null) HookScroll(sv);
+            double pitch = Pitch();
+            bool itemUnits = sv != null && Math.Abs(sv.ExtentWidth - list.Items.Count) < 2;   // (item scrolling counts in covers)
+            double unit = itemUnits ? 1 : pitch;
+            int to;
+            double want = -1;
+            if (sv != null && unit > 0)
+            {
+                int visible = Math.Max(3, (int)Math.Floor(sv.ViewportWidth / unit + 0.01));
+                int first = (int)Math.Round(sv.HorizontalOffset / unit);
+                int maxFirst = Math.Max(0, (int)Math.Round(sv.ScrollableWidth / unit));
+                int newFirst = Math.Max(0, Math.Min(maxFirst, first + dir * visible));
+                to = newFirst != first ? Math.Max(0, Math.Min(last, sel + (newFirst - first))) : (dir > 0 ? last : 0);
+                if (newFirst != first) want = Math.Min(newFirst * unit, sv.ScrollableWidth);
+            }
+            else to = Math.Max(0, Math.Min(last, sel + dir * 5));
+            if (to == sel) return false;
+            double before = sv != null ? sv.HorizontalOffset : 0;
+            paging = true;
+            try
+            {
+                list.SelectedIndex = to;
+                if (sv != null && want >= 0) sv.ScrollToHorizontalOffset(want);
+                list.UpdateLayout();
+                var c = list.ItemContainerGenerator.ContainerFromIndex(to) as UIElement;
+                if (c == null) { list.ScrollIntoView(list.Items[to]); list.UpdateLayout(); c = list.ItemContainerGenerator.ContainerFromIndex(to) as UIElement; }
+                if (c != null) c.Focus();
+            }
+            finally { paging = false; }
+            double moved = sv != null ? (sv.HorizontalOffset - before) * (itemUnits ? pitch : 1) : 0;
+            var presenter = rowPresenter;
+            if (Math.Abs(moved) > 0.5 && presenter != null && Features.On("collectionglide") && !HomeNav.Lite)
+            {
+                var shift = presenter.RenderTransform as TranslateTransform;
+                if (shift == null || shift.IsFrozen) { shift = new TranslateTransform(); presenter.RenderTransform = shift; }
+                lastStep = DateTime.Now;
+                HomeNav.Glide(shift, moved, false);
+            }
+            return true;   // (the row's ends and edge fades follow from the selection change: KeepNearLeft)
+        }
+
+        // ---- a tab with no games: the art goes ----
+        // Playnite keeps the last game's art up when the list empties: the theme's own background (as with no game at all)
+        // fades over it while the tab is empty, behind Playnite's "no games" message
+        private static Grid emptyCover;
+
+        private static void EmptyCover(bool instant)
+        {
+            var grid = library as Panel;
+            if (grid == null || list == null) return;
+            bool empty = list.Items.Count == 0;
+            if (emptyCover == null)
+            {
+                if (!empty) return;
+                emptyCover = new Grid { IsHitTestVisible = false, Opacity = 0 };
+                var fill = new Border();
+                fill.SetResourceReference(Border.BackgroundProperty, "SeleneBaseBrush");
+                var paper = new Image { Stretch = Stretch.UniformToFill, Opacity = 0.6 };
+                paper.SetResourceReference(Image.SourceProperty, "SeleneWallpaper");
+                RenderOptions.SetBitmapScalingMode(paper, BitmapScalingMode.Fant);
+                emptyCover.Children.Add(fill);
+                emptyCover.Children.Add(paper);
+                Grid.SetRowSpan(emptyCover, 5);
+                Panel.SetZIndex(emptyCover, -3);
+                grid.Children.Add(emptyCover);   // over the art (and its crossfade), under the shades
+            }
+            double to = empty ? 1 : 0;
+            if (instant) { emptyCover.BeginAnimation(UIElement.OpacityProperty, null); emptyCover.Opacity = to; return; }
+            emptyCover.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(to, TimeSpan.FromMilliseconds(empty ? 250 : 300)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
         }
 
         // one cover of lookahead: the ring walks along the row, and once only one cover is left beyond it (either side) the row

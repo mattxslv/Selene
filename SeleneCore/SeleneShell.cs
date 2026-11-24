@@ -323,6 +323,8 @@ namespace Selene
             if (instant)
             {
                 if (library != null) { library.BeginAnimation(UIElement.OpacityProperty, null); library.Visibility = Visibility.Collapsed; }
+                home.Visibility = Visibility.Visible;
+                HomeNav.CatchUpRowFilter();   // the tab picked in Collection
                 HomeNav.SyncSelectionForHome(null);
                 home.BeginAnimation(UIElement.OpacityProperty, null);
                 home.Opacity = 1;
@@ -338,6 +340,7 @@ namespace Selene
             home.BeginAnimation(UIElement.OpacityProperty, null);
             home.Opacity = 0;
             home.Visibility = Visibility.Visible;
+            HomeNav.CatchUpRowFilter();   // the tab picked in Collection (its row waits for Spotlight to show)
             bool revealed = false;
             System.Windows.Threading.DispatcherTimer cap = null;
             Action reveal = () =>

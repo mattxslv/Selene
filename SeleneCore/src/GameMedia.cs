@@ -59,6 +59,9 @@ namespace Selene
             if (g != null && !cache.ContainsKey(g.Id) && (Features.On("spotlightshots") || DetailsStage.PageOpen)) ShowLoading();
             else HideLoading(false);
             debounce.Stop();
+            // pictures already decoded come with the game's logo and art (Spotlight pushes its selection 250 ms after a move):
+            // after 600 ms they came in a beat behind the rest. Ones still to load keep the longer wait (work while stepping on)
+            debounce.Interval = TimeSpan.FromMilliseconds(g != null && cache.ContainsKey(g.Id) ? 300 : 600);
             debounce.Start();
         }
 

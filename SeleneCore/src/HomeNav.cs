@@ -451,6 +451,7 @@ namespace Selene
 
         // a Spotlight picture started to fade in (or was up already): the game block waiting for it comes in
         private static int heroInDelay = 70;
+        private static bool heroLeftArt;
         internal static void HubArtShown(bool image, bool fadingOut)
         {
             var waiter = heroArtWaiter;
@@ -458,7 +459,7 @@ namespace Selene
             heroArtWaiter = null;
             HeroLog(image ? "art in" : fadingOut ? "art gone" : "no art");
             // (an old picture fading out to none: the block waits until it is mostly gone; none before either: nothing to wait for)
-            heroInDelay = image ? 70 : fadingOut ? 220 : 0;
+            heroInDelay = image ? 70 : fadingOut || heroLeftArt ? 220 : 0;
             waiter();
         }
 
@@ -509,7 +510,7 @@ namespace Selene
         {
             var info = HeroBlock(row);
             if (info == null) return;
-            if (!heroHidden) HeroLog("out");
+            if (!heroHidden) { HeroLog("out"); heroLeftArt = SeleneCrossfade.HubShowsImage(); }   // (what the move leaves: a picture to fade out first, or none)
             heroHidden = true;
             heroArtWaiter = null;
             info.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(instant || Lite ? 0 : 120)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
@@ -2671,7 +2672,7 @@ namespace Selene
                 prop.SetValue(vm, game, null);
                 // (the art follows the selection at once: no Spotlight picture on its way now means none is coming, e.g. a game
                 // without art after another: its block came only at the cap)
-                if (heroArtWaiter != null && !SeleneCrossfade.HubBusy()) { HeroLog("no art coming"); var waiter = heroArtWaiter; heroArtWaiter = null; heroInDelay = 70; waiter(); }
+                if (heroArtWaiter != null && !SeleneCrossfade.HubBusy()) { HeroLog("no art coming"); var waiter = heroArtWaiter; heroArtWaiter = null; heroInDelay = heroLeftArt ? 220 : 70; waiter(); }
             }
             else if (heroArtWaiter == null) HeroIn();
         }
@@ -10588,6 +10589,9 @@ namespace Selene
 
         // a Spotlight picture is still on its way (the game block waits for it a little longer)
         public static bool HubBusy() { return HubFades().Any(cf => cf.Busy); }
+
+        // a Spotlight picture is up now (the game block leaving it waits for it to fade before coming back without one)
+        public static bool HubShowsImage() { return HubFades().Any(cf => cf.hasImage); }
 
         // Spotlight's art reached what its game has: a picture fading in, or none at all once no other layer still brings one
         // had: this layer showed a picture before (it fades out now)

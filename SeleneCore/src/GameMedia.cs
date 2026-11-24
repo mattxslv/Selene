@@ -447,7 +447,7 @@ namespace Selene
         // 3 key art with its logo; 7 the logo itself (see-through); 6 and 10 (emblems, tall covers) are never backgrounds
         private static readonly int[] HeroTypes = { 2, 1, 3 };
 
-        internal class IgdbArt { public List<string> Heroes = new List<string>(); public string Logo; }
+        internal class IgdbArt { public List<string> Heroes = new List<string>(); public string Logo, Cover, Summary; }
 
         // a game's backgrounds (best first, to try in turn: a picture can turn out to be something else) and logo
         internal static IgdbArt IgdbArtFor(string name)
@@ -460,6 +460,11 @@ namespace Selene
             if (game == null || !game.TryGetValue("data", out g) || !(g is Dictionary<string, object>)) return art;
             var data = (Dictionary<string, object>)g;
             Func<string, string> url = imageId => "https://images.igdb.com/igdb/image/upload/t_original/" + imageId + ".jpg";
+            // its cover (a portrait box art, for games no store gave one) and its summary
+            object cover, summary;
+            var c = data.TryGetValue("cover_expanded", out cover) ? cover as Dictionary<string, object> : null;
+            if (c != null && c.ContainsKey("image_id")) art.Cover = "https://images.igdb.com/igdb/image/upload/t_cover_big_2x/" + c["image_id"] + ".jpg";
+            if (data.TryGetValue("summary", out summary) && !string.IsNullOrWhiteSpace(Convert.ToString(summary))) art.Summary = Convert.ToString(summary).Trim();
             foreach (var field in new[] { "artworks_expanded", "screenshots_expanded" })
             {
                 object list;
@@ -488,6 +493,14 @@ namespace Selene
         }
 
         private static string IgdbIdByName(string name)
+        {
+            var id = IgdbIdByExactName(name);
+            var plainer = Plainer(name);
+            if (id == null && plainer.Length > 0 && plainer != name) id = IgdbIdByExactName(plainer);
+            return id;
+        }
+
+        private static string IgdbIdByExactName(string name)
         {
             if (string.IsNullOrWhiteSpace(name)) return null;
             string body;

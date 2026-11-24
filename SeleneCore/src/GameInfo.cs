@@ -31,6 +31,19 @@ namespace Selene
         }
         public static void CompleteLibrary() { Start(int.MaxValue); }
 
+        // games just added: their cover and details looked up a few seconds later (not at the next start), first in line
+        private static readonly HashSet<Guid> added = new HashSet<Guid>();
+        private static DispatcherTimer soon;
+        private static volatile bool again;
+        public static void Added(IEnumerable<Guid> ids)
+        {
+            if (!DownloadConsent.Allowed("metadatacomplete")) return;
+            lock (added) foreach (var id in ids) added.Add(id);
+            if (completing) { again = true; return; }
+            if (soon == null) { soon = new DispatcherTimer { Interval = TimeSpan.FromSeconds(4) }; soon.Tick += (s, e) => { soon.Stop(); Start(); }; }
+            soon.Stop(); soon.Start();
+        }
+
         // a game missing its main details
         private static bool Bare(Game g)
         {
@@ -58,8 +71,9 @@ namespace Selene
                 var tried = ReadTried();
                 var due = api.Database.Games.Where(g => g != null && (limit != int.MaxValue || !g.Hidden) && !string.IsNullOrEmpty(g.Name) && Bare(g))
                     .Where(g => { DateTime when; return !tried.TryGetValue(g.Id, out when) || (DateTime.UtcNow - when).TotalDays >= 14; })
-                    .OrderByDescending(g => g.IsInstalled).ThenByDescending(g => g.LastActivity ?? DateTime.MinValue)
+                    .OrderByDescending(g => { lock (added) return added.Contains(g.Id); }).ThenByDescending(g => g.IsInstalled).ThenByDescending(g => g.LastActivity ?? DateTime.MinValue)
                     .Take(limit).Select(g => g.Id).ToList();
+                lock (added) added.Clear();
                 HomeNav.Log("game info: " + due.Count + " games missing details");
                 plannedGames = due.Count; checkedGames = 0;
                 if (due.Count == 0) return;
@@ -91,7 +105,7 @@ namespace Selene
                         }));
                     }
                     catch (Exception ex) { HomeNav.Log("game info: library pass failed: " + ex.Message); }
-                    finally { completing = false; }
+                    finally { completing = false; if (again) { again = false; ui.BeginInvoke(new Action(() => Added(new Guid[0]))); } }
                 });
             }
             catch (Exception ex) { HomeNav.Log("game info: " + ex.Message); }
@@ -181,7 +195,8 @@ namespace Selene
             if (string.IsNullOrEmpty(game.BackgroundImage)) wants[MetadataField.BackgroundImage] = Local(first(MetadataField.BackgroundImage, p => p.GetBackgroundImage(args)) as MetadataFile);
             if (string.IsNullOrEmpty(game.Icon)) wants[MetadataField.Icon] = Local(first(MetadataField.Icon, p => p.GetIcon(args)) as MetadataFile);
             foreach (var pr in providers.Values) if (pr != null) try { pr.Dispose(); } catch { }
-            if (wants.Any(w => w.Value == null)) FromSteamStore(game.Name, wants);
+            if (wants.Any(w => w.Value == null)) FromSteamStore(game, wants);
+            if (wants.Any(w => w.Value == null)) FromIgdb(game.Name, wants);
 
             var found = wants.Where(w => w.Value != null).ToDictionary(w => w.Key, w => w.Value);
             if (found.Count == 0) return false;
@@ -250,22 +265,16 @@ namespace Selene
         }
 
         // the empty ones of `wants` from the store page of the game with exactly this name (nothing when there's none)
-        private static void FromSteamStore(string name, Dictionary<MetadataField, object> wants)
+        // (a Steam game: its own id; any other: the Steam page its links name, else the same name matching the screenshots and
+        // trailers use, a tag like "[GOG]" or "(2016)" tried without too)
+        private static void FromSteamStore(Game game, Dictionary<MetadataField, object> wants)
         {
+            var name = game.Name;
             try
             {
-                var plain = Plain(name);
-                if (plain.Length == 0) return;
-                var found = At(Json("https://store.steampowered.com/api/storesearch/?term=" + Uri.EscapeDataString(name) + "&l=english&cc=US"), "items") as IEnumerable;
-                string appId = null;
-                foreach (var item in found ?? new object[0]) if (Plain(Convert.ToString(At(item, "name"))) == plain) { appId = Convert.ToString(At(item, "id")); break; }
-                // not word for word ("Control" is "CONTROL Ultimate Edition" there): the same title matching the trailers use
-                if (appId == null)
-                {
-                    var candidates = new List<KeyValuePair<string, string>>();
-                    foreach (var item in found ?? new object[0]) candidates.Add(new KeyValuePair<string, string>(Convert.ToString(At(item, "id")), Convert.ToString(At(item, "name"))));
-                    appId = GameTitleMatch.Select(name, candidates);
-                }
+                if (Plain(name).Length == 0) return;
+                string appId = game.PluginId == SteamPluginId && System.Text.RegularExpressions.Regex.IsMatch(game.GameId ?? "", @"^\d+$") ? game.GameId
+                    : GameMedia.LinkedAppId(game.Id) ?? GameMedia.SteamAppIdByName(name);
                 if (appId == null) { HomeNav.Log("game info: " + name + ": not on the Steam store by that name"); return; }
                 var data = At(Json("https://store.steampowered.com/api/appdetails?appids=" + appId + "&l=english"), appId, "data");
                 if (data == null) return;
@@ -295,6 +304,29 @@ namespace Selene
                 HomeNav.Log("game info: " + name + ": Steam store page " + appId);
             }
             catch (Exception ex) { HomeNav.Log("game info: " + name + ": Steam store: " + ex.Message); }
+        }
+
+        private static readonly Guid SteamPluginId = Guid.Parse("cb91dfc9-b977-43bf-8e70-55f46e410fab");
+
+        // not on Steam (GOG, Epic, EA, a launcher's or a folder's game): its cover, background and summary from IGDB, through
+        // Playnite's own backend, on an exact name match only
+        private static void FromIgdb(string name, Dictionary<MetadataField, object> wants)
+        {
+            try
+            {
+                object had;
+                bool cover = wants.TryGetValue(MetadataField.CoverImage, out had) && had == null;
+                bool background = wants.TryGetValue(MetadataField.BackgroundImage, out had) && had == null;
+                bool about = wants.TryGetValue(MetadataField.Description, out had) && had == null;
+                if (!cover && !background && !about) return;
+                var art = GameMedia.IgdbArtFor(name);
+                if (art == null) return;
+                if (cover && art.Cover != null) wants[MetadataField.CoverImage] = Local(new MetadataFile(art.Cover));
+                if (background) foreach (var u in art.Heroes) { var f = Local(new MetadataFile(u)); if (f != null) { wants[MetadataField.BackgroundImage] = f; break; } }
+                if (about && art.Summary != null) wants[MetadataField.Description] = art.Summary;
+                if (art.Cover != null || art.Heroes.Count > 0 || art.Summary != null) HomeNav.Log("game info: " + name + ": IGDB");
+            }
+            catch (Exception ex) { HomeNav.Log("game info: " + name + ": IGDB: " + ex.Message); }
         }
 
         // a picture from an add-on as a file on disk (its bytes, a web address downloaded, or a path as it is); null without one

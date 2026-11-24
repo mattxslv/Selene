@@ -5421,6 +5421,15 @@ namespace Selene
                 {
                     int added = e.AddedItems != null ? e.AddedItems.Count : 0, removed = e.RemovedItems != null ? e.RemovedItems.Count : 0;
                     if (added + removed > 0) QueueRowSync(added + " added, " + removed + " removed");
+                    // a new game's cover, details, art and screenshots straight away (not at the next start, or once selected)
+                    if (added > 0)
+                    {
+                        var ids = e.AddedItems.Where(x => x != null && !x.Hidden).Select(x => x.Id).ToList();
+                        Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+                        {
+                            try { GameInfo.Added(ids); TrailerFetch.Added(ids); } catch (Exception ex) { Log("new games: " + ex.Message); }
+                        }));
+                    }
                 };
                 Api.Database.Games.ItemUpdated += (s, e) =>
                 {

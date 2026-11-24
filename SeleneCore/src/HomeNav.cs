@@ -4785,9 +4785,11 @@ namespace Selene
                     }
                     if (norm == "A" || norm == "X" || norm == "Y" || pressed == "RightStick") { e.Cancel(); return; }
                 }
-                if (pressed == "B" && item != null && InLibraryList(item))
+                // (after LB / RB the focus can sit on Collection's list itself, no cover: B still goes back)
+                var inLibrary = item ?? (SeleneShell.CollectionActive ? Keyboard.FocusedElement as DependencyObject : null);
+                if (pressed == "B" && inLibrary != null && InLibraryList(inLibrary))
                 {
-                    var w = Window.GetWindow(item);
+                    var w = Window.GetWindow(inLibrary);
                     var hub = w != null ? FindByName(w, "WelcomeHubOverlay") : null;
                     var details = w != null ? FindByName(w, "PART_ElemGameDetails") : null;
                     var proxy = w != null ? FindByName(w, "SeleneNav_hub") as System.Windows.Controls.Primitives.ButtonBase : null;

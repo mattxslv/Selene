@@ -33,6 +33,7 @@ namespace Selene
         private StoreData.Elsewhere elsewhere;
         private WebTrailer trailer;
         private Grid trailerHost;
+        private Border trailerShade;
         private int shot, moreIndex, zone;   // zone 0: the screenshots, 1: more from the store
         // the buttons (Buy / Play, Web page) are where the focus starts; Down goes to the screenshots, Down again to "More from"
         private readonly List<Border> pills = new List<Border>();
@@ -103,6 +104,15 @@ namespace Selene
                 IsHitTestVisible = false,
                 Background = new LinearGradientBrush(new GradientStopCollection { Ink.Stop("SeleneScrimColor", 0, 0.55), Ink.Stop("SeleneScrimColor", 0.9, 1) }, 90)
             });
+            // while the trailer plays, the words' side darkens further: a moving, bright picture showed through the name and
+            // the description (fixed in pixels: the words sit at the left whatever the screen's width)
+            var words = new LinearGradientBrush { MappingMode = BrushMappingMode.Absolute, StartPoint = new Point(0, 0), EndPoint = new Point(1500, 0) };
+            words.GradientStops.Add(Ink.Stop("SeleneScrimColor", 0.75, 0));
+            words.GradientStops.Add(Ink.Stop("SeleneScrimColor", 0.7, 0.55));
+            words.GradientStops.Add(Ink.Stop("SeleneScrimColor", 0.35, 0.72));
+            words.GradientStops.Add(Ink.Stop("SeleneScrimColor", 0, 1));
+            trailerShade = new Border { IsHitTestVisible = false, Opacity = 0, Background = words };
+            Root.Children.Add(trailerShade);
 
             // on a canvas, as wide as the screen and taller: a page laid out in the screen's own grid got clipped to the screen,
             // and the clip moved up with it (the "More from" row stayed cut off even after gliding up)
@@ -262,6 +272,7 @@ namespace Selene
                 {
                     slides.Stop();
                     foreach (var img in new[] { shotA, shotB }) img.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(700)));
+                    Ui.Fade(trailerShade, 1, 600);   // (with the trailer's own fade in)
                 });
                 if (trailer != null) trailerHost.Children.Add(trailer.View);
             };

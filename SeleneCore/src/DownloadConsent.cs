@@ -57,7 +57,7 @@ namespace Selene
         }
         public static void Changed(string key)
         {
-            if (key == "metadatacomplete") GameInfo.CompleteLater();
+            if (key == "metadatacomplete") GameInfo.CompleteSoon();
             else if (key == "songsetup") SongSetup.DownloadSettingsChanged();
             else if (key == "screenshotsdownload") GameMedia.DownloadSettingsChanged();
             else { TrailerFetch.DownloadSettingsChanged(); GameMedia.KickDownloads(); }

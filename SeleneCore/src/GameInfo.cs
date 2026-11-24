@@ -30,6 +30,8 @@ namespace Selene
             t.Start();
         }
         public static void CompleteLibrary() { Start(int.MaxValue); }
+        // just allowed: the covers and details come now, not after the 75 s a start waits
+        public static void CompleteSoon() { Added(new Guid[0]); }
 
         // games just added: their cover and details looked up a few seconds later (not at the next start), first in line
         private static readonly HashSet<Guid> added = new HashSet<Guid>();
@@ -67,7 +69,7 @@ namespace Selene
                 var api = HomeNav.Api;
                 if (api == null) return;
                 var plugins = api.Addons.Plugins.OfType<MetadataPlugin>().ToList();
-                if (plugins.Count == 0) { HomeNav.Log("game info: no metadata add-ons" + (limit == int.MaxValue ? "; explicit library request uses the Steam fallback" : "")); if (limit != int.MaxValue) return; }
+                if (plugins.Count == 0) HomeNav.Log("game info: no metadata add-ons: the Steam store and IGDB only");   // (Selene's own fallbacks need none)
                 var tried = ReadTried();
                 var due = api.Database.Games.Where(g => g != null && (limit != int.MaxValue || !g.Hidden) && !string.IsNullOrEmpty(g.Name) && Bare(g))
                     .Where(g => { DateTime when; return !tried.TryGetValue(g.Id, out when) || (DateTime.UtcNow - when).TotalDays >= 14; })

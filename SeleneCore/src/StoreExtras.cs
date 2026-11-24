@@ -23,7 +23,7 @@ namespace Selene
             this.back = back;
             var col = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, -30, 0, 0) };
             col.Children.Add(Ui.Title("Choose your currency"));
-            col.Children.Add(Ui.Sub("The stores show their prices in it. GOG and the other stores' deals stay in dollars. Change it any time with X in the Store."));
+            col.Children.Add(Ui.Sub("The stores show their prices in it. GOG uses it where it can; the other stores' deals stay in dollars. Change it any time with X in the Store."));
             var grid = new System.Windows.Controls.Primitives.UniformGrid { Columns = Columns, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 48, 0, 0) };
             foreach (var c in StoreData.Currencies)
             {
@@ -48,7 +48,8 @@ namespace Selene
 
         public override void Shown()
         {
-            for (int i = 0; i < tiles.Count; i++) Ui.Rise(tiles[i].Root, 80 + i * 30, 14, 260);
+            // a diagonal wave from the top left: the last card starts 300 ms in (one by one, 36 cards took over a second)
+            for (int i = 0; i < tiles.Count; i++) Ui.Rise(tiles[i].Root, 60 + Math.Min(10, i / Columns + i % Columns) * 30, 14, 260);
             ShowFocus();
         }
 

@@ -181,7 +181,7 @@ namespace Selene
         private bool inOptions;
 
         public override bool Overlay { get { return true; } }
-        public override Brush OverlayShade { get { return Ink.Brush("SeleneScrimColor", 0.94); } }
+        public override Brush OverlayShade { get { return Ink.Brush("SeleneScrimColor", 0.98); } }
 
         public PlayniteSettingsScreen()
         {

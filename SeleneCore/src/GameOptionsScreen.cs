@@ -42,7 +42,7 @@ namespace Selene
         private Dialog ask;
 
         public override bool Overlay { get { return true; } }
-        public override Brush OverlayShade { get { return Ink.Brush("SeleneScrimColor", 0.92); } }
+        public override Brush OverlayShade { get { return Ink.Brush("SeleneScrimColor", 0.97); } }
 
         // Selene's game options for a game, or false (switched off, or no game) so Playnite's own menu opens instead
         public static bool Open(Guid id) { return Open(id, null); }

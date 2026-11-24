@@ -98,7 +98,7 @@ namespace Selene
         public override bool Overlay { get { return true; } }
 
         // a deep, even shade: the settings read clearly over anything
-        public override Brush OverlayShade { get { return Ink.Brush("SeleneScrimColor", 0.94); } }
+        public override Brush OverlayShade { get { return Ink.Brush("SeleneScrimColor", 0.98); } }
 
         // opened from the menu: B goes back to it (on this item); held Start from the home: B goes back to the home
         private readonly bool fromMenu;
@@ -564,7 +564,7 @@ namespace Selene
             {
                 Title = "Find a setting", Placeholder = "Type a setting's name", EmptyNote = "Settings show here as you type.", NoneNote = "No setting matches that.",
                 Back = () => LoginScene.Show(new SettingsScreen(back, SearchGroup), -1),
-                Max = 60, Shade = Ink.Brush("SeleneScrimColor", 0.94),   // every match (the row glides to the focused card); as dark as the settings
+                Max = 60, Shade = Ink.Brush("SeleneScrimColor", 0.98),   // every match (the row glides to the focused card); as dark as the settings
                 Find = q => Features.All
                     .Where(o => MediaDownloads.ShowSetting(o.Key) && (o.Available == null || o.Available()) && Matches(o, q))
                     .OrderBy(o => o.Label.StartsWith(q, StringComparison.OrdinalIgnoreCase) ? 0 : o.Label.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0 ? 1 : 2)

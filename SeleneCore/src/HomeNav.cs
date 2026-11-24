@@ -6267,7 +6267,7 @@ namespace Selene
                 case "recent": title = "Nothing played lately"; hint = "Games you play show up here for a month."; break;
                 case "favorites": title = "No favorites yet"; hint = "Pick the heart under a game to add it to your favorites."; break;
                 case "unplayed": title = "You've started everything"; hint = "Every game in your library has been played at least once."; break;
-                default: title = "No games yet"; hint = "Add your stores in the setup check: Menu, Extensions, Selene."; break;
+                default: title = "No games yet"; hint = "Add your stores in Setup check: Menu > Selene settings > Advanced."; break;
             }
             var titleBlock = (TextBlock)FindByName(box, "SeleneRowEmptyTitle");
             // the row is rebuilt more than once on a tab switch: the same message already showing stays put (no second slide-in),

@@ -802,6 +802,12 @@ namespace Selene
         private static Panel RootPanel(Window w)
         {
             if (w == null) return null;
+            // inside the scaled layout (Playnite's 1920 x 1080 Viewbox) when there is one: outside it, the viewer didn't scale
+            // with the rest on other screen sizes (and pictures of the screen left it out)
+            var box = w.Content as Viewbox;
+            var inner = box != null ? box.Child as Panel : null;
+            if (inner == null && box != null && box.Child is Decorator) inner = ((Decorator)box.Child).Child as Panel;
+            if (inner != null) return inner;
             DependencyObject d = w;
             for (int i = 0; i < 12 && d != null; i++)
             {

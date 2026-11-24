@@ -4232,7 +4232,7 @@ namespace Selene
                 {
                     bool woke = IdleScreen.Showing;
                     IdleScreen.Touched();
-                    if (woke) { e.Cancel(); return; }
+                    if (woke) { Ui.PadHandled(); e.Cancel(); return; }   // (its keyboard copy is dropped too: it moved the row)
                 }
                 // Playnite also turns LT/RT into PageUp/PageDown, which scrolled the hub to the last section. On the game
                 // row the triggers are the filter only, so those keys are dropped there.
@@ -4657,7 +4657,8 @@ namespace Selene
             if (inRow && up) { if (topShown) FocusPill(top); return true; }
             if (inRow && !down) return false;
             // the Library and Store cards have nothing under them: Down stays put (it used to move focus somewhere unseen)
-            if (inRow && down && movingCard == null && movingGame == null && row.SelectedItem is string) return true;
+            // (the cards with pictures under them, Store, News, Captures, Activity, go into them: the keyboard's Down stopped here)
+            if (inRow && down && movingCard == null && movingGame == null && row.SelectedItem is string) { if (!StoreShowcase.Handle("DPadDown")) CardShowcase.Handle("DPadDown"); return true; }
             // the pills next to the LIVE row (LB/RB rebuilds leave hidden copies of the hub page around), found once per row
             Button[] pills;
             if (!rowPills.TryGetValue(row, out pills) || pills[0] == null)
@@ -7368,6 +7369,7 @@ namespace Selene
             return any;
         }
         private static Guid launchGameId = Guid.Empty;
+        private static DateTime launchAttemptAt = DateTime.MinValue;   // (a second A within its first moments is the same press, not a new start)
         // games that start through another launcher (Ubisoft Connect, the EA app, Rockstar, Battle.net, the Xbox app) take
         // longer before anything of the game shows: their waits are stretched by this
         private static double launchGrace = 1;
@@ -7414,40 +7416,24 @@ namespace Selene
             bool any = false;
             try
             {
-                foreach (var pr in System.Diagnostics.Process.GetProcesses())
-                {
-                    try
-                    {
-                        if (!any && !preLaunchPids.Contains(pr.Id) && Array.IndexOf(notLaunchers, pr.ProcessName.ToLowerInvariant()) < 0 && !BackgroundNoise(pr)) any = true;
-                    }
-                    catch { }
-                    pr.Dispose();
-                }
+                // only what belongs to this start (Playnite's children, a store launcher's, theirs in turn): any new program on
+                // the PC (a browser, an updater, another app) held a game that had crashed behind the loading screen for 2 min
+                foreach (var p in ProcessTree.StartedForLaunch(preLaunchPids, (int)OwnPid, storeLaunchers))
+                    if (Array.IndexOf(notLaunchers, p.Name) < 0 && Array.IndexOf(noiseNames, p.Name) < 0) { any = true; break; }
             }
             catch { }
             newProcsAlive = any;
             return any;
         }
-        // a new process that is not a launcher at work: Windows' own (C:\Windows), browsers and their helpers, chat and music apps.
-        // Any of these starting during a launch held a game that had crashed (or never started) behind the loading screen for
-        // two minutes, counted as "a launcher still at work".
+        // never a launcher at work, even when a launcher starts it (browsers and their helpers, chat and music apps, crash reporters)
         private static readonly string[] noiseNames = { "msedge", "msedgewebview2", "chrome", "firefox", "opera", "brave", "vivaldi", "discord", "spotify", "teams", "ms-teams",
             "onedrive", "explorer", "searchhost", "searchapp", "startmenuexperiencehost", "widgets", "widgetservice", "gamebar", "gamebarftserver", "gamebarpresencewriter",
             "nvcontainer", "nvidia share", "nvsphelper64", "radeonsoftware", "amdrsserv", "crashpad_handler", "werfault", "wermgr", "applicationframehost", "phoneexperiencehost",
             "securityhealthsystray", "useroobebroker", "lockapp", "shellexperiencehost", "systemsettings", "compattelrunner", "devicecensus", "musnotification", "sppsvc" };
-        private static bool BackgroundNoise(System.Diagnostics.Process pr)
-        {
-            var name = pr.ProcessName.ToLowerInvariant();
-            if (Array.IndexOf(noiseNames, name) >= 0) return true;
-            try
-            {
-                var path = LocalGames.ExeOf(pr.Id);   // (Playnite is 32-bit: MainModule can't be read for a 64-bit process)
-                var windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
-                if (!string.IsNullOrEmpty(path) && !string.IsNullOrEmpty(windows) && path.StartsWith(windows + "\\", StringComparison.OrdinalIgnoreCase)) return true;
-            }
-            catch { }   // (a protected process: not readable, counted as before)
-            return false;
-        }
+        // the store launchers a game start goes through (their children are the game's start too: Steam -> Rockstar's launcher)
+        private static readonly string[] storeLaunchers = { "steam", "epicgameslauncher", "eadesktop", "eabackgroundservice", "origin", "upc", "ubisoftconnect", "battle.net",
+            "riotclientservices", "riotclientux", "hoyoplay", "launcher", "launcherpatcher", "rockstarservice", "socialclubhelper", "goggalaxy", "galaxyclient", "amazon games",
+            "amazongames", "itch", "xboxpcapp", "gamelaunchhelper", "bethesdanetlauncher", "wargaminggamecenter" };
         private static IntPtr unfocusedLauncher = IntPtr.Zero;  // that window while it sits behind the loading screen without the focus, and since when
         private static DateTime unfocusedSince = DateTime.MinValue;
         private static bool IsOwnWindow(IntPtr h) { uint pid; GetWindowThreadProcessId(h, out pid); return pid == OwnPid; }
@@ -7925,9 +7911,13 @@ namespace Selene
                 ReturnToGame(Application.Current.MainWindow);
                 return;
             }
+            // A again while this game's loading screen is up: nothing (it cancelled the first start and began another, so every
+            // press put the start off, and after a launcher hand-off started the launcher twice)
+            if (((launching && id == launchGameId) || (launchAttempt != null && launchAttempt.GameId == id && launchAttempt.CanCancel && (DateTime.Now - launchAttemptAt).TotalSeconds < 4)) && g != null && !g.IsRunning) { Log("play: " + (g != null ? g.Name : "game") + " is already starting"); return; }
             // one identity per press: the delayed start below and B's cancel both act on this attempt only
             var attempt = new LaunchAttempt(id, g != null ? LocalGames.ProcessesInGameFolder(g) : new List<int>());
             launchAttempt = attempt;
+            launchAttemptAt = DateTime.Now;
             if (g != null && g.IsInstalled && !g.IsRunning && !launching)
             {
                 try

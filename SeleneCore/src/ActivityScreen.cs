@@ -440,7 +440,7 @@ namespace Selene
             var recent = games.Where(g => GameFacts.LastPlayed(g).HasValue).OrderByDescending(g => GameFacts.LastPlayed(g).Value).Take(Ui.CardTiles).ToList();
             var most = games.Where(g => GameFacts.Seconds(g) > 0).OrderByDescending(GameFacts.Seconds).FirstOrDefault();
             string headline = week == 0 ? "Nothing played this week" : week == 1 ? "1 game this week" : week + " games this week";
-            string about = total < 3600 ? "Your play time, most played and last played games show here." : (int)TimeSpan.FromSeconds(total).TotalHours + " hours in all";
+            string about = total < 3600 ? "Your play time, most played and last played games show here." : ((int)TimeSpan.FromSeconds(total).TotalHours == 1 ? "1 hour in all" : (int)TimeSpan.FromSeconds(total).TotalHours + " hours in all");
             if (most != null && total >= 3600) about += ", most of them in " + most.Name + " (" + GameFacts.Hours(GameFacts.Seconds(most)) + ").";
             if (recent.Count > 0) about += " Down for the games you played last.";
             var entries = recent.Select(g =>

@@ -504,7 +504,7 @@ namespace Selene
         public override void Handle(string b)
         {
             if (b == "B") { Remember(); Ui.Back(); LoginScene.Finish(); return; }
-            if (b == "Y") { Remember(); Ui.Confirm(); LoginScene.Show(new StoreScreen(), 1); return; }
+            if (b == "Y") { Remember(); Ui.Confirm(); LoginScene.Show(new StoreScreen { Back = () => new StorePage() }, 1); return; }
             if (b == "X") { Remember(); Ui.Confirm(); LoginScene.Show(new StoreCurrencyScreen(false), 1); return; }
             if (b == "LeftShoulder" || b == "RightShoulder")
             {

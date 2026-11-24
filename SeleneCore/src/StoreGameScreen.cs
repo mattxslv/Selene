@@ -28,6 +28,7 @@ namespace Selene
         private readonly List<Tile> moreTiles = new List<Tile>();
         private readonly List<StoreItem> more;
         private readonly TranslateTransform pageShift = new TranslateTransform();
+        private StackPanel headerCol;   // the name, price and buttons: faded while the page is lifted for "More from" (cut by the screen's top edge)
         private readonly DispatcherTimer slides = new DispatcherTimer { Interval = TimeSpan.FromSeconds(6) };
         private StoreData.Elsewhere elsewhere;
         private WebTrailer trailer;
@@ -113,6 +114,7 @@ namespace Selene
 
             // left: the store, the name, the facts, the price, the description, the buttons
             var col = new StackPanel { HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(Side, 120, 0, 0), MaxWidth = 860 };
+            headerCol = col;
             var storeLine = new StackPanel { Orientation = Orientation.Horizontal };
             var logo = PlatformIcons.For(item.StoreName);
             if (logo != null) storeLine.Children.Add(new System.Windows.Shapes.Path { Data = logo, Width = 20, Height = 20, Stretch = Stretch.Uniform, Fill = Ink.Brush("GlyphColor"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) });
@@ -134,7 +136,7 @@ namespace Selene
                 col.Children.Add(new TextBlock { Text = item.DisplayNote, FontSize = 18, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.7), Margin = new Thickness(0, 10, 0, 0) });
             // the cheapest price in another store (filled in when found)
             elsewhereText = new TextBlock { FontSize = 18, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.85), VerticalAlignment = VerticalAlignment.Center };
-            var elsewhereRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0), Visibility = Visibility.Collapsed, Opacity = 0 };
+            var elsewhereRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0), Visibility = Visibility.Hidden, Opacity = 0 };   // (its room kept: the buttons jumped down when it came)
             elsewhereRow.Children.Add(Ui.Prompt("Y", ""));
             ((StackPanel)elsewhereRow.Children[0]).Margin = new Thickness(0);
             elsewhereRow.Children.Add(elsewhereText);
@@ -194,7 +196,7 @@ namespace Selene
                 zone = 1;
                 onActions = false;
                 moreIndex = Math.Max(0, Math.Min(startMore, moreTiles.Count - 1));
-                pageShift.Y = -MoreLift;
+                pageShift.Y = -MoreLift; headerCol.Opacity = 0.12;
                 moreShift.X = -Math.Max(0, moreIndex - 1) * MorePitch;
                 Peek(false, false);
             }
@@ -432,6 +434,7 @@ namespace Selene
             Peek(z == 0, true);
             // more from the store: the page glides up to show its row
             pageShift.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(z == 1 ? -MoreLift : 0, TimeSpan.FromMilliseconds(320)) { EasingFunction = Ui.Out() });
+            if (headerCol != null) headerCol.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(z == 1 ? 0.12 : 1, TimeSpan.FromMilliseconds(260)) { EasingFunction = Ui.Out() });
             Ui.Tick();
             ShowFocus();
         }

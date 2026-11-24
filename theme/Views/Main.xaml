@@ -384,7 +384,9 @@
                                             </Style.Triggers>
                                         </Style>
                                     </StackPanel.Style>
-                                    <TextBlock FontSize="34" Text="{DynamicResource LOCNoGamesFound}" TextAlignment="Center" Margin="48,26,48,28" Style="{StaticResource TextBlockBaseStyle}" Foreground="{DynamicResource SeleneInkBrush}" FontFamily="{StaticResource FontMain}"/>
+                                    <!-- an empty tab: Selene's words, as Spotlight's (Playnite's was "No games found for specified search/filter criteria") -->
+                                    <TextBlock FontSize="34" Text="Nothing in this tab yet" TextAlignment="Center" Margin="48,26,48,6" Style="{StaticResource TextBlockBaseStyle}" Foreground="{DynamicResource SeleneInkBrush}" FontFamily="{StaticResource FontMain}"/>
+                                    <TextBlock FontSize="20" Text="LB / RB show the other tabs." TextAlignment="Center" Margin="48,0,48,28" Style="{StaticResource TextBlockBaseStyle}" Foreground="{DynamicResource SeleneInk60Brush}" FontFamily="{StaticResource FontMain}"/>
                                 </StackPanel>
 
                                 <!-- Playnite's filter panels open over the left side -->

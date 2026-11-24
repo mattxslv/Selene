@@ -1025,6 +1025,7 @@ namespace Selene
             new[] { "\uE777", "Restart", "power-restart", "shutdown.exe|/r /t 0" },
             new[] { "\uE7E8", "Shut down", "power-off", "shutdown.exe|/s /t 0" } };
 
+        public Func<Screen> Back;
         public WhoScreen(Guid? focus)
         {
             profiles = Profiles.All.ToList();
@@ -1148,6 +1149,7 @@ namespace Selene
                 return;
             }
             // opened from the menu over the home (Switch profile): B goes back to it (there was no way out but signing in)
+            if (b == "B" && Back != null) { leaving = true; Ui.Back(); LoginScene.Show(Back(), -1); return; }   // (from the menu: back to it)
             if (b == "B" && LoginScene.OverHome) { leaving = true; Ui.Back(); LoginScene.Finish(); return; }
             if (b == "DPadDown" && !onPower) { onPower = true; Ui.Tick(); ShowFocus(); return; }
             if (b == "DPadUp" && onPower) { onPower = false; Ui.Tick(); ShowFocus(); return; }

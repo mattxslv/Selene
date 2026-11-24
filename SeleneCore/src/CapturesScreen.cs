@@ -584,7 +584,7 @@ namespace Selene
             page.Children.Clear();
             tiles.Clear();
             int shots = items.Count(c => !c.IsVideo), clips = items.Count - shots;
-            caption.Text = items.Count == 0 ? "Screenshots and clips from your games" : Count(shots, "screenshot") + (clips > 0 ? " · " + Count(clips, "clip") : "") + ", newest first";
+            caption.Text = items.Count == 0 ? "Screenshots and clips from your games" : (shots > 0 || clips == 0 ? Count(shots, "screenshot") + (clips > 0 ? " · " : "") : "") + (clips > 0 ? Count(clips, "clip") : "") + ", newest first";
             if (items.Count == 0)
             {
                 note.Text = all.Count > 0 ? (filter == 1 ? "No screenshots here. LB / RB show the clips, or everything." : "No clips here. LB / RB show the screenshots, or everything.")

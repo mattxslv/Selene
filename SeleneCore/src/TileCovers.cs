@@ -91,6 +91,7 @@ namespace Selene
                 if (path == null)
                 {
                     wanted.Remove(el);
+                    if (el.Name == "SeleneCoverFace") { StandIn((Border)el, true); return; }
                     if (el.Name != "PART_ImageCover") Show(el, null);   // (no picture: the square art's place stays clear over the cover)
                     else NoCover((Image)el);   // a reused Collection tile kept the last game's cover (Control showed Apex's)
                     return;
@@ -195,6 +196,25 @@ namespace Selene
             return !string.IsNullOrEmpty(file) && System.IO.File.Exists(file) ? file : null;
         }
 
+        // A Spotlight tile whose game has no cover (one found in a folder, or art downloads off) was an empty glass tile: it gets
+        // Selene's own cover with the game's name on it instead, until a cover arrives (Set takes the name off again)
+        private static void StandIn(Border face, bool on)
+        {
+            var grid = face.Parent as Panel;
+            var name = grid == null ? null : grid.Children.OfType<FrameworkElement>().FirstOrDefault(c => c.Name == "SeleneCoverName");
+            if (name != null) name.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+            var brush = face.Background as ImageBrush;
+            if (!on) { if (brush != null && !brush.IsFrozen) brush.AlignmentY = AlignmentY.Top; return; }
+            if (brush == null) return;
+            if (brush.IsFrozen) { brush = brush.Clone(); face.Background = brush; }
+            BindingOperations.ClearBinding(brush, ImageBrush.ImageSourceProperty);
+            brush.ImageSource = Application.Current.TryFindResource("DefaultGameCover") as ImageSource;
+            brush.ViewboxUnits = BrushMappingMode.RelativeToBoundingBox;
+            brush.Viewbox = new Rect(0, 0, 1, 1);
+            brush.AlignmentY = AlignmentY.Center;   // (the moon in the middle, not the cover's top edge)
+            face.BeginAnimation(UIElement.OpacityProperty, null);
+        }
+
         private static void NoCover(Image image)
         {
             BindingOperations.ClearBinding(image, Image.SourceProperty);
@@ -232,7 +252,7 @@ namespace Selene
                 brush.ImageSource = picture;
                 // the cover's square window (worked out on the worker): applied here, since the brush may be a fresh copy that
                 // CoverCrop never hooked (a template brush without a binding is frozen and shared, so it's copied above)
-                if (border.Name == "SeleneCoverFace") CoverCrop.Apply(brush);
+                if (border.Name == "SeleneCoverFace") { StandIn(border, false); CoverCrop.Apply(brush); }
             }
             if (!fade) { el.BeginAnimation(UIElement.OpacityProperty, null); return; }
             el.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(160)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });

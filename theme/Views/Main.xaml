@@ -550,6 +550,10 @@
                                                                                     <ImageBrush Stretch="UniformToFill" AlignmentY="Top"/>
                                                                                 </Border.Background>
                                                                             </Border>
+                                                                            <!-- a game with no cover at all: its name over Selene's own cover (shown by Selene Core, TileCovers) -->
+                                                                            <TextBlock x:Name="SeleneCoverName" Text="{Binding DisplayName}" Visibility="Collapsed" IsHitTestVisible="False" Foreground="{DynamicResource SeleneInkBrush}"
+                                                                                       FontFamily="{DynamicResource FontMain}" FontSize="17" FontWeight="SemiBold" TextAlignment="Center" TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
+                                                                                       MaxHeight="66" VerticalAlignment="Bottom" Margin="12,0,12,16"/>
                                                                             <!-- square tile art from Selene's media folder; the cover stays underneath as the fallback -->
                                                                             <TextBlock x:Name="SquarePath" Tag="{DynamicResource SeleneSquareRoot}" Visibility="Collapsed">
                                                                                 <TextBlock.Style>

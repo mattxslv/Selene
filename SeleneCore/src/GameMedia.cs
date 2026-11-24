@@ -380,7 +380,7 @@ namespace Selene
                 if (!igdbOnly)
                 {
                     string app = !string.IsNullOrEmpty(chosen.SteamId) ? chosen.SteamId
-                               : pluginId == SteamPlugin && Regex.IsMatch(gameId ?? "", @"^\d+$") ? gameId : SearchAppId(name);
+                               : pluginId == SteamPlugin && Regex.IsMatch(gameId ?? "", @"^\d+$") ? gameId : LinkedAppId(id) ?? SearchAppId(name);
                     if (app != null) found = ParseScreenshots(Download("https://store.steampowered.com/api/appdetails?appids=" + app + "&filters=screenshots"));
                 }
                 if (found.Count == 0 && chosen.Source != "steam") found = !string.IsNullOrEmpty(chosen.IgdbId) ? IgdbScreenshotsById(chosen.IgdbId) : (igdbOnly ? IgdbScreenshots(name) : found);
@@ -407,9 +407,10 @@ namespace Selene
                     if (fromEml.Count > 0) return fromEml;
                 }
             }
-            string appId = pluginId == SteamPlugin && Regex.IsMatch(gameId ?? "", @"^\d+$") ? gameId : SearchAppId(name);
+            string appId = pluginId == SteamPlugin && Regex.IsMatch(gameId ?? "", @"^\d+$") ? gameId : LinkedAppId(id) ?? SearchAppId(name);
             var urls = appId == null ? new List<string>() : ParseScreenshots(Download("https://store.steampowered.com/api/appdetails?appids=" + appId + "&filters=screenshots"));
             if (urls.Count == 0) urls = IgdbScreenshots(name);
+            if (urls.Count == 0 && Plainer(name) != name) urls = IgdbScreenshots(Plainer(name));
             return urls;
         }
 
@@ -544,7 +545,44 @@ namespace Selene
             return SearchAppId(name, out legacy);
         }
 
+        // A game from GOG, Epic, EA, a launcher or a folder has no Steam id of its own: the Steam store page its metadata links to
+        // (Playnite's metadata adds one for most games), else a search by its name. A name with a tag or mark Steam doesn't use
+        // ("Hades [GOG]", "DOOM (2016)", "Control™") is searched again without it.
+        internal static string LinkedAppId(Guid id)
+        {
+            try
+            {
+                var api = HomeNav.Api;
+                var g = api != null ? api.Database.Games.Get(id) : null;
+                if (g == null || g.Links == null) return null;
+                foreach (var link in g.Links.ToList())
+                {
+                    var m = link != null ? Regex.Match(link.Url ?? "", @"store\.steampowered\.com/app/(\d+)", RegexOptions.IgnoreCase) : Match.Empty;
+                    if (m.Success) return m.Groups[1].Value;
+                }
+            }
+            catch (Exception ex) { HomeNav.Log("screenshots: game links: " + ex.Message); }
+            return null;
+        }
+
+        // the name without trademark marks, [tags], (years or notes) and a store's own suffix ("Hades [GOG]" -> "Hades")
+        public static string Plainer(string name)
+        {
+            var s = Regex.Replace(name ?? "", @"[\u2122\u00AE\u00A9]", "");
+            s = Regex.Replace(s, @"\s*[\[(][^\])]*[\])]", " ");
+            s = Regex.Replace(s, @"\s+(?:-\s+)?(?:GOG|Epic Games|Windows 10|Win10|PC)(?: Edition| Version)?$", "", RegexOptions.IgnoreCase);
+            return Regex.Replace(s, @"\s+", " ").Trim();
+        }
+
         internal static string SearchAppId(string name, out string legacy)
+        {
+            var found = SearchAppIdAs(name, out legacy);
+            var plainer = Plainer(name);
+            if (found == null && plainer.Length > 0 && plainer != name) found = SearchAppIdAs(plainer, out legacy);
+            return found;
+        }
+
+        private static string SearchAppIdAs(string name, out string legacy)
         {
             legacy = null;
             if (string.IsNullOrWhiteSpace(name)) return null;

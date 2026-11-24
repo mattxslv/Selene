@@ -10,7 +10,7 @@ namespace Selene
     // downloads that ask first (DownloadConsent); this asks once for all of them together, saying where they come from and where
     // they are saved, instead of making a new user find five separate switches. Yes is the consent for those categories; Not now
     // leaves everything off, and each one stays in Selene settings. Songs are not part of it (they need about 130 MB of tools).
-    // Asked once, only when there are games, none of these downloads is allowed yet and no Selene art is on disk. Switch: Games >
+    // Asked once, only when there are games and none of these downloads is allowed yet. Switch: Games >
     // Offer to get art for a new library.
     public static class GamesSetup
     {
@@ -25,7 +25,8 @@ namespace Selene
             var api = HomeNav.Api;
             if (api == null || !api.Database.Games.Any(g => !g.Hidden)) return false;
             if (Categories.Any(DownloadConsent.Allowed)) return false;
-            try { if (Directory.Exists(SelenePaths.Media("Hero")) && Directory.EnumerateFiles(SelenePaths.Media("Hero")).Any()) return false; } catch { }
+            // (art already on disk is no reason to skip it: an upgrade from before downloads asked first has art for its old games
+            // and every download off, so games added since got no cover, logo or screenshots and nothing said why)
             return true;
         }
 

@@ -60,6 +60,8 @@ namespace Selene
             GradientStops = { new GradientStop(Colors.Black, 0), new GradientStop(Colors.Black, 0.4), new GradientStop(Color.FromArgb(0x60, 0, 0, 0), 0.55), new GradientStop(Color.FromArgb(0, 0, 0, 0), 0.72) }
         };
         private bool peeking;
+        // the foot under the hints: while the row only peeks, it fades out above "Back" / "Select" instead of sitting behind them
+        private Border foot;
 
         private void Peek(bool on, bool animate)
         {
@@ -72,6 +74,7 @@ namespace Selene
             if (!on) fade.Completed += (s, e) => { if (!peeking && ReferenceEquals(moreSection.OpacityMask, peekFade)) moreSection.OpacityMask = null; };
             peeking = on;
             peekFade.BeginAnimation(LinearGradientBrush.EndPointProperty, fade);
+            if (foot != null) foot.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(on ? 1 : 0, ms) { EasingFunction = Ui.Out() });
             Ui.BlurTo(moreRow, on ? 5 : 0, (int)ms.TotalMilliseconds);
         }
 
@@ -193,6 +196,12 @@ namespace Selene
             }
             page.Children.Add(bottom);
 
+            foot = new Border
+            {
+                Height = 150, VerticalAlignment = VerticalAlignment.Bottom, IsHitTestVisible = false, Opacity = peeking ? 1 : 0,
+                Background = new LinearGradientBrush(new GradientStopCollection { Ink.Stop("SeleneScrimColor", 0, 0), Ink.Stop("SeleneScrimColor", 0.6, 0.35), Ink.Stop("SeleneScrimColor", 0.92, 0.6), Ink.Stop("SeleneScrimColor", 0.97, 1) }, 90)
+            };
+            Root.Children.Add(foot);
             var left = Ui.Prompts(false, Ui.Prompt("B", "Back"));
             var right = Ui.Prompts(true, Ui.Prompt("A", "Select"));
             left.Margin = new Thickness(46, 0, 0, 30);

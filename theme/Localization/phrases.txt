@@ -819,6 +819,7 @@ SILVER =
 BRONZE = 
 NOW PLAYING = 
 Continue where you left off = 
+Not installed = 
 Resume = 
 Close Game = 
 No screenshots for this game = 

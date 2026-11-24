@@ -877,3 +877,4 @@ Recently added = Ajouté récemment
 Most played = Le plus joué
 Sort each tab = Trier chaque onglet
 Choose the order of the tab you're on from the menu (Start): last played, name, recently added or most played. = Choisir l'ordre de l'onglet affiché depuis le menu (Start) : joué en dernier, nom, ajouté récemment ou le plus joué.
+Not installed = Non installé

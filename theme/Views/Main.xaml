@@ -1302,6 +1302,7 @@
                                                                     <Setter Property="Text" Value="Play"/>
                                                                     <Style.Triggers>
                                                                         <DataTrigger Binding="{Binding SelectedGame.IsInstalled}" Value="False"><Setter Property="Text" Value="Install"/></DataTrigger>
+                                                                        <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource AncestorType=Button}}" Value="noinstall"><Setter Property="Text" Value="Not installed"/></DataTrigger>
                                                                         <DataTrigger Binding="{Binding SelectedGame.IsRunning}" Value="True"><Setter Property="Text" Value="Resume"/></DataTrigger>
                                                                     </Style.Triggers>
                                                                 </Style>

@@ -57,3 +57,6 @@ Restart Playnite? = Playnite を再起動しますか？
 Restart now to apply the selected language? = 選択した言語を適用するため、今すぐ再起動しますか？
 Restart now = 今すぐ再起動
 Later = 後で
+Add your stores in Setup check: Menu > Selene settings > Advanced. = セットアップチェックでストアを追加してください：メニュー > Selene の設定 > 詳細
+Your own pictures go in Selene's Wallpapers folder. = 自分の画像は Selene の Wallpapers フォルダーに入れてください。
+Not installed = 未インストール

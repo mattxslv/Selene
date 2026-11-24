@@ -87,7 +87,12 @@ namespace Selene
             // (one row as wide as the screen allows: more matches than fit glide in as the focus moves along)
             resultsArea = new Grid { Height = 220, Width = Math.Max(800, Ui.ViewWidth - 160), Margin = new Thickness(0, 26, 0, 0), ClipToBounds = true };
             resultsPanel.RenderTransform = resultsShift;
-            resultsArea.Children.Add(resultsPanel);
+            // (on a Canvas: in the Grid the row was laid out at the area's width and clipped there, so the matches past the
+            // first screenful never came into view as it glided)
+            var rowHost = new Canvas();
+            Canvas.SetTop(resultsPanel, (220 - 196) / 2.0);
+            rowHost.Children.Add(resultsPanel);
+            resultsArea.Children.Add(rowHost);
             resultsNote = new TextBlock { FontSize = 19, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.55), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
             resultsArea.Children.Add(resultsNote);
             layout.Children.Add(resultsArea);
@@ -311,7 +316,7 @@ namespace Selene
             // the name until the cover is decoded (off the UI thread, then kept for the next search)
             t.Face.Child = new TextBlock { Text = g.Name, FontSize = 15, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor"), TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, Margin = new Thickness(10), VerticalAlignment = VerticalAlignment.Center };
             string path = CoverPath(g);
-            if (path == null) return t;
+            if (path == null) { t.Face.Child = GameFacts.StandIn(g.Name, 12, 15); return t; }   // (no cover yet: Selene's, with the name)
             ImageSource cached;
             if (covers.TryGetValue(path, out cached)) { t.Face.Background = new ImageBrush(cached) { Stretch = Stretch.UniformToFill }; t.Face.Child = null; return t; }
             var face = t.Face;

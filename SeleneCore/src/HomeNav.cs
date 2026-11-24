@@ -5624,6 +5624,11 @@ namespace Selene
                 Api.Database.Games.ItemUpdated += (s, e) =>
                 {
                     if (e.UpdatedItems == null) return;
+                    // a game starting, stopping or (un)installing: the A hint (Play / Resume / Install) follows it (it only changed
+                    // with the focus: "Resume" stayed after a game closed while loading)
+                    if (e.UpdatedItems.Any(u => u.OldData != null && u.NewData != null && (u.OldData.IsRunning != u.NewData.IsRunning
+                        || u.OldData.IsLaunching != u.NewData.IsLaunching || u.OldData.IsInstalled != u.NewData.IsInstalled)))
+                        Application.Current.Dispatcher.BeginInvoke(new Action(HomeHints.Update), System.Windows.Threading.DispatcherPriority.Background);
                     foreach (var u in e.UpdatedItems)
                         if (RowRelevantChange(u.OldData, u.NewData)) { QueueRowSync("game changed: " + (u.NewData != null ? u.NewData.Name : "?")); return; }
                 };
@@ -5673,6 +5678,8 @@ namespace Selene
                 var row = LiveRow();
                 var id = row != null ? Prop(row.SelectedItem, "Id") : null;
                 bool selectedGone = removed != null && id is Guid && removed.Contains((Guid)id);
+                // its trailer card playing: closed now (the row waits for a playing card, so it kept the gone game until a press)
+                if (selectedGone && previewShowing) { Log("row: the selected game was removed, its trailer card closes"); HidePreview(false); }
                 rowSyncTimer.Stop();   // (restarted: a burst ends 1.2 s after its last change)
                 rowSyncTimer.Interval = TimeSpan.FromMilliseconds(selectedGone ? 120 : 1200);
                 rowSyncTimer.Start();
@@ -8208,7 +8215,7 @@ namespace Selene
                 gamePidsAt = DateTime.MinValue;
                 normalWindowGame = Guid.Empty; soundSince = DateTime.MinValue;
                 lastSoundAt = DateTime.MinValue;
-                launchGameId = gameId;
+                launchGameId = gameId; notPlayed = Guid.Empty;
                 lastLaunchedGame = gameId;
                 launchGrace = LaunchGrace(gameId);
                 coverCancelledByGuide = false; switchedAway = false; SwitchKeys();   // (clears a key press from before this launch)
@@ -8732,6 +8739,7 @@ namespace Selene
 
         private static void RevealGame(IntPtr game, string why)
         {
+            notPlayed = Guid.Empty;
             if (launchAttempt != null) launchAttempt.Complete();   // the game is there: B no longer cancels it
             GamePause.FadeBack(2000, 2000);   // the ready sound first, then the game's sound fades in
             HoldMusicForLaunch(false);
@@ -9001,8 +9009,14 @@ namespace Selene
             catch (Exception ex) { Log("launch: message: " + ex.Message); }
         }
 
+        // a start that never got to the game (B on the loading screen, or the game closing while it loaded): no "Session ended"
+        // card for it afterwards
+        private static Guid notPlayed = Guid.Empty;
+        public static bool NeverShown(Guid id) { return id != Guid.Empty && id == notPlayed; }
+
         private static void AbortLaunchCover(IntPtr bringForward, string why)
         {
+            if (why == "B pressed" || why == "the game closed while loading") notPlayed = launchGameId;
             if (launchAttempt != null && !launchAttempt.Cancelled) launchAttempt.Complete();   // a failed launch: nothing left to cancel
             GamePause.Unhush();
             HoldMusicForLaunch(false);

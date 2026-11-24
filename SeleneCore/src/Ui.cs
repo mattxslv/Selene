@@ -1207,13 +1207,18 @@ namespace Selene
                 glyph.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
                 chipText.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
                 chip.Background = new SolidColorBrush(Color.FromArgb(0x2E, 0xFF, 0x6B, 0x6B));
+                chip.BorderThickness = new Thickness(0);
             }
             else
             {
                 circle.Fill = Ink.Brush(key, 0.16);
                 glyph.Foreground = Ink.Brush(key);
                 chipText.Foreground = Ink.Brush(key);
-                chip.Background = Ink.Brush(key, 0.16);
+                // on the glass the accent ink is made for (here it sits straight on the wallpaper: a light theme's was faint), a
+                // thin ring of the accent around it
+                chip.Background = Ink.Brush("SeleneGlassColor", 0.9);
+                chip.BorderBrush = Ink.Brush(key, 0.45);
+                chip.BorderThickness = new Thickness(1);
             }
             glyph.Text = icon;
             title.Text = name;

@@ -57,3 +57,6 @@ Restart Playnite? = I-restart ang Playnite?
 Restart now to apply the selected language? = I-restart ngayon para magamit ang napiling wika?
 Restart now = I-restart ngayon
 Later = Mamaya
+Add your stores in Setup check: Menu > Selene settings > Advanced. = Idagdag ang iyong mga store sa Setup check: Menu > Selene settings > Advanced.
+Your own pictures go in Selene's Wallpapers folder. = Ilagay ang sarili mong mga larawan sa Wallpapers folder ng Selene.
+Not installed = Hindi naka-install

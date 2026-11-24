@@ -98,6 +98,9 @@ namespace Selene
                     var g = item.DataContext as Playnite.SDK.Models.Game;
                     if (g == null) { var p = item.DataContext.GetType().GetProperty("Game"); g = p != null ? p.GetValue(item.DataContext, null) as Playnite.SDK.Models.Game : null; }
                     var a = g == null ? "Play" : g.IsRunning || g.IsLaunching ? "Resume" : !g.IsInstalled ? (LocalGames.CanInstall(g) ? "Install" : "Not installed") : "Play";
+                    // (the Play pill says the same: its theme text only knew installed or not)
+                    var pill = HomeNav.FindByName(Application.Current.MainWindow, "SelenePlayBtn") as FrameworkElement;
+                    if (pill != null) pill.Tag = a == "Not installed" ? "noinstall" : null;
                     if (HomeNav.HasTrailerSound(item.DataContext)) { key = "game+" + a; hints = new[] { "R3", "Trailer sound", "X", "Details", "Y", "Game options", "A", a }; }
                     else { key = "game" + a; hints = new[] { "X", "Details", "Y", "Game options", "A", a }; }
                 }

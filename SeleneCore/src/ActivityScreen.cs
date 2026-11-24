@@ -153,6 +153,12 @@ namespace Selene
             if (rows.Count == 0)
                 Root.Children.Add(new TextBlock { Text = "Nothing played yet. Your most played and last played games show here.", FontSize = 21, FontFamily = Ui.Body, Foreground = Ink.Brush("SeleneInkColor", 0.6), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(Side, RowTop + 20, 0, 0) });
 
+            // the rows below the screen fade out above the hints instead of sitting right on them
+            Root.Children.Add(new Border
+            {
+                Height = 130, VerticalAlignment = VerticalAlignment.Bottom, IsHitTestVisible = false,
+                Background = new LinearGradientBrush(new GradientStopCollection { Ink.Stop("SeleneScrimColor", 0, 0), Ink.Stop("SeleneScrimColor", 0.75, 0.55), Ink.Stop("SeleneScrimColor", 0.95, 1) }, 90)
+            });
             Root.Children.Add(Ui.Prompts(false, Ui.Prompt("B", "Back")));
             if (rows.Count > 0) Root.Children.Add(Ui.Prompts(true, Ui.Prompt("X", "Play"), Ui.Prompt("A", "Show on Spotlight")));
             heroLater.Tick += (s, e) => { heroLater.Stop(); ShowHero(); };

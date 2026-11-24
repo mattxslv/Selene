@@ -349,10 +349,15 @@ namespace Selene
         {
             if (scene == null) return;
             RefreshBackdrop();
-            FadeInBackdrop();
             var next = pending;
             pending = null;
-            if (next != null) { if (!musicHeldAtStart) HomeNav.HoldMusicForLaunch(false); Show(next(), 0); }
+            // a screen asked for from the home (the menu, settings, the Store...): an overlay shows the home under its shade, so no
+            // dark cover (it hid the first menu after start for seconds); a full screen gets a short fade, not the start-up's
+            var first = next != null ? next() : null;
+            if (first == null) FadeInBackdrop(false);
+            else if (!first.Overlay) FadeInBackdrop(true);
+            else if (backdropHost != null) backdropHost.Opacity = 1;
+            if (first != null) { if (!musicHeldAtStart) HomeNav.HoldMusicForLaunch(false); Show(first, 0); }
             else if (!introPlayed) { introPlayed = true; AllowBackdropVideo(); WhenCalm(scene, () => { Show(Features.On("intro") ? (Screen)new IntroScreen() : Start(), 0); }); }
             else { if (!musicHeldAtStart) HomeNav.HoldMusicForLaunch(false); Show(Start(), 0); }
         }
@@ -550,7 +555,7 @@ namespace Selene
 
         // the backdrop fades in from the layer's dark color: a cover over it melts away on its own thread (ThreadedFade), so
         // Playnite's busy start-up can't make it freeze and jump. It starts once the backdrop has been drawn underneath.
-        private static void FadeInBackdrop()
+        private static void FadeInBackdrop(bool quick)
         {
             var host = backdropHost;
             var scenePanel = host != null ? host.Parent as Panel : null;
@@ -565,11 +570,14 @@ namespace Selene
             var cover = new Border { Background = dark, IsHitTestVisible = false };
             scenePanel.Children.Insert(scenePanel.Children.IndexOf(host) + 1, cover);   // over the backdrop, under the logo
             host.Opacity = 1;
-            WhenCalm(scene, () =>
+            Action<Action> when = act => { if (quick) scene.Dispatcher.BeginInvoke(act, System.Windows.Threading.DispatcherPriority.Loaded); else WhenCalm(scene, act); };
+            when(() =>
             {
-                HomeNav.Log("backdrop fade-in: fading over 2200 ms");
-                // slow and even: a gentle sine curve over two seconds, at the screen's own frame rate
-                var fade = Ui.Fast(new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(2200)) { EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut } });
+                int ms = quick ? 300 : 2200;
+                HomeNav.Log("backdrop fade-in: fading over " + ms + " ms");
+                // slow and even: a gentle sine curve over two seconds, at the screen's own frame rate (a screen opened from the home:
+                // a short ease-out)
+                var fade = Ui.Fast(new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(ms)) { EasingFunction = quick ? (IEasingFunction)new QuadraticEase { EasingMode = EasingMode.EaseOut } : new SineEase { EasingMode = EasingMode.EaseInOut } });
                 fade.Completed += (s, e) => scenePanel.Children.Remove(cover);
                 cover.BeginAnimation(UIElement.OpacityProperty, fade);
             });

@@ -73,8 +73,22 @@ namespace Selene
             if (covered == on) return;
             covered = on;
             var lib = libraryWindow != null ? HomeNav.FindByName(libraryWindow, "SeleneLibraryHints") as FrameworkElement : null;
+            // (back: once the screen over them has faded its own hints, which sat on top of these for a moment)
             foreach (var el in new FrameworkElement[] { bar, always, lib })
-                if (el != null) el.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(on ? 0 : 1, TimeSpan.FromMilliseconds(on ? 120 : 220)) { EasingFunction = Ui.Out() });
+            {
+                if (el == null) continue;
+                if (on) { el.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(120)) { EasingFunction = Ui.Out() }); continue; }
+                double from = el.Opacity;
+                el.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimationUsingKeyFrames
+                {
+                    KeyFrames =
+                    {
+                        new DiscreteDoubleKeyFrame(from, KeyTime.FromTimeSpan(TimeSpan.Zero)),
+                        new DiscreteDoubleKeyFrame(from, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(160))),
+                        new EasingDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(360)), Ui.Out())
+                    }
+                });
+            }
         }
 
         // what's focused decides the hints; the bar crossfades when they change

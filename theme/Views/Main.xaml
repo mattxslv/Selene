@@ -1467,7 +1467,7 @@
                                             </Style>
                                         </Grid.Resources>
                                         <StackPanel>
-                                            <TextBlock Text="No screenshots for this game" FontSize="18" FontFamily="Segoe UI" Foreground="{DynamicResource SeleneInk60Brush}" Visibility="{DynamicResource SeleneShotsNone}"/>
+                                            <TextBlock Text="No screenshots for this game" FontSize="18" FontFamily="{DynamicResource FontMain}" Foreground="{DynamicResource SeleneInk60Brush}" Visibility="{DynamicResource SeleneShotsNone}"/>
                                             <!-- (the room for the focused tile's ring and growth is inside the strip's content: a padding on the scroller
                                                  sat outside its clip, so the first tile's ring was cut) -->
                                             <ScrollViewer x:Name="SeleneShotStrip" Width="{DynamicResource SeleneShotStripWidth}" Margin="-14,-14,0,0" Padding="0" Focusable="False" CanContentScroll="False"

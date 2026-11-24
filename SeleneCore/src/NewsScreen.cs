@@ -168,7 +168,7 @@ namespace Selene
             if (index >= rows.Count) return;
             if (manage) { feeds[index].Enabled = !feeds[index].Enabled; if (Save()) Render(); else feeds[index].Enabled = !feeds[index].Enabled; }
             else if (NewsFeeds.WebUrl(articles[index].Url))
-                try { Process.Start(new ProcessStartInfo(articles[index].Url) { UseShellExecute = true }); } catch (Exception ex) { status.Text = "Could not open article: " + ex.Message; }
+                try { HomeNav.OpenOutside(articles[index].Url); } catch (Exception ex) { status.Text = "Could not open article: " + ex.Message; }
         }
         private void Remove()
         {

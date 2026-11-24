@@ -228,7 +228,9 @@ namespace Selene
             if (index < items.Count)
             {
                 var item = items[index];
-                Describe(item);
+                // (the card says OPENING... while Playnite gets it: the info under it says so too, not "Not installed")
+                if (index == openingAt) info.Show(Icon(item.Key), Tone.Accent, item.Title, "Opening", item.About, "Playnite is getting the add-on. Its question comes up in a moment.");
+                else Describe(item);
             }
             else if (batchRunning && batchInfo != null) batchInfo();
             else if (index == ButtonsStart)

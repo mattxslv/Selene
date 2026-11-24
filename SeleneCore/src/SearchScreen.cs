@@ -293,7 +293,7 @@ namespace Selene
         {
             return new Finder
             {
-                Title = "Find a game", Placeholder = "Type a game's name", EmptyNote = "Your games show here as you type.", NoneNote = "No game called that.",
+                Title = "Find a game", Placeholder = "Type a game's name", EmptyNote = "Your games show here as you type.", NoneNote = "No game called that.", Shade = Ink.Brush("SeleneScrimColor", 0.96),   // (the home read through the keyboard)
                 Find = q =>
                 {
                     if (HomeNav.Api == null) return new List<Hit>();

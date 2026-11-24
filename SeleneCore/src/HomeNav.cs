@@ -1766,7 +1766,7 @@ namespace Selene
                 if (wantId != null && want < 0 && tries <= 1) Log("library focus: " + lastSelected + " not in list");
                 if (want >= 0 && list.SelectedIndex != want) list.SelectedIndex = want;
                 else if (list.SelectedIndex < 0) list.SelectedIndex = 0;
-                if (list.IsKeyboardFocusWithin && want < 0) return;
+                if (list.IsKeyboardFocusWithin && want < 0 && Keyboard.FocusedElement is ListBoxItem) return;   // (the list itself, no cover: still placed)
                 // ScrollIntoView does nothing in the horizontal layout (virtualized panel, tile not generated yet):
                 // ask the panel itself to bring the index into view, then the container exists and can take focus
                 var c = list.ItemContainerGenerator.ContainerFromIndex(list.SelectedIndex) as UIElement;
@@ -2668,6 +2668,9 @@ namespace Selene
             {
                 if (heroHidden) HeroWaitForArt(() => HeroIn(true), 450);
                 prop.SetValue(vm, game, null);
+                // (the art follows the selection at once: no Spotlight picture on its way now means none is coming, e.g. a game
+                // without art after another: its block came only at the cap)
+                if (heroArtWaiter != null && !SeleneCrossfade.HubBusy()) { HeroLog("no art coming"); var waiter = heroArtWaiter; heroArtWaiter = null; heroInDelay = 70; waiter(); }
             }
             else if (heroArtWaiter == null) HeroIn();
         }
@@ -9147,14 +9150,16 @@ namespace Selene
             catch (Exception ex) { Log("launch: message: " + ex.Message); }
         }
 
-        // a start that never got to the game (B on the loading screen, or the game closing while it loaded): no "Session ended"
-        // card for it afterwards
+        // a start that never got to the game (B on the loading screen, a game that quit or never came): no "Session ended" card
+        // for it afterwards
         private static Guid notPlayed = Guid.Empty;
         public static bool NeverShown(Guid id) { return id != Guid.Empty && id == notPlayed; }
 
         private static void AbortLaunchCover(IntPtr bringForward, string why)
         {
-            if (why == "B pressed" || why == "the game closed while loading") notPlayed = launchGameId;
+            // (nothing of the game was ever shown: B, a game that quit or never came, an error; a launcher brought forward may
+            // still lead to play, so that keeps its card)
+            if (bringForward == IntPtr.Zero) notPlayed = launchGameId;
             if (launchAttempt != null && !launchAttempt.Cancelled) launchAttempt.Complete();   // a failed launch: nothing left to cancel
             GamePause.Unhush();
             HoldMusicForLaunch(false);
@@ -10093,6 +10098,7 @@ namespace Selene
             RenderFilterTabs(w, dir);
             LibraryStage.HoldInfo();   // the next tab's game's name comes with its picture
             ApplyCollectionFilter();
+            FocusLibraryLater(w, false);   // a cover of the new tab has the focus (it sat on the list itself, no ring, until a press)
             // Spotlight shows the same tab when you go back: its row is refiltered then (CatchUpRowFilter), not on every switch
             // here (it doubled the work of each switch while hidden: a slow frame every time)
             if (LiveRow() != null) rowFilterStale = true;

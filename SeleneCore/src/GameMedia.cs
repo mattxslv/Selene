@@ -148,7 +148,9 @@ namespace Selene
                 // fade out on the way away, so it comes back
                 var strip = Strip();
                 if (strip != null && strip.Opacity < 0.99) strip.BeginAnimation(UIElement.OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(1, TimeSpan.FromMilliseconds(200)));
-                Application.Current.Resources["SeleneShotsNone"] = current.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+                // ("No screenshots" with the game block, not before it: it showed over the last game's art)
+                Application.Current.Resources["SeleneShotsNone"] = current.Count == 0 && !HomeNav.HeroWaiting ? Visibility.Visible : Visibility.Collapsed;
+                if (current.Count == 0 && HomeNav.HeroWaiting) waitsForHero = true;
                 return;
             }
             List<ShotItem> items;
